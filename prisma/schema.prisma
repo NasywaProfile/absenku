@@ -1,0 +1,221 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// ENUM DEFINITIONS
+// -------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+enum AttendanceStatus {
+  ON_TIME      // Tepat waktu sesuai jam masuk kantor & toleransi
+  LATE         // Terlambat hadir melewati batas toleransi
+  EARLY_LEAVE  // Pulang lebih awal sebelum jam pulang kantor
+  OVERTIME     // Lembur melebihi jam kerja normal
+}
+
+enum LocationStatus {
+  IN_OFFICE    // Dalam radius geofence kantor (< 100m)
+  OUT_OF_RANGE // Di luar radius (WFA / Remote / Lapangan)
+}
+
+enum LeaveType {
+  ANNUAL       // Cuti Tahunan
+  SICK         // Izin Sakit (Lampiran Surat Dokter)
+  URGENT       // Keperluan Mendesak / Keluarga
+  MATERNITY    // Cuti Melahirkan
+}
+
+enum ApprovalStatus {
+  PENDING      // Menunggu peninjauan HR/Admin
+  APPROVED     // Disetujui
+  REJECTED     // Ditolak dengan alasan
+}
+
+enum TaskStatus {
+  TODO         // Antrean tugas baru
+  IN_PROGRESS  // Sedang dikerjakan karyawan
+  DONE         // Diselesaikan karyawan, menunggu review
+  REVIEWED     // Telah disahkan dan ditinjau oleh Admin/Lead
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// -------------------------------------------------------------
+// MODEL: USER
+// -------------------------------------------------------------
+model User {
+  id               String       @id @default(uuid())
+  nama             String       @db.VarChar(150)
+  email            String       @unique @db.VarChar(191)
+  password         String       // Hashed password (bcrypt / argon2)
+  role             Role         @default(EMPLOYEE)
+  jabatan          String       @db.VarChar(100)
+  departemen       String       @db.VarChar(100)
+  nomorTelepon     String?      @map("nomor_telepon") @db.VarChar(30)
+  avatarUrl        String?      @map("avatar_url") @db.Text
+  sisaCutiTahunan  Int          @default(12) @map("sisa_cuti_tahunan")
+  isActive         Boolean      @default(true) @map("is_active")
+
+  // Timestamps
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  // Relasi Data
+  attendances      Attendance[]
+  leaveRequests    LeaveRequest[] @relation("EmployeeLeaves")
+  approvedLeaves   LeaveRequest[] @relation("AdminReviewedLeaves")
+  
+  // Relasi Tugas: Tugas yang dibuat oleh Admin & Tugas yang ditugaskan ke Karyawan
+  createdTasks     Task[]       @relation("AdminCreatedTasks")
+  assignedTasks    Task[]       @relation("UserAssignedTasks")
+
+  @@map("users")
+}
+
+// -------------------------------------------------------------
+// MODEL: ATTENDANCE (PRESENSI)
+// -------------------------------------------------------------
+model Attendance {
+  id                    String            @id @default(uuid())
+  userId                String            @map("user_id")
+  tanggal               DateTime          @db.Date // Format YYYY-MM-DD
+  
+  // Waktu Presensi
+  waktuIn               DateTime          @map("waktu_in") // Timestamp Clock In
+  waktuOut              DateTime?         @map("waktu_out") // Timestamp Clock Out
+  durasiKerjaMenit      Int?              @map("durasi_kerja_menit") // Total menit kerja
+
+  // Geolocation & Biometrik Selfie Masuk (Clock In)
+  lokasiLatIn           Decimal           @map("lokasi_lat_in") @db.Decimal(10, 8)
+  lokasiLngIn           Decimal           @map("lokasi_lng_in") @db.Decimal(11, 8)
+  jarakMeterIn          Int               @map("jarak_meter_in") // Jarak ke kantor (meter)
+  statusLokasiIn        LocationStatus    @default(IN_OFFICE) @map("status_lokasi_in")
+  fotoInUrl             String            @map("foto_in_url") @db.Text // URL foto selfie webcam
+
+  // Geolocation & Biometrik Selfie Pulang (Clock Out)
+  lokasiLatOut          Decimal?          @map("lokasi_lat_out") @db.Decimal(10, 8)
+  lokasiLngOut          Decimal?          @map("lokasi_lng_out") @db.Decimal(11, 8)
+  jarakMeterOut         Int?              @map("jarak_meter_out")
+  statusLokasiOut       LocationStatus?   @map("status_lokasi_out")
+  fotoOutUrl            String?           @map("foto_out_url") @db.Text
+
+  // Status & Kalkulasi Keterlambatan
+  status                AttendanceStatus  @default(ON_TIME)
+  menitKeterlambatan    Int               @default(0) @map("menit_keterlambatan")
+  catatan               String?           @db.Text
+
+  // Timestamps
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  // Relasi
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indeks untuk optimasi query pencarian tanggal & user
+  @@unique([userId, tanggal], name: "unique_user_daily_attendance")
+  @@index([tanggal])
+  @@index([userId])
+  @@map("attendances")
+}
+
+// -------------------------------------------------------------
+// MODEL: LEAVE REQUEST (PENGAJUAN CUTI & IZIN)
+// -------------------------------------------------------------
+model LeaveRequest {
+  id                    String            @id @default(uuid())
+  userId                String            @map("user_id")
+  tipe                  LeaveType
+  tanggalMulai          DateTime          @map("tanggal_mulai") @db.Date
+  tanggalSelesai        DateTime          @map("tanggal_selesai") @db.Date
+  totalHari             Int               @map("total_hari")
+  alasan                String            @db.Text
+  dokumenUrl            String?           @map("dokumen_url") @db.Text // Dokumen bukti (surat dokter / dinas)
+
+  // Workflow Approval
+  statusApproval        ApprovalStatus    @default(PENDING) @map("status_approval")
+  reviewedByAdminId     String?           @map("reviewed_by_admin_id")
+  tanggalReview         DateTime?         @map("tanggal_review")
+  catatanPenolakan      String?           @map("catatan_penolakan") @db.Text
+
+  // Timestamps
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  // Relasi
+  user                  User              @relation("EmployeeLeaves", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedByAdmin       User?             @relation("AdminReviewedLeaves", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([statusApproval])
+  @@map("leave_requests")
+}
+
+// -------------------------------------------------------------
+// MODEL: TASK (MANAJEMEN TUGAS KANBAN)
+// -------------------------------------------------------------
+model Task {
+  id                    String            @id @default(uuid())
+  pembuatAdminId        String            @map("pembuat_admin_id")
+  assigneeUserId        String            @map("assignee_user_id")
+  judul                 String            @db.VarChar(255)
+  deskripsi             String            @db.Text
+  deadline              DateTime          @db.Date
+  prioritas             TaskPriority      @default(MEDIUM)
+  statusTask            TaskStatus        @default(TODO) @map("status_task")
+  
+  // Catatan pengerjaan dan review
+  catatanPenyelesaian   String?           @map("catatan_penyelesaian") @db.Text
+  catatanReview         String?           @map("catatan_review") @db.Text
+  tags                  String[]          @default([])
+
+  // Timestamps
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  // Relasi
+  pembuatAdmin          User              @relation("AdminCreatedTasks", fields: [pembuatAdminId], references: [id], onDelete: Restrict)
+  assigneeUser          User              @relation("UserAssignedTasks", fields: [assigneeUserId], references: [id], onDelete: Cascade)
+
+  @@index([assigneeUserId])
+  @@index([statusTask])
+  @@index([deadline])
+  @@map("tasks")
+}
+
+// -------------------------------------------------------------
+// MODEL: MASTER OFFICE SETTINGS (GEOFENCE & JAM KERJA)
+// -------------------------------------------------------------
+model OfficeSetting {
+  id                    String            @id @default(uuid())
+  namaKantor            String            @map("nama_kantor") @db.VarChar(150)
+  latitude              Decimal           @db.Decimal(10, 8)
+  longitude             Decimal           @db.Decimal(11, 8)
+  geofenceRadiusMeter   Int               @default(100) @map("geofence_radius_meter")
+  jamMasuk              String            @default("08:30") @map("jam_masuk") @db.VarChar(5) // Format HH:mm
+  jamPulang             String            @default("17:30") @map("jam_pulang") @db.VarChar(5)
+  toleransiMenit        Int               @default(15) @map("toleransi_menit")
+  isDefault             Boolean           @default(true) @map("is_default")
+
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  @@map("office_settings")
+}
