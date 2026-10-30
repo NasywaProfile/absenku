@@ -429,6 +429,8 @@ export default function App() {
                 onAddUser={handleAddEmployee}
                 onUpdateUser={handleUpdateEmployee}
                 onDeleteUser={handleDeleteEmployee}
+                onApproveRegistration={handleApproveRegistration}
+                onRejectRegistration={handleRejectRegistration}
               />
             )}
 

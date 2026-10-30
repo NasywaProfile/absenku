@@ -104,6 +104,7 @@ export function AdminDashboard({
   onNavigateTab,
   onOpenEmailModal,
   onOpenSettingsModal,
+  onUpdateUser,
   onUpdateAttendanceRecord,
 }: AdminDashboardProps) {
   const attendanceRecords = propAttendanceRecords || propRecords || [];
@@ -130,8 +131,8 @@ export function AdminDashboard({
 
   // Calendar & Logbook state
   const todayDateStr = getCurrentDateString();
-  const [calendarDate, setCalendarDate] = useState(() => isSuperAdmin ? new Date(2026, 9, 29) : new Date());
-  const [selectedDate, setSelectedDate] = useState<string>(() => isSuperAdmin ? '2026-10-29' : todayDateStr);
+  const [calendarDate, setCalendarDate] = useState(() => new Date());
+  const [selectedDate, setSelectedDate] = useState<string>(() => todayDateStr);
   const [logbookText, setLogbookText] = useState('');
   const [isExistingLog, setIsExistingLog] = useState(false);
   const [savedSuccessMessage, setSavedSuccessMessage] = useState<string | null>(null);
@@ -343,6 +344,33 @@ export function AdminDashboard({
     }
   };
 
+  const handleUpdateRole = (userId: string, newRole: UserRole) => {
+    onUpdateRole(userId, newRole);
+    const updated = AppStorage.getUserById(userId);
+    if (updated) {
+      if (onUpdateUser) onUpdateUser(updated);
+      setSelectedEmployee(updated);
+    }
+  };
+
+  const handleUpdateType = (userId: string, newType: EmploymentType) => {
+    onUpdateType(userId, newType);
+    const updated = AppStorage.getUserById(userId);
+    if (updated) {
+      if (onUpdateUser) onUpdateUser(updated);
+      setSelectedEmployee(updated);
+    }
+  };
+
+  const handleToggleStatus = (userId: string) => {
+    onToggleStatus(userId);
+    const updated = AppStorage.getUserById(userId);
+    if (updated) {
+      if (onUpdateUser) onUpdateUser(updated);
+      setSelectedEmployee(updated);
+    }
+  };
+
   const categoryLabels = {
     LEAVE: 'Izin / Cuti',
     WFH: 'WFH',
@@ -427,6 +455,16 @@ export function AdminDashboard({
           )}
         </div>
       </div>
+
+      {/* Banner / Card Persetujuan Registrasi Akun Baru jika ada antrean */}
+      {pendingRegistrations.length > 0 && (
+        <RegistrationApprovalList
+          pendingUsers={pendingRegistrations}
+          onApprove={onApproveRegistration}
+          onReject={onRejectRegistration}
+          onNavigateToAll={() => onNavigateTab('employee_approvals')}
+        />
+      )}
 
       {/* 2. BARIS 1: 2-COLUMN EQUAL GRID (Sekilas Ruang Obrolan & Kalender Presensi) - 100% SAMA DENGAN BERANDA KARYAWAN */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
@@ -1564,9 +1602,9 @@ export function AdminDashboard({
         currentUser={currentUser}
         attendanceHistory={attendanceRecords}
         dailyTasks={AppStorage.getDailyTasks()}
-        onUpdateRole={onUpdateRole}
-        onUpdateType={onUpdateType}
-        onToggleStatus={onToggleStatus}
+        onUpdateRole={handleUpdateRole}
+        onUpdateType={handleUpdateType}
+        onToggleStatus={handleToggleStatus}
       />
 
       {/* Modal Tolak Izin */}

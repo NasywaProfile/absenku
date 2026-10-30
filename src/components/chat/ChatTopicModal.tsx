@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Calendar,
   Trash2,
+  AlertCircle,
 } from 'lucide-react';
 import {
   ChatTopic,
@@ -34,6 +35,7 @@ import {
 } from '@/components/ui/bubble';
 import { compressImageFile } from '../../lib/image-compression.ts';
 import { uploadToCloudinary } from '../../lib/cloudinary.ts';
+import { uploadHybridFile } from '../../lib/file-uploader.ts';
 import { openExternalLink, isImageFile } from '../../lib/open-media.ts';
 import { MediaPreviewModal, MediaPreviewData } from '../common/MediaPreviewModal.tsx';
 import { TeamMembersModal, TeamMemberItem } from '../common/TeamMembersModal.tsx';
@@ -64,6 +66,7 @@ export function ChatTopicModal({
   // Comments & input state
   const [commentText, setCommentText] = useState('');
   const [commentAttachments, setCommentAttachments] = useState<TaskAttachment[]>([]);
+  const [commentUploadError, setCommentUploadError] = useState<string | null>(null);
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionCursorIndex, setMentionCursorIndex] = useState<number | null>(null);
@@ -122,32 +125,22 @@ export function ChatTopicModal({
     const uploadedFiles: TaskAttachment[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      let fileUrl = '#';
       try {
-        if (file.type.startsWith('image/')) {
-          const compressed = await compressImageFile(file);
-          const uploadRes = await uploadToCloudinary(compressed);
-          fileUrl = uploadRes.url;
-        } else {
-          const uploadRes = await uploadToCloudinary(file);
-          fileUrl = uploadRes.url;
-        }
-      } catch (uploadErr) {
-        console.warn('Cloudinary upload fallback to local URL:', uploadErr);
-        fileUrl = URL.createObjectURL(file);
+        const uploadRes = await uploadHybridFile(file, { folder: 'absenku/chat' });
+        uploadedFiles.push({
+          id: `att-${Date.now()}-${i}`,
+          name: uploadRes.name,
+          url: uploadRes.url,
+          type: 'FILE',
+          fileType: uploadRes.type,
+          fileSize: `${Math.round(uploadRes.size / 1024)} KB`,
+          uploadedBy: currentUser.id,
+          uploadedByName: currentUser.name,
+          uploadedAt: new Date().toISOString(),
+        });
+      } catch (uploadErr: any) {
+        setCommentUploadError(uploadErr.message || 'Gagal mengunggah berkas.');
       }
-
-      uploadedFiles.push({
-        id: `att-${Date.now()}-${i}`,
-        name: file.name,
-        url: fileUrl,
-        type: 'FILE',
-        fileType: file.type,
-        fileSize: `${Math.round(file.size / 1024)} KB`,
-        uploadedBy: currentUser.id,
-        uploadedByName: currentUser.name,
-        uploadedAt: new Date().toISOString(),
-      });
     }
 
     const updatedTopic: ChatTopic = {
@@ -169,31 +162,21 @@ export function ChatTopicModal({
       const uploaded: TaskAttachment[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        let fileUrl = '#';
         try {
-          if (file.type.startsWith('image/')) {
-            const compressed = await compressImageFile(file);
-            const uploadRes = await uploadToCloudinary(compressed);
-            fileUrl = uploadRes.url;
-          } else {
-            const uploadRes = await uploadToCloudinary(file);
-            fileUrl = uploadRes.url;
-          }
-        } catch (uploadErr) {
-          console.warn('Upload fallback:', uploadErr);
-          fileUrl = URL.createObjectURL(file);
+          const uploadRes = await uploadHybridFile(file, { folder: 'absenku/chat' });
+          uploaded.push({
+            id: `att-comm-${Date.now()}-${i}`,
+            name: uploadRes.name,
+            url: uploadRes.url,
+            type: 'FILE',
+            fileType: uploadRes.type,
+            fileSize: `${Math.round(uploadRes.size / 1024)} KB`,
+            uploadedBy: currentUser.id,
+            uploadedByName: currentUser.name,
+          });
+        } catch (uploadErr: any) {
+          setCommentUploadError(uploadErr.message || 'Gagal mengunggah berkas.');
         }
-
-        uploaded.push({
-          id: `att-comm-${Date.now()}-${i}`,
-          name: file.name,
-          url: fileUrl,
-          type: 'FILE',
-          fileType: file.type,
-          fileSize: `${Math.round(file.size / 1024)} KB`,
-          uploadedBy: currentUser.id,
-          uploadedByName: currentUser.name,
-        });
       }
       setCommentAttachments((prev) => [...prev, ...uploaded]);
     } finally {
@@ -497,9 +480,9 @@ export function ChatTopicModal({
                             : 'bg-sky-50 text-sky-800 border border-sky-200/80 hover:bg-sky-100/80'
                         }`}
                       >
-                        <option value="NEED_COMMENTS">Need comments</option>
-                        <option value="IN_PROGRESS">In Progress</option>
-                        <option value="CLOSED">Closed</option>
+                        <option value="NEED_COMMENTS">Perlu Tanggapan</option>
+                        <option value="IN_PROGRESS">Sedang Berjalan</option>
+                        <option value="CLOSED">Selesai</option>
                       </select>
                       <span
                         className={`w-2 h-2 rounded-full absolute left-2.5 pointer-events-none ${
@@ -1064,6 +1047,24 @@ export function ChatTopicModal({
                       <ArrowUp className="w-4 h-4 stroke-[2.5]" />
                     </button>
                   </form>
+
+                  {/* Inline Peringatan Validasi Upload Berkas */}
+                  {commentUploadError && (
+                    <div className="flex items-center justify-between gap-1.5 mt-2 px-3 py-1.5 text-xs text-rose-600 bg-rose-50 border border-rose-200/90 rounded-xl animate-in fade-in duration-200">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                        <span className="font-medium">{commentUploadError}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCommentUploadError(null)}
+                        className="text-rose-400 hover:text-rose-700 ml-1 shrink-0 cursor-pointer p-0.5"
+                        title="Tutup pesan"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
 
                   {/* List Attachment Preview sebelum dikirim */}
                   {commentAttachments.length > 0 && (

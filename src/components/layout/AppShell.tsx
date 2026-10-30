@@ -441,22 +441,6 @@ export function AppShell({
     year: 'numeric',
   }).format(new Date());
 
-  let currentTabLabel = 'Beranda';
-  if (isTabActive('clock', activeTab)) currentTabLabel = 'Presensi Sekarang';
-  else if (isTabActive('history', activeTab)) currentTabLabel = isAdmin ? 'Rekap Presensi Tim' : 'Riwayat Presensi';
-  else if (isTabActive('tasks_my', activeTab)) currentTabLabel = 'Tugas Saya';
-  else if (isTabActive('tasks_team', activeTab)) currentTabLabel = 'Memberikan Tugas Tim';
-  else if (isTabActive('leaves_my', activeTab)) currentTabLabel = 'Pengajuan Izin Saya';
-  else if (isTabActive('leaves_approval', activeTab)) currentTabLabel = 'Persetujuan Izin Tim';
-  else if (isTabActive('chat_room', activeTab)) currentTabLabel = 'Ruang Obrolan';
-  else if (isTabActive('profile', activeTab)) currentTabLabel = 'Biodata Diri';
-  else if (isTabActive('employees', activeTab)) currentTabLabel = 'Data Karyawan';
-  else if (isTabActive('employee_approvals', activeTab)) currentTabLabel = 'Persetujuan Akun Baru';
-  else {
-    const activeItem = currentSidebarItems.find((item) => isTabActive(item.id, activeTab));
-    if (activeItem) currentTabLabel = activeItem.label;
-  }
-
   return (
     // FULL SCREEN LAYOUT (Edge-to-edge matching ChronoTask style)
     <div className="h-screen w-full overflow-hidden bg-[#F8FAFC] text-slate-800 flex flex-col md:flex-row font-sans antialiased selection:bg-slate-900 selection:text-white relative">
@@ -630,19 +614,6 @@ export function AppShell({
                   <span className="truncate">{todayDatePill}</span>
                 </div>
               </Tooltip>
-
-              {/* Active Tab Page Pill in Header (Hanya untuk Karyawan, disembunyikan untuk Admin & Super Admin) */}
-              {!isAdmin && currentActiveItem && (
-                <Tooltip content={`Halaman Aktif: ${currentActiveItem.label}`} position="bottom">
-                  <div
-                    title={`Halaman Aktif: ${currentActiveItem.label}`}
-                    className="hidden lg:flex items-center gap-2 px-3 py-1 bg-slate-50 border border-slate-200/80 rounded-full text-xs font-semibold text-slate-700 max-w-[180px] xl:max-w-[240px] truncate cursor-default shadow-2xs"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-[#1E3A8A] shrink-0" />
-                    <span className="truncate">{currentActiveItem.label}</span>
-                  </div>
-                </Tooltip>
-              )}
             </div>
 
             {/* Right: Offline status + User Profile Photo & Name */}

@@ -29,6 +29,7 @@ import { AppStorage } from '../../lib/storage.ts';
 import { downloadLeaveSpreadsheet } from '../../lib/csv-export.ts';
 import { LeaveRequestIllustration } from '../common/Illustrations.tsx';
 import { uploadToCloudinary } from '../../lib/cloudinary.ts';
+import { uploadHybridFile } from '../../lib/file-uploader.ts';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 import { SimpleProfileModal, SimpleProfileData } from '../common/SimpleProfileModal.tsx';
 import { openAttachmentDirectly } from '../../lib/open-media.ts';
@@ -112,23 +113,15 @@ export function MyLeaveRequests({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        setFileAlert('Ukuran berkas melebihi batas maksimal 10MB. Silakan pilih berkas yang lebih kecil.');
-        return;
-      }
-      setAttachmentName(file.name);
-      setAttachmentType(file.type);
+      setFileAlert(null);
       setIsUploadingAttachment(true);
       try {
-        const result = await uploadToCloudinary(file, { folder: 'absenku/perizinan' });
+        const result = await uploadHybridFile(file, { folder: 'absenku/perizinan' });
+        setAttachmentName(result.name);
+        setAttachmentType(result.type);
         setAttachmentData(result.url);
-      } catch (err) {
-        console.warn('Cloudinary upload fallback to base64:', err);
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setAttachmentData(reader.result as string);
-        };
-        reader.readAsDataURL(file);
+      } catch (err: any) {
+        setFileAlert(err.message || 'Gagal mengunggah berkas lampiran.');
       } finally {
         setIsUploadingAttachment(false);
       }

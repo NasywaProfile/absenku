@@ -42,6 +42,8 @@ interface AdminEmployeeManagementProps {
   onUpdateRole?: (userId: string, newRole: UserRole) => void;
   onUpdateType?: (userId: string, newType: EmploymentType) => void;
   onToggleStatus?: (userId: string) => void;
+  onApproveRegistration?: (userId: string, role?: UserRole) => void;
+  onRejectRegistration?: (userId: string) => void;
 }
 
 export function AdminEmployeeManagement({
@@ -55,6 +57,8 @@ export function AdminEmployeeManagement({
   onUpdateRole = (userId, newRole) => AppStorage.updateUserRole(userId, newRole),
   onUpdateType = (userId, newType) => AppStorage.updateEmploymentType(userId, newType),
   onToggleStatus = (userId) => AppStorage.toggleUserActiveStatus(userId),
+  onApproveRegistration,
+  onRejectRegistration,
 }: AdminEmployeeManagementProps) {
   const currentUser = propCurrentUser || AppStorage.getCurrentUser() || users[0];
   const [searchQuery, setSearchQuery] = useState('');
@@ -109,6 +113,9 @@ export function AdminEmployeeManagement({
   };
 
   const filteredUsers = users.filter((u) => {
+    // Super Admin tidak masuk ke dalam Data Karyawan
+    if (u.role === 'SUPER_ADMIN') return false;
+
     // Permintaan akun baru (PENDING_APPROVAL) belum di-ACC, jadi BELUM masuk ke Data Karyawan
     if (u.status === 'PENDING_APPROVAL') return false;
 
@@ -177,6 +184,12 @@ export function AdminEmployeeManagement({
   const [activeSubTab, setActiveSubTab] = useState<'EMPLOYEES' | 'APPROVALS'>(
     initialSubTab || 'EMPLOYEES'
   );
+  // State per-user role selection sebelum di-ACC (Karyawan, Admin, Superadmin)
+  const [selectedApprovalRoles, setSelectedApprovalRoles] = useState<Record<string, UserRole>>({});
+
+  const handleApprovalRoleChange = (userId: string, role: UserRole) => {
+    setSelectedApprovalRoles((prev) => ({ ...prev, [userId]: role }));
+  };
 
   React.useEffect(() => {
     if (initialSubTab) {
@@ -185,7 +198,11 @@ export function AdminEmployeeManagement({
   }, [initialSubTab]);
 
   const handleApprove = (userId: string) => {
-    AppStorage.approveRegistration(userId, currentUser.name);
+    const chosenRole = selectedApprovalRoles[userId] || 'EMPLOYEE';
+    AppStorage.approveRegistration(userId, currentUser.name, chosenRole);
+    if (onApproveRegistration) {
+      onApproveRegistration(userId, chosenRole);
+    }
     if (onUpdateUser) {
       const allFresh = AppStorage.getUsers();
       const updated = allFresh.find((u) => u.id === userId);
@@ -195,7 +212,11 @@ export function AdminEmployeeManagement({
 
   const handleReject = (userId: string) => {
     AppStorage.rejectRegistration(userId);
-    if (onDeleteUser) onDeleteUser(userId);
+    if (onRejectRegistration) {
+      onRejectRegistration(userId);
+    } else if (onDeleteUser) {
+      onDeleteUser(userId);
+    }
   };
 
   return (
@@ -279,128 +300,108 @@ export function AdminEmployeeManagement({
                 >
                   <option value="ALL">Semua Status</option>
                   <option value="ACTIVE">Aktif</option>
-                  <option value="PENDING_APPROVAL">Menunggu Persetujuan</option>
-                  <option value="INACTIVE">Non-Aktif</option>
+                  <option value="INACTIVE">Tidak Aktif</option>
                 </select>
                 <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 pointer-events-none" />
               </div>
             </div>
           </div>
 
-          {/* Employee Cards Grid (Designed matching reference image) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredUsers.map((user) => (
-              <div
-                key={user.id}
-                className="bg-white rounded-[30px] border border-slate-200/90 p-3 sm:p-3.5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between space-y-3 font-sans overflow-hidden group"
-              >
-                <div>
-                  {/* Top Header Banner with Blue Contour Graphic */}
-                  <div
-                    className="h-28 sm:h-32 rounded-[22px] relative overflow-hidden bg-[#0047AB] shadow-2xs bg-cover bg-center"
-                    style={{
-                      backgroundImage: `url('/assets/bgcard.jpg')`,
-                    }}
-                  >
-                    {/* Subtle Overlay */}
-                    <div className="absolute inset-0 bg-blue-950/10" />
-                  </div>
+          {/* Employee Cards Grid / Empty State */}
+          {filteredUsers.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-slate-200/90 p-12 text-center shadow-2xs space-y-2">
+              <UserCheck className="w-10 h-10 mx-auto text-slate-300" />
+              <h3 className="font-bold text-slate-800 text-sm">Belum Ada Data Karyawan</h3>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                Belum ada data staf atau karyawan. Klik tombol "+ Tambah Karyawan" di atas untuk menambahkan karyawan baru.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredUsers.map((user) => (
+                <div
+                  key={user.id}
+                  className="bg-white rounded-[30px] border border-slate-200/90 p-3 sm:p-3.5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between space-y-3 font-sans overflow-hidden group"
+                >
+                  <div>
+                    {/* Top Header Banner with Blue Contour Graphic */}
+                    <div
+                      className="h-28 sm:h-32 rounded-[22px] relative overflow-hidden bg-[#0047AB] shadow-2xs bg-cover bg-center"
+                      style={{
+                        backgroundImage: `url('/assets/bgcard.jpg')`,
+                      }}
+                    >
+                      {/* Subtle Overlay */}
+                      <div className="absolute inset-0 bg-blue-950/10" />
+                    </div>
 
-                  {/* Centered Avatar with Rainbow Gradient Ring */}
-                  <div className="flex justify-center -mt-11 sm:-mt-12 relative z-10">
-                    <div className="p-[2.5px] rounded-full bg-gradient-to-tr from-[#f43f5e] via-[#eab308] via-[#10b981] via-[#06b6d4] to-[#6366f1] shadow-md">
-                      <div className="p-0.5 bg-white rounded-full">
+                    {/* Centered Avatar with Clean White Border */}
+                    <div className="flex justify-center -mt-11 sm:-mt-12 relative z-10">
+                      <div className="p-1 rounded-full bg-white shadow-md">
                         <img
                           src={user.avatar}
                           alt={user.name}
-                          className="w-18 h-18 sm:w-20 sm:h-20 rounded-full object-cover bg-white shrink-0"
+                          className="w-18 h-18 sm:w-20 sm:h-20 rounded-full object-cover bg-slate-50 shrink-0 border border-slate-100"
                         />
+                      </div>
+                    </div>
+
+                    {/* Centered Name, Position & Status Info */}
+                    <div className="text-center pt-2 px-2 pb-2 space-y-1">
+                      <h3 className="font-extrabold text-slate-900 text-base sm:text-lg leading-snug truncate group-hover:text-indigo-700 transition-colors">
+                        {user.name}
+                      </h3>
+                      <p className="text-xs text-slate-500 font-medium leading-relaxed max-w-[260px] mx-auto truncate">
+                        {(user.department || user.position || 'Staf')} - {EMPLOYMENT_TYPE_LABELS[user.employmentType] || user.employmentType}
+                      </p>
+
+                      {/* Status Badge (Klik untuk Ubah Status Aktif / Tidak Aktif) */}
+                      <div className="flex items-center justify-center pt-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleStatus(user.id);
+                          }}
+                          title="Klik untuk mengubah status (Aktif / Tidak Aktif)"
+                          className={`text-[10px] font-extrabold px-3 py-1 rounded-full border flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-2xs ${
+                            user.status === 'ACTIVE'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                              : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              user.status === 'ACTIVE'
+                                ? 'bg-emerald-500'
+                                : 'bg-rose-500'
+                            }`}
+                          />
+                          <span>
+                            {user.status === 'ACTIVE'
+                              ? 'Aktif'
+                              : 'Tidak Aktif'}
+                          </span>
+                        </button>
                       </div>
                     </div>
                   </div>
 
-                  {/* Centered Name, Position & Status Info */}
-                  <div className="text-center pt-2 px-2 space-y-1">
-                    <h3 className="font-extrabold text-slate-900 text-base sm:text-lg leading-snug truncate group-hover:text-indigo-700 transition-colors">
-                      {user.name}
-                    </h3>
-                    <p className="text-xs text-slate-500 font-medium leading-relaxed max-w-[260px] mx-auto truncate">
-                      {user.position || 'Staf Operasional'}
-                    </p>
-
-                    {/* Status Badge */}
-                    <div className="flex items-center justify-center pt-0.5">
-                      <span
-                        className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${
-                          user.status === 'ACTIVE'
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : user.status === 'PENDING_APPROVAL'
-                            ? 'bg-amber-50 text-amber-900 border-amber-200'
-                            : 'bg-slate-100 text-slate-700 border-slate-200'
-                        }`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            user.status === 'ACTIVE'
-                              ? 'bg-emerald-500'
-                              : user.status === 'PENDING_APPROVAL'
-                              ? 'bg-amber-500'
-                              : 'bg-slate-400'
-                          }`}
-                        />
-                        <span>
-                          {user.status === 'ACTIVE'
-                            ? 'Aktif'
-                            : user.status === 'PENDING_APPROVAL'
-                            ? 'Menunggu'
-                            : 'Non-Aktif'}
-                        </span>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Core 3-Stat Metric Box (Values on Top, Labels on Bottom like Reference) */}
-                  <div className="bg-slate-50/90 border border-slate-150 rounded-2xl p-3 grid grid-cols-3 gap-1 text-center my-3 shadow-2xs">
-                    {/* Stat 1: Tipe */}
-                    <div className="px-1 border-r border-slate-200/60">
-                      <p className="text-xs sm:text-sm font-extrabold text-slate-900 truncate">
-                        {EMPLOYMENT_TYPE_LABELS[user.employmentType]}
-                      </p>
-                      <p className="text-[10px] font-semibold text-slate-400 mt-0.5">Tipe</p>
-                    </div>
-
-                    {/* Stat 2: Peran */}
-                    <div className="px-1 border-r border-slate-200/60">
-                      <p className="text-xs sm:text-sm font-extrabold text-slate-900 truncate">
-                        {user.role === 'SUPER_ADMIN' ? 'Direksi' : user.role === 'ADMIN' ? 'Admin' : 'Staf'}
-                      </p>
-                      <p className="text-[10px] font-semibold text-slate-400 mt-0.5">Peran</p>
-                    </div>
-
-                    {/* Stat 3: Sisa Cuti */}
-                    <div className="px-1">
-                      <p className="text-xs sm:text-sm font-extrabold text-slate-900 truncate">
-                        {user.leaveBalance} Hari
-                      </p>
-                      <p className="text-[10px] font-semibold text-slate-400 mt-0.5">Sisa Cuti</p>
-                    </div>
-                  </div>
+                  {/* Bottom Dark Navy Primary Action Button */}
+                  <Tooltip content="Buka panel detail profil, kontak lengkap, dan mutasi data staf" position="top" className="w-full">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUser(user)}
+                      className="w-full py-2.5 bg-[#1E3A8A] hover:bg-[#172554] text-white rounded-2xl font-bold text-xs shadow-2xs transition-all flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
+                    >
+                      <span>Kelola &amp; Inspeksi Staf</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </Tooltip>
                 </div>
-
-                {/* Bottom Dark Navy Primary Action Button */}
-                <Tooltip content="Buka panel detail profil, kontak lengkap, dan mutasi data staf" position="top" className="w-full">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedUser(user)}
-                    className="w-full py-2.5 bg-[#1E3A8A] hover:bg-[#172554] text-white rounded-2xl font-bold text-xs shadow-2xs transition-all flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
-                  >
-                    <span>Kelola &amp; Inspeksi Staf</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </Tooltip>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -408,7 +409,10 @@ export function AdminEmployeeManagement({
       {activeSubTab === 'APPROVALS' && (
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
           {/* Table Header Banner */}
-          <div className="p-3.5 sm:p-4 bg-slate-50/80 border-b border-slate-100 flex items-center justify-end">
+          <div className="p-3.5 sm:p-4 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">Daftar Permohonan Registrasi Akun</h3>
+            </div>
             <span className="px-3 py-1 rounded-full text-xs font-bold bg-white text-slate-800 border border-slate-200 shadow-2xs">
               {pendingUsers.length} Antrean Approval
             </span>
@@ -416,20 +420,21 @@ export function AdminEmployeeManagement({
 
           {/* Table Container (Sesuai Data Biodata Diri User) */}
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs min-w-[820px]">
+            <table className="w-full text-left text-xs min-w-[880px]">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="py-3.5 px-5 w-[28%]">Foto Profile &amp; Nama</th>
-                  <th className="py-3.5 px-5 w-[26%]">Divisi</th>
-                  <th className="py-3.5 px-5 w-[18%]">Tipe Kepegawaian</th>
-                  <th className="py-3.5 px-5 w-[16%]">Kontak WA</th>
+                  <th className="py-3.5 px-5 w-[24%]">Foto Profile &amp; Nama</th>
+                  <th className="py-3.5 px-5 w-[18%]">Divisi</th>
+                  <th className="py-3.5 px-5 w-[15%]">Tipe Kepegawaian</th>
+                  <th className="py-3.5 px-5 w-[14%]">Kontak WA</th>
+                  <th className="py-3.5 px-5 w-[17%]">Pilih Halaman / Peran</th>
                   <th className="py-3.5 px-5 w-[12%] text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {pendingUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-slate-400">
+                    <td colSpan={6} className="py-12 text-center text-slate-400">
                       <UserCheck className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
                       <p className="font-semibold text-xs text-slate-600">Tidak Ada Antrean Persetujuan Akun Baru</p>
                       <p className="text-[11px] text-slate-400 pt-0.5">
@@ -438,76 +443,102 @@ export function AdminEmployeeManagement({
                     </td>
                   </tr>
                 ) : (
-                  pendingUsers.map((user) => (
-                    <tr
-                      key={user.id}
-                      className="hover:bg-slate-50/80 transition-colors"
-                    >
-                      {/* 1. Foto Profile & Nama */}
-                      <td className="py-4 px-5">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={user.avatar}
-                            alt={user.name}
-                            onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=1E3A8A&color=ffffff&bold=true`;
-                            }}
-                            className="w-10 h-10 rounded-full object-cover border-2 border-[#1E3A8A] shrink-0 shadow-2xs"
-                          />
-                          <div>
-                            <p className="font-bold text-slate-900 text-xs sm:text-sm whitespace-normal break-words">{user.name}</p>
-                            <p className="text-[11px] text-slate-500 font-mono whitespace-normal break-all">{user.email}</p>
+                  pendingUsers.map((user) => {
+                    const currentChosenRole = selectedApprovalRoles[user.id] || user.role || 'EMPLOYEE';
+
+                    return (
+                      <tr
+                        key={user.id}
+                        className="hover:bg-slate-50/80 transition-colors"
+                      >
+                        {/* 1. Foto Profile & Nama */}
+                        <td className="py-4 px-5">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={user.avatar}
+                              alt={user.name}
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=1E3A8A&color=ffffff&bold=true`;
+                              }}
+                              className="w-10 h-10 rounded-full object-cover border-2 border-[#1E3A8A] shrink-0 shadow-2xs"
+                            />
+                            <div>
+                              <p className="font-bold text-slate-900 text-xs sm:text-sm whitespace-normal break-words">{user.name}</p>
+                              <p className="text-[11px] text-slate-500 font-mono whitespace-normal break-all">{user.email}</p>
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* 2. Divisi */}
-                      <td className="py-4 px-5">
-                        <p className="font-bold text-slate-800 text-xs sm:text-sm whitespace-normal break-words leading-snug">{user.department || 'Operasional'}</p>
-                      </td>
+                        {/* 2. Divisi */}
+                        <td className="py-4 px-5">
+                          <p className="font-bold text-slate-800 text-xs sm:text-sm whitespace-normal break-words leading-snug">{user.department || 'Operasional'}</p>
+                        </td>
 
-                      {/* 3. Tipe Kepegawaian */}
-                      <td className="py-4 px-5">
-                        <span className="inline-block px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap">
-                          {EMPLOYMENT_TYPE_LABELS[user.employmentType] || user.employmentType}
-                        </span>
-                      </td>
+                        {/* 3. Tipe Kepegawaian */}
+                        <td className="py-4 px-5">
+                          <span className="inline-block px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap">
+                            {EMPLOYMENT_TYPE_LABELS[user.employmentType] || user.employmentType}
+                          </span>
+                        </td>
 
-                      {/* 4. Kontak WA */}
-                      <td className="py-4 px-5">
-                        <p className="font-bold text-slate-800 text-xs sm:text-sm font-mono whitespace-nowrap">
-                          {user.phone || '-'}
-                        </p>
-                      </td>
+                        {/* 4. Kontak WA */}
+                        <td className="py-4 px-5">
+                          <p className="font-bold text-slate-800 text-xs sm:text-sm font-mono whitespace-nowrap">
+                            {user.phone || '-'}
+                          </p>
+                        </td>
 
-                      {/* 5. Aksi */}
-                      <td className="py-4 px-5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-center gap-1.5">
-                          <Tooltip content="Setujui pendaftaran dan aktifkan akun staf" position="top">
-                            <button
-                              type="button"
-                              onClick={() => handleApprove(user.id)}
-                              className="w-8.5 h-8.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300/80 flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-2xs"
-                              title="Setujui (ACC)"
+                        {/* 5. Pilih Halaman / Peran */}
+                        <td className="py-4 px-5" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex flex-col gap-1 max-w-[200px]">
+                            <select
+                              value={currentChosenRole}
+                              onChange={(e) => handleApprovalRoleChange(user.id, e.target.value as UserRole)}
+                              className="w-full text-xs font-bold bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 text-slate-800 rounded-xl px-2.5 py-1.5 focus:outline-hidden focus:ring-2 focus:ring-[#1E3A8A] focus:border-[#1E3A8A] shadow-2xs cursor-pointer transition-colors"
                             >
-                              <Check className="w-4 h-4 text-emerald-700 stroke-[2.5]" />
-                            </button>
-                          </Tooltip>
+                              <option value="EMPLOYEE">Karyawan</option>
+                              <option value="ADMIN">Admin</option>
+                              <option value="SUPER_ADMIN">Superadmin</option>
+                            </select>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {currentChosenRole === 'SUPER_ADMIN'
+                                ? 'Halaman Super Admin'
+                                : currentChosenRole === 'ADMIN'
+                                ? 'Halaman Admin'
+                                : 'Halaman Karyawan'}
+                            </span>
+                          </div>
+                        </td>
 
-                          <Tooltip content="Tolak pendaftaran akun dan hapus dari antrean" position="top">
-                            <button
-                              type="button"
-                              onClick={() => handleReject(user.id)}
-                              className="w-8.5 h-8.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300/80 flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-2xs"
-                              title="Tolak Pendaftaran"
-                            >
-                              <X className="w-4 h-4 text-rose-700 stroke-[2.5]" />
-                            </button>
-                          </Tooltip>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        {/* 6. Aksi */}
+                        <td className="py-4 px-5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Tooltip content={`Setujui akun sebagai ${currentChosenRole === 'SUPER_ADMIN' ? 'Superadmin' : currentChosenRole === 'ADMIN' ? 'Admin' : 'Karyawan'}`} position="top">
+                              <button
+                                type="button"
+                                onClick={() => handleApprove(user.id)}
+                                className="w-8.5 h-8.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300/80 flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-2xs"
+                                title="Setujui (ACC)"
+                              >
+                                <Check className="w-4 h-4 text-emerald-700 stroke-[2.5]" />
+                              </button>
+                            </Tooltip>
+
+                            <Tooltip content="Tolak pendaftaran akun dan hapus dari antrean" position="top">
+                              <button
+                                type="button"
+                                onClick={() => handleReject(user.id)}
+                                className="w-8.5 h-8.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300/80 flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-2xs"
+                                title="Tolak Pendaftaran"
+                              >
+                                <X className="w-4 h-4 text-rose-700 stroke-[2.5]" />
+                              </button>
+                            </Tooltip>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

@@ -45,6 +45,7 @@ import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 import { EmptyStateTaskIllustration, SuccessCheckIllustration } from '../common/Illustrations.tsx';
 import { compressImageFile } from '../../lib/image-compression.ts';
 import { uploadToCloudinary } from '../../lib/cloudinary.ts';
+import { uploadHybridFile } from '../../lib/file-uploader.ts';
 import { Bubble, BubbleContent, BubbleGroup, BubbleReactions } from '../ui/bubble.tsx';
 import { MediaPreviewModal, MediaPreviewData } from '../common/MediaPreviewModal.tsx';
 import { openExternalLink, openAttachmentDirectly, isImageFile } from '../../lib/open-media.ts';
@@ -264,6 +265,7 @@ export function KanbanBoard({
   const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('');
   const [newDueDate, setNewDueDate] = useState<string>('');
   const [createAttachments, setCreateAttachments] = useState<TaskAttachment[]>([]);
+  const [createTaskUploadError, setCreateTaskUploadError] = useState<string | null>(null);
   const [createLinkTitle, setCreateLinkTitle] = useState('');
   const [createLinkUrl, setCreateLinkUrl] = useState('');
   const [showCreateAddLink, setShowCreateAddLink] = useState(false);
@@ -346,33 +348,31 @@ export function KanbanBoard({
     }
   };
 
-  // Upload Handler untuk Form Buat Tugas Baru
+  // Upload Handler untuk Form Buat Tugas Baru (Hybrid Cloudinary & VPS dengan validasi ukuran & jenis)
   const handleCreateFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+    setCreateTaskUploadError(null);
 
     for (const file of Array.from(files)) {
-      let fileUrl = '';
       try {
-        const cloudRes = await uploadToCloudinary(file, { folder: 'absenku/tasks' });
-        fileUrl = cloudRes.url;
-      } catch (err) {
-        console.warn('Cloudinary upload fallback to base64:', err);
-        fileUrl = await compressImageFile(file);
+        const uploadRes = await uploadHybridFile(file, { folder: 'absenku/tasks' });
+        const newAtt: TaskAttachment = {
+          id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: uploadRes.name,
+          type: 'FILE',
+          url: uploadRes.url,
+          fileType: uploadRes.type,
+          fileSize: formatBytes(uploadRes.size),
+          uploadedBy: currentUser.id,
+          uploadedByName: currentUser.name,
+          uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+          stage: 'TODO',
+        };
+        setCreateAttachments((prev) => [...prev, newAtt]);
+      } catch (err: any) {
+        setCreateTaskUploadError(err.message || 'Gagal mengunggah berkas.');
       }
-      const newAtt: TaskAttachment = {
-        id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        name: file.name,
-        type: 'FILE',
-        url: fileUrl,
-        fileType: file.type || 'application/octet-stream',
-        fileSize: formatBytes(file.size),
-        uploadedBy: currentUser.id,
-        uploadedByName: currentUser.name,
-        uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-        stage: 'TODO',
-      };
-      setCreateAttachments((prev) => [...prev, newAtt]);
     }
     e.target.value = '';
   };
@@ -2444,6 +2444,24 @@ export function KanbanBoard({
                       </button>
                     </div>
                   </div>
+
+                  {/* Inline Peringatan Validasi Upload Berkas */}
+                  {createTaskUploadError && (
+                    <div className="flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs text-rose-600 bg-rose-50 border border-rose-200/90 rounded-xl animate-in fade-in duration-200">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                        <span className="font-medium">{createTaskUploadError}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCreateTaskUploadError(null)}
+                        className="text-rose-400 hover:text-rose-700 ml-1 shrink-0 cursor-pointer p-0.5"
+                        title="Tutup pesan"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
 
                   {showCreateAddLink && (
                     <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-200 space-y-2 animate-in fade-in duration-150">

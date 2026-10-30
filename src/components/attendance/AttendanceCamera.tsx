@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Camera, RefreshCw, CheckCircle2, AlertCircle, Upload, Loader2, Cloud } from 'lucide-react';
 import { uploadToCloudinary } from '../../lib/cloudinary.ts';
+import { compressImageFile } from '../../lib/image-compression.ts';
+import { validateFile } from '../../lib/file-uploader.ts';
 
 interface AttendanceCameraProps {
   onCapture: (photoBase64: string) => void;
@@ -115,32 +117,38 @@ export function AttendanceCamera({ onCapture, capturedPhoto, onRetake }: Attenda
   };
 
   // Upload foto manual dari galeri perangkat bila kamera tidak tersedia
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = async (uploadEvent) => {
-        const result = uploadEvent.target?.result as string;
-        if (result) {
-          onCapture(result);
-          try {
-            setIsUploadingToCloud(true);
-            const res = await uploadToCloudinary(file, {
-              folder: 'absenku/attendance',
-              resourceType: 'image',
-            });
-            if (res.url) {
-              onCapture(res.url);
-            }
-          } catch (err) {
-            console.warn('Cloudinary upload fallback to base64:', err);
-          } finally {
-            setIsUploadingToCloud(false);
-          }
+      // 1. Validasi berkas
+      const validation = validateFile(file);
+      if (!validation.isValid || validation.category !== 'image') {
+        alert(validation.error || 'Harap unggah berkas foto/gambar yang valid (maksimal 5 MB).');
+        e.target.value = '';
+        return;
+      }
+
+      try {
+        setIsUploadingToCloud(true);
+        // 2. Kompresi gambar di browser sebelum dikirim ke cloud
+        const compressedBase64 = await compressImageFile(file, 800, 800, 0.8);
+        onCapture(compressedBase64);
+
+        // 3. Upload gambar terkompresi ke Cloudinary
+        const res = await uploadToCloudinary(compressedBase64, {
+          folder: 'absenku/attendance',
+          resourceType: 'image',
+        });
+        if (res.url) {
+          onCapture(res.url);
         }
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.warn('Cloudinary upload fallback to compressed base64:', err);
+      } finally {
+        setIsUploadingToCloud(false);
+      }
     }
+    e.target.value = '';
   };
 
   return (

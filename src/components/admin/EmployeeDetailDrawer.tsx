@@ -35,6 +35,9 @@ export function EmployeeDetailDrawer({
   isOpen,
   onClose,
   employee,
+  onUpdateRole,
+  onUpdateType,
+  onToggleStatus,
 }: EmployeeDetailDrawerProps) {
   // Hanya menampilkan tab Data Diri dan Finansial sesuai permintaan
   const [activeTab, setActiveTab] = useState<'DATA_DIRI' | 'FINANSIAL'>('DATA_DIRI');
@@ -96,10 +99,10 @@ export function EmployeeDetailDrawer({
             : 'w-full max-w-md sm:max-w-lg md:max-w-xl h-full max-h-[calc(100vh-1.25rem)] sm:max-h-[calc(100vh-2rem)] rounded-3xl border border-slate-200/80 animate-in slide-in-from-right duration-300 ease-out'
         }`}
       >
-        {/* Header Drawer */}
-        <div className="px-6 py-5 bg-white text-slate-900 flex items-center justify-between border-b border-slate-100 shrink-0 font-sans">
-          <div className="flex items-center gap-3.5 min-w-0">
-            {/* Zoom / Fullscreen Button */}
+        {/* Header Drawer (Horizontal Compact Header dengan posisi center di antara icon zoom dan icon silang) */}
+        <div className="px-5 py-4 bg-white text-slate-900 flex items-center justify-between border-b border-slate-100 shrink-0 font-sans gap-2">
+          {/* Sisi Kiri: Zoom / Fullscreen Button */}
+          <div className="w-10 shrink-0 flex items-center justify-start">
             <button
               type="button"
               onClick={() => setIsFullScreen(!isFullScreen)}
@@ -112,9 +115,12 @@ export function EmployeeDetailDrawer({
                 <Maximize2 className="w-4 h-4 text-slate-600" />
               )}
             </button>
+          </div>
 
+          {/* Sisi Tengah (Center di antara icon zoom dan icon silang) */}
+          <div className="flex-1 flex items-center justify-center gap-3.5 min-w-0">
             {/* Foto Profil Karyawan */}
-            <div className="relative w-12 h-12 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-2xs">
+            <div className="relative w-12 h-12 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-2xs">
               <img
                 src={avatarSrc}
                 alt={employee.name}
@@ -125,42 +131,51 @@ export function EmployeeDetailDrawer({
               />
             </div>
 
-            {/* Nama & Posisi */}
+            {/* Nama, Status, & Divisi - Tipe Kepegawaian */}
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-extrabold text-base text-slate-900 truncate leading-snug">
                   {employee.name}
                 </h3>
-                <span
-                  className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border shrink-0 ${
+
+                {/* Status Button (Tanpa teks Ubah, tetap bisa diklik untuk toggle status) */}
+                <button
+                  type="button"
+                  onClick={() => onToggleStatus && onToggleStatus(employee.id)}
+                  title="Klik untuk mengubah status aktif karyawan"
+                  className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border shrink-0 flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-2xs ${
                     employee.status === 'ACTIVE'
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                      : employee.status === 'PENDING_APPROVAL'
-                      ? 'bg-amber-50 text-amber-900 border-amber-200'
-                      : 'bg-rose-50 text-rose-800 border-rose-200'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                      : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
                   }`}
                 >
-                  {employee.status === 'ACTIVE'
-                    ? 'Aktif'
-                    : employee.status === 'PENDING_APPROVAL'
-                    ? 'Menunggu Persetujuan'
-                    : 'Non-Aktif'}
-                </span>
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      employee.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-rose-500'
+                    }`}
+                  />
+                  <span>{employee.status === 'ACTIVE' ? 'Aktif' : 'Tidak Aktif'}</span>
+                </button>
               </div>
-              <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
-                {employee.position} &bull; {employee.department}
+
+              {/* Posisi Subtitle: Departemen / Divisi - Tipe Kepegawaian */}
+              <p className="text-xs text-slate-500 font-semibold truncate mt-0.5">
+                {employee.department || 'Operasional'} - {EMPLOYMENT_TYPE_LABELS[employee.employmentType] || employee.employmentType}
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full border border-slate-200 transition-colors cursor-pointer shrink-0"
-            title="Tutup"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {/* Sisi Kanan: Close (Silang) Button */}
+          <div className="w-10 shrink-0 flex items-center justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full border border-slate-200 transition-colors cursor-pointer shrink-0"
+              title="Tutup"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigation: Khusus Data Diri & Finansial */}
@@ -204,38 +219,59 @@ export function EmployeeDetailDrawer({
                 </h4>
                 <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 space-y-2.5">
                   <div className="flex items-center justify-between py-1 border-b border-slate-200/50">
-                    <span className="text-slate-500 font-medium">Jabatan / Posisi</span>
-                    <span className="font-bold text-slate-900">{employee.position || '-'}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/50">
                     <span className="text-slate-500 font-medium">Departemen / Divisi</span>
                     <span className="font-bold text-slate-900">{employee.department || '-'}</span>
                   </div>
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/50">
-                    <span className="text-slate-500 font-medium">Tipe Kepegawaian</span>
-                    <span className="font-bold text-slate-900">
-                      {EMPLOYMENT_TYPE_LABELS[employee.employmentType] || employee.employmentType}
-                    </span>
+                  <div className="flex items-center justify-between py-1.5 border-b border-slate-200/50 gap-3">
+                    <span className="text-slate-500 font-medium shrink-0">Tipe Kepegawaian</span>
+                    <select
+                      value={employee.employmentType}
+                      onChange={(e) => onUpdateType && onUpdateType(employee.id, e.target.value as EmploymentType)}
+                      className="text-xs font-bold bg-white border border-slate-200 text-slate-800 rounded-xl px-2.5 py-1.5 focus:outline-hidden focus:ring-2 focus:ring-[#1E3A8A] focus:border-[#1E3A8A] shadow-2xs cursor-pointer transition-colors"
+                      title="Ubah tipe kepegawaian staf"
+                    >
+                      <option value="INTERN">Magang</option>
+                      <option value="CONTRACT">Kontrak</option>
+                      <option value="PERMANENT">Tetap</option>
+                      <option value="FREELANCE">Freelance</option>
+                    </select>
                   </div>
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/50">
-                    <span className="text-slate-500 font-medium">Peran Akun</span>
-                    <span className="font-bold text-[#1E3A8A]">
-                      {employee.role === 'SUPER_ADMIN'
-                        ? 'Super Admin (Direksi)'
-                        : employee.role === 'ADMIN'
-                        ? 'Admin Operasional'
-                        : 'Karyawan'}
-                    </span>
+                  <div className="flex items-center justify-between py-1.5 border-b border-slate-200/50 gap-3">
+                    <span className="text-slate-500 font-medium shrink-0">Peran Akun</span>
+                    <select
+                      value={employee.role}
+                      onChange={(e) => onUpdateRole && onUpdateRole(employee.id, e.target.value as UserRole)}
+                      className="text-xs font-bold bg-white border border-slate-200 text-[#1E3A8A] rounded-xl px-2.5 py-1.5 focus:outline-hidden focus:ring-2 focus:ring-[#1E3A8A] focus:border-[#1E3A8A] shadow-2xs cursor-pointer transition-colors"
+                      title="Ubah peran akun staf"
+                    >
+                      <option value="EMPLOYEE">Karyawan</option>
+                      <option value="ADMIN">Admin</option>
+                      <option value="SUPER_ADMIN">Superadmin</option>
+                    </select>
                   </div>
                   <div className="flex items-center justify-between py-1 border-b border-slate-200/50">
                     <span className="text-slate-500 font-medium">Tanggal Bergabung</span>
                     <span className="font-bold text-slate-900 font-mono">{employee.joinDate || '-'}</span>
                   </div>
-                  <div className="flex items-center justify-between py-1">
-                    <span className="text-slate-500 font-medium">Sisa Cuti Tahunan</span>
-                    <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 text-xs">
-                      {employee.leaveBalance || 12} Hari
-                    </span>
+                  <div className="flex items-center justify-between py-1.5">
+                    <span className="text-slate-500 font-medium">Status Akun Karyawan</span>
+                    <button
+                      type="button"
+                      onClick={() => onToggleStatus && onToggleStatus(employee.id)}
+                      className={`text-xs font-bold px-3 py-1 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-2xs ${
+                        employee.status === 'ACTIVE'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                          : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
+                      }`}
+                      title="Klik untuk mengubah status aktif karyawan"
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          employee.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-rose-500'
+                        }`}
+                      />
+                      <span>{employee.status === 'ACTIVE' ? 'Aktif' : 'Tidak Aktif'}</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -260,24 +296,6 @@ export function EmployeeDetailDrawer({
                     <span className="font-bold text-slate-900 text-right leading-snug">
                       {employee.address || '-'}
                     </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. Kontak Darurat (Emergency Contact) */}
-              <div className="space-y-2.5">
-                <h4 className="font-bold text-[11px] text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <HeartHandshake className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Kontak Darurat</span>
-                </h4>
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 space-y-2.5">
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/50">
-                    <span className="text-slate-500 font-medium">Nama Kerabat / Hubungan</span>
-                    <span className="font-bold text-slate-900">{employee.emergencyContactName || '-'}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-1">
-                    <span className="text-slate-500 font-medium">Nomor Telepon Darurat</span>
-                    <span className="font-bold text-slate-900 font-mono">{employee.emergencyContactPhone || '-'}</span>
                   </div>
                 </div>
               </div>
@@ -348,52 +366,10 @@ export function EmployeeDetailDrawer({
                       {employee.bankAccountHolder || employee.name}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-300 bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-400/30">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>Terverifikasi</span>
-                  </div>
                 </div>
-              </div>
-
-              {/* Rincian Finansial Tabel */}
-              <div className="space-y-2.5">
-                <h4 className="font-bold text-[11px] text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Detail Data Finansial &amp; Bank</span>
-                </h4>
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 space-y-2.5">
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/50">
-                    <span className="text-slate-500 font-medium">Bank Penyalur</span>
-                    <span className="font-bold text-slate-900">{employee.bankName || 'BCA (Bank Central Asia)'}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/50">
-                    <span className="text-slate-500 font-medium">Nomor Rekening</span>
-                    <span className="font-bold text-slate-900 font-mono">{employee.bankAccountNumber || '-'}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-1 border-b border-slate-200/50">
-                    <span className="text-slate-500 font-medium">Nama Pemilik Rekening</span>
-                    <span className="font-bold text-slate-900">{employee.bankAccountHolder || employee.name}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-1">
-                    <span className="text-slate-500 font-medium">Status Rekening Payroll</span>
-                    <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 text-xs">
-                      Aktif &amp; Terverifikasi
-                    </span>
-                  </div>
-                </div>
-                <p className="text-[11px] text-slate-400 italic px-1">
-                  * Rekening ini digunakan untuk pencairan gaji bulanan, pembayaran tunjangan, serta proses reimbursement resmi kantor.
-                </p>
               </div>
             </div>
           )}
-        </div>
-
-        {/* Drawer Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between shrink-0">
-          <span className="text-xs text-slate-400">
-            ID: <strong className="font-mono text-slate-600">{employee.id}</strong>
-          </span>
         </div>
       </div>
     </div>

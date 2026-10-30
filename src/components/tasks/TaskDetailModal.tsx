@@ -22,6 +22,7 @@ import {
   Globe,
   CheckCircle2,
   ArrowUp,
+  AlertCircle,
 } from 'lucide-react';
 import { TaskItem, TaskStatus, TaskAttachment, TaskActivity, User as UserType } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
@@ -29,6 +30,7 @@ import { formatIndonesianDateShort } from '../../lib/time-utils.ts';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 import { compressImageFile } from '../../lib/image-compression.ts';
 import { uploadToCloudinary } from '../../lib/cloudinary.ts';
+import { uploadHybridFile } from '../../lib/file-uploader.ts';
 import { MediaPreviewModal, MediaPreviewData } from '../common/MediaPreviewModal.tsx';
 import { openExternalLink, openAttachmentDirectly, isImageFile } from '../../lib/open-media.ts';
 
@@ -210,6 +212,7 @@ export function TaskDetailModal({
 
   const [previewNote, setPreviewNote] = useState('');
   const [previewAttachments, setPreviewAttachments] = useState<TaskAttachment[]>([]);
+  const [taskUploadError, setTaskUploadError] = useState<string | null>(null);
   const [showPreviewAddLink, setShowPreviewAddLink] = useState(false);
   const [previewLinkTitle, setPreviewLinkTitle] = useState('');
   const [previewLinkUrl, setPreviewLinkUrl] = useState('');
@@ -252,29 +255,27 @@ export function TaskDetailModal({
   const handlePreviewFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+    setTaskUploadError(null);
 
     for (const file of Array.from(files)) {
-      let fileUrl = '';
       try {
-        const cloudRes = await uploadToCloudinary(file, { folder: 'absenku/tasks' });
-        fileUrl = cloudRes.url;
-      } catch (err) {
-        console.warn('Cloudinary upload fallback to base64:', err);
-        fileUrl = await compressImageFile(file);
+        const uploadRes = await uploadHybridFile(file, { folder: 'absenku/tasks' });
+        const newAtt: TaskAttachment = {
+          id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: uploadRes.name,
+          type: 'FILE',
+          url: uploadRes.url,
+          fileType: uploadRes.type,
+          fileSize: formatBytes(uploadRes.size),
+          uploadedBy: currentUser.id,
+          uploadedByName: currentUser.name,
+          uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+          stage: 'DONE',
+        };
+        setPreviewAttachments((prev) => [...prev, newAtt]);
+      } catch (err: any) {
+        setTaskUploadError(err.message || 'Gagal mengunggah berkas.');
       }
-      const newAtt: TaskAttachment = {
-        id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        name: file.name,
-        type: 'FILE',
-        url: fileUrl,
-        fileType: file.type || 'application/octet-stream',
-        fileSize: formatBytes(file.size),
-        uploadedBy: currentUser.id,
-        uploadedByName: currentUser.name,
-        uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-        stage: 'DONE',
-      };
-      setPreviewAttachments((prev) => [...prev, newAtt]);
     }
     e.target.value = '';
   };
@@ -1022,6 +1023,24 @@ export function TaskDetailModal({
                   Tambah Tautan
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Inline Peringatan Validasi Upload Berkas */}
+          {taskUploadError && (
+            <div className="flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs text-rose-600 bg-rose-50 border border-rose-200/90 rounded-xl animate-in fade-in duration-200">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                <span className="font-medium">{taskUploadError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTaskUploadError(null)}
+                className="text-rose-400 hover:text-rose-700 ml-1 shrink-0 cursor-pointer p-0.5"
+                title="Tutup pesan"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
 

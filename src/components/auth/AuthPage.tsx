@@ -277,48 +277,6 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
                   Belum punya akun? <span className="font-semibold text-[#0D1C42] underline underline-offset-2">Daftar</span>
                 </button>
               </div>
-
-              {/* Quick Demo Role Fill: 1 Karyawan, 1 Admin, 1 Super Admin */}
-              <div className="pt-3 border-t border-slate-150 space-y-2">
-                <p className="text-[11px] font-semibold text-slate-400 text-center uppercase tracking-wider">
-                  Akses Cepat 3 Akun Demo
-                </p>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginIdentifier('karyawan@kantor.id');
-                      setLoginPassword('password123');
-                    }}
-                    className="py-2 px-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl font-semibold text-slate-700 transition-colors text-center cursor-pointer active:scale-95"
-                    title="Login sebagai Karyawan (Rian Pratama)"
-                  >
-                    Karyawan
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginIdentifier('admin@kantor.id');
-                      setLoginPassword('password123');
-                    }}
-                    className="py-2 px-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl font-semibold text-slate-700 transition-colors text-center cursor-pointer active:scale-95"
-                    title="Login sebagai Admin HR (Sarah Amelia)"
-                  >
-                    Admin
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginIdentifier('superadmin@kantor.id');
-                      setLoginPassword('password123');
-                    }}
-                    className="py-2 px-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl font-semibold text-slate-700 transition-colors text-center cursor-pointer active:scale-95"
-                    title="Login sebagai Super Admin (Hendra Pratama)"
-                  >
-                    Super Admin
-                  </button>
-                </div>
-              </div>
             </form>
           )}
 

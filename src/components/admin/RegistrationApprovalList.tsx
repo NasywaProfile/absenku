@@ -93,15 +93,15 @@ export function RegistrationApprovalList({
               {/* Pemilihan Role & Tombol Aksi Icon Only Pastel */}
               <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[11px] font-semibold text-slate-500">Role:</span>
+                  <span className="text-[11px] font-semibold text-slate-500">Halaman / Role:</span>
                   <select
                     value={currentChosenRole}
                     onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
                     className="text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-2 py-1 focus:outline-hidden focus:ring-1 focus:ring-indigo-600 cursor-pointer h-8"
                   >
                     <option value="EMPLOYEE">Karyawan</option>
-                    <option value="ADMIN">Admin Operasional</option>
-                    <option value="SUPER_ADMIN">Super Admin</option>
+                    <option value="ADMIN">Admin</option>
+                    <option value="SUPER_ADMIN">Superadmin</option>
                   </select>
                 </div>
 
@@ -110,7 +110,7 @@ export function RegistrationApprovalList({
                     type="button"
                     onClick={() => onApprove(user.id, currentChosenRole)}
                     className="w-8 h-8 inline-flex items-center justify-center bg-emerald-100/90 hover:bg-emerald-200 text-emerald-800 border border-emerald-200/90 rounded-xl transition-all cursor-pointer active:scale-95 shadow-2xs"
-                    title="Setujui Akun dan Berikan Hak Akses"
+                    title={`Setujui Akun sebagai ${currentChosenRole === 'SUPER_ADMIN' ? 'Superadmin' : currentChosenRole === 'ADMIN' ? 'Admin' : 'Karyawan'}`}
                   >
                     <Check className="w-4 h-4 text-emerald-700 stroke-[2.5]" />
                   </button>

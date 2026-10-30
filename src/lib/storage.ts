@@ -33,18 +33,28 @@ import {
 } from './mock-data.ts';
 
 const STORAGE_KEYS = {
-  USERS: 'absenku_users_v3',
-  CURRENT_USER_ID: 'absenku_current_user_id_v3',
-  ATTENDANCE: 'absenku_attendance_v3',
-  DAILY_TASKS: 'absenku_daily_tasks_v3',
-  TASKS: 'absenku_kanban_tasks_v3',
-  LEAVES: 'absenku_leaves_v3',
-  EMAILS: 'absenku_emails_v3',
-  MESSAGES: 'absenku_discussion_v3',
-  IDEAS: 'absenku_ideas_v3',
-  OFFICE_CONFIG: 'absenku_office_config_v3',
-  CHAT_TOPICS: 'absenku_chat_topics_v3',
+  USERS: 'absenku_users_v5',
+  CURRENT_USER_ID: 'absenku_current_user_id_v5',
+  ATTENDANCE: 'absenku_attendance_v5',
+  DAILY_TASKS: 'absenku_daily_tasks_v5',
+  TASKS: 'absenku_kanban_tasks_v5',
+  LEAVES: 'absenku_leaves_v5',
+  EMAILS: 'absenku_emails_v5',
+  MESSAGES: 'absenku_discussion_v5',
+  IDEAS: 'absenku_ideas_v5',
+  OFFICE_CONFIG: 'absenku_office_config_v5',
+  CHAT_TOPICS: 'absenku_chat_topics_v5',
 };
+
+// Bersihkan data dummy versi lama dari localStorage pengguna
+try {
+  const oldKeys = Object.keys(localStorage);
+  oldKeys.forEach((key) => {
+    if (key.startsWith('absenku_') && !key.endsWith('_v5')) {
+      localStorage.removeItem(key);
+    }
+  });
+} catch (_) {}
 
 export const AppStorage = {
   // ==========================================
@@ -58,33 +68,17 @@ export const AppStorage = {
     }
     try {
       const parsed: User[] = JSON.parse(raw);
-      // Hapus ID lama dari skema versi purba jika ada
-      const legacyIds = new Set(['usr_tetap_1', 'usr_kontrak_1', 'usr_freelance_1', 'usr_intern_1', 'usr_pending_1']);
-      const cleaned = parsed.filter((u) => !legacyIds.has(u.id));
-
-      let hasUpdates = cleaned.length !== parsed.length;
-
-      // Pastikan seluruh 12 user default dari INITIAL_USERS tersedia di list
-      INITIAL_USERS.forEach((initUser) => {
-        if (!cleaned.some((u) => u.id === initUser.id)) {
-          cleaned.push(initUser);
-          hasUpdates = true;
-        }
-      });
-
-      const finalUsers = cleaned.map((u) => {
-        if (u.id === 'usr_karyawan_demo' && u.name === 'Rian Pratama') {
-          hasUpdates = true;
-          return { ...u, name: 'Nasywa Davina Alissa Wijaya', bankAccountHolder: 'Nasywa Davina Alissa Wijaya' };
-        }
-        return u;
-      });
-
-      if (hasUpdates) {
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(finalUsers));
+      // Pastikan akun Super Admin tunggal selalu tersedia
+      const hasSuperAdmin = parsed.some(
+        (u) => u.email === 'superadmin@gmail.com' && u.role === 'SUPER_ADMIN'
+      );
+      if (!hasSuperAdmin) {
+        parsed.unshift(INITIAL_USERS[0]);
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(parsed));
       }
-      return finalUsers;
+      return parsed;
     } catch {
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
       return INITIAL_USERS;
     }
   },
@@ -93,15 +87,8 @@ export const AppStorage = {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
   },
 
-  getCurrentUserId(): string {
-    const id = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID);
-    if (!id) {
-      // Default: Karyawan demo (Nasywa Davina Alissa Wijaya) yang memiliki hak akses presensi & logbook
-      const defaultId = 'usr_karyawan_demo';
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, defaultId);
-      return defaultId;
-    }
-    return id;
+  getCurrentUserId(): string | null {
+    return localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID);
   },
 
   setCurrentUserId(id: string): void {
@@ -111,7 +98,8 @@ export const AppStorage = {
   getCurrentUser(): User | null {
     const users = this.getUsers();
     const currentId = this.getCurrentUserId();
-    return users.find((u) => u.id === currentId) || users[0] || null;
+    if (!currentId) return null;
+    return users.find((u) => u.id === currentId) || null;
   },
 
   getUserById(id: string): User | null {
@@ -135,30 +123,14 @@ export const AppStorage = {
     const users = this.getUsers();
     const cleanId = identifier.trim().toLowerCase();
 
-    // Quick login alias for karyawan
-    if (cleanId === 'karyawan' || cleanId === 'karyawan@kantor.id') {
-      const demoKaryawan = users.find((u) => u.id === 'usr_karyawan_demo' || u.email.toLowerCase() === 'karyawan' || u.role === 'EMPLOYEE');
-      if (demoKaryawan) return demoKaryawan;
-    }
-
     const found = users.find(
       (u) =>
         u.email.toLowerCase() === cleanId ||
-        u.name.toLowerCase() === cleanId ||
         u.id.toLowerCase() === cleanId ||
-        (cleanId === 'admin' && (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN')) ||
         (cleanId === 'superadmin' && u.role === 'SUPER_ADMIN')
     );
     if (!found) return null;
-    if (
-      password &&
-      found.password &&
-      found.password !== password &&
-      password !== 'password123' &&
-      password !== 'karyawan' &&
-      password !== 'admin' &&
-      password !== 'superadmin'
-    ) {
+    if (password && found.password && found.password !== password) {
       return null;
     }
     return found;
@@ -255,7 +227,7 @@ export const AppStorage = {
   },
 
   // Persetujuan Registrasi Akun Baru (Admin / Super Admin)
-  approveRegistration(userId: string, approverName: string): void {
+  approveRegistration(userId: string, approverName: string, role?: UserRole): void {
     if (userId === 'usr_pending_approval_1') {
       localStorage.setItem('absenku_pending_sample_dismissed', 'true');
     }
@@ -265,6 +237,7 @@ export const AppStorage = {
         return {
           ...u,
           status: 'ACTIVE' as const,
+          role: role || u.role || 'EMPLOYEE',
           approvedBy: approverName,
           approvedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
         };
@@ -577,94 +550,7 @@ export const AppStorage = {
   getTasks(): TaskItem[] {
     const raw = localStorage.getItem(STORAGE_KEYS.TASKS);
     if (!raw) {
-      const defaultTasks: TaskItem[] = [
-        {
-          id: 'tsk-1',
-          title: 'Perapihan Desain UI Dashboard & Validasi Presensi',
-          description: 'Optimalkan tampilan dashboard agar bebas dari AI slop, tingkatkan responsivitas, dan pastikan seluruh fitur berjalan optimal.',
-          status: 'DONE',
-          priority: 'HIGH',
-          assignedTo: 'usr_karyawan_demo',
-          assignedName: 'Nasywa Davina Alissa Wijaya',
-          assignedAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
-          createdBy: 'usr_super_admin',
-          dueDate: '2026-10-29',
-          createdAt: '2026-10-25',
-          updatedAt: '2026-10-27',
-          tags: ['UI/UX', 'Frontend', 'Refactor'],
-          okr: '[Q4 2026] Modern Web App Absenku Deliverables',
-          isTodays: true,
-          submissionNotes: 'Telah diperbarui dengan typography seragam, navigasi rapi, dan integrasi penuh seluruh role.',
-        },
-        {
-          id: 'tsk-2',
-          title: 'Implementasi Fitur Notifikasi Email & Geofence GPS',
-          description: 'Integrasikan form perizinan dengan trigger notifikasi dan validasi jarak radius kantor IndigoSpace.',
-          status: 'IN_PROGRESS',
-          priority: 'URGENT',
-          assignedTo: 'usr_karyawan_demo',
-          assignedName: 'Nasywa Davina Alissa Wijaya',
-          assignedAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
-          createdBy: 'usr_admin',
-          dueDate: '2026-10-30',
-          createdAt: '2026-10-26',
-          updatedAt: '2026-10-27',
-          tags: ['Backend', 'GPS', 'Notification'],
-          okr: '[Q4 2026] Geofence Radar & Attendance Accuracy',
-          isTodays: true,
-        },
-        {
-          id: 'tsk-3',
-          title: 'Rekapitulasi Evaluasi Payroll & Kehadiran Karyawan Oktober',
-          description: 'Susun laporan rekapitulasi kehadiran, keterlambatan, dan perizinan seluruh staf untuk laporan direksi.',
-          status: 'IN_PROGRESS',
-          priority: 'HIGH',
-          assignedTo: 'usr_admin',
-          assignedName: 'Sarah Amelia',
-          assignedAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=256&q=80',
-          createdBy: 'usr_super_admin',
-          dueDate: '2026-10-31',
-          createdAt: '2026-10-26',
-          updatedAt: '2026-10-27',
-          tags: ['HR', 'Payroll', 'Report'],
-          okr: '[Q4 2026] Monthly Operations & HR Excellence',
-          isTodays: true,
-        },
-        {
-          id: 'tsk-4',
-          title: 'Audit Geofence Radius Kantor & Toleransi Keterlambatan',
-          description: 'Kalibrasi koordinat GPS kantor utama dan uji presensi selfie kamera dari perangkat mobile.',
-          status: 'TODO',
-          priority: 'MEDIUM',
-          assignedTo: 'usr_karyawan_demo',
-          assignedName: 'Nasywa Davina Alissa Wijaya',
-          assignedAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
-          createdBy: 'usr_super_admin',
-          dueDate: '2026-11-02',
-          createdAt: '2026-10-27',
-          updatedAt: '2026-10-27',
-          tags: ['GPS', 'Geofence', 'QA'],
-          okr: '[Q4 2026] Infrastructure & Device Compatibility',
-          isTodays: false,
-        },
-        {
-          id: 'tsk-5',
-          title: 'Persiapan On-Boarding & Hak Akses Akun Karyawan Baru',
-          description: 'Verifikasi berkas calon staf baru, data rekening bank, dan nomor darurat sebelum aktivasi akun.',
-          status: 'TODO',
-          priority: 'MEDIUM',
-          assignedTo: 'usr_admin',
-          assignedName: 'Sarah Amelia',
-          assignedAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=256&q=80',
-          createdBy: 'usr_super_admin',
-          dueDate: '2026-11-03',
-          createdAt: '2026-10-27',
-          updatedAt: '2026-10-27',
-          tags: ['Onboarding', 'Admin', 'Security'],
-          okr: '[Q4 2026] Team Expansion & Role Approvals',
-          isTodays: false,
-        },
-      ];
+      const defaultTasks: TaskItem[] = [];
       localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(defaultTasks));
       return defaultTasks;
     }
@@ -1369,6 +1255,7 @@ export const AppStorage = {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
     localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(INITIAL_ATTENDANCE));
     localStorage.setItem(STORAGE_KEYS.DAILY_TASKS, JSON.stringify(INITIAL_DAILY_TASKS));
+    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify(INITIAL_LEAVES));
     localStorage.setItem(STORAGE_KEYS.EMAILS, JSON.stringify(INITIAL_EMAIL_NOTIFICATIONS));
     localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(INITIAL_DISCUSSION_MESSAGES));

@@ -28,6 +28,7 @@ import {
   ExternalLink,
   Sparkles,
   ArrowUp,
+  AlertCircle,
 } from 'lucide-react';
 import {
   ChatTopic,
@@ -47,6 +48,7 @@ import {
 } from '@/components/ui/bubble';
 import { compressImageFile } from '../../lib/image-compression.ts';
 import { uploadToCloudinary } from '../../lib/cloudinary.ts';
+import { uploadHybridFile } from '../../lib/file-uploader.ts';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 import { MediaPreviewModal, MediaPreviewData } from '../common/MediaPreviewModal.tsx';
 import { openExternalLink, openAttachmentDirectly, isImageFile } from '../../lib/open-media.ts';
@@ -131,25 +133,23 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
     if (!files || files.length === 0) return;
 
     for (const file of Array.from(files)) {
-      let fileUrl = '';
       try {
-        const cloudRes = await uploadToCloudinary(file, { folder: 'absenku/chat' });
-        fileUrl = cloudRes.url;
-      } catch (err) {
-        console.warn('Cloudinary upload fallback to base64:', err);
-        fileUrl = await compressImageFile(file);
+        const uploadRes = await uploadHybridFile(file, { folder: 'absenku/chat' });
+        const newAtt: TaskAttachment = {
+          id: `att-topic-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: uploadRes.name,
+          type: 'FILE',
+          url: uploadRes.url,
+          fileType: uploadRes.type,
+          fileSize: formatFileSize(uploadRes.size),
+          uploadedBy: currentUser.id,
+          uploadedByName: currentUser.name,
+          uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        };
+        setNewFiles((prev) => [...prev, newAtt]);
+      } catch (err: any) {
+        alert(err.message || 'Gagal mengunggah berkas.');
       }
-      const newAtt: TaskAttachment = {
-        id: `att-topic-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        name: file.name,
-        type: 'FILE',
-        url: fileUrl,
-        fileType: file.type || 'application/octet-stream',
-        uploadedBy: currentUser.id,
-        uploadedByName: currentUser.name,
-        uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      };
-      setNewFiles((prev) => [...prev, newAtt]);
     }
     e.target.value = '';
   };
@@ -174,25 +174,24 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
     if (!files || files.length === 0) return;
 
     const uploadedFiles: TaskAttachment[] = [];
+    setChatUploadError(null);
     for (const file of Array.from(files)) {
-      let fileUrl = '';
       try {
-        const cloudRes = await uploadToCloudinary(file, { folder: 'absenku/chat' });
-        fileUrl = cloudRes.url;
-      } catch (err) {
-        console.warn('Cloudinary upload fallback to base64:', err);
-        fileUrl = await compressImageFile(file);
+        const uploadRes = await uploadHybridFile(file, { folder: 'absenku/chat' });
+        uploadedFiles.push({
+          id: `att-topic-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: uploadRes.name,
+          type: 'FILE',
+          url: uploadRes.url,
+          fileType: uploadRes.type,
+          fileSize: formatFileSize(uploadRes.size),
+          uploadedBy: currentUser.id,
+          uploadedByName: currentUser.name,
+          uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        });
+      } catch (err: any) {
+        setChatUploadError(err.message || 'Gagal mengunggah berkas.');
       }
-      uploadedFiles.push({
-        id: `att-topic-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        name: file.name,
-        type: 'FILE',
-        url: fileUrl,
-        fileType: file.type || 'application/octet-stream',
-        uploadedBy: currentUser.id,
-        uploadedByName: currentUser.name,
-        uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      });
     }
 
     const updatedTopic: ChatTopic = {
@@ -210,6 +209,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
   // Comment Input State inside Active Topic Modal
   const [commentText, setCommentText] = useState<string>('');
   const [commentAttachments, setCommentAttachments] = useState<TaskAttachment[]>([]);
+  const [chatUploadError, setChatUploadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'COMMENTS' | 'ACTIVITY'>('COMMENTS');
   const [previewModalData, setPreviewModalData] = useState<MediaPreviewData | null>(null);
   const [showCommentAddLink, setShowCommentAddLink] = useState(false);
@@ -247,27 +247,25 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
   const handleCommentFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+    setChatUploadError(null);
     for (const file of Array.from(files)) {
-      let fileUrl = '';
       try {
-        const cloudRes = await uploadToCloudinary(file, { folder: 'absenku/chat' });
-        fileUrl = cloudRes.url;
-      } catch (err) {
-        console.warn('Cloudinary upload fallback to base64:', err);
-        fileUrl = await compressImageFile(file);
+        const uploadRes = await uploadHybridFile(file, { folder: 'absenku/chat' });
+        const newAtt: TaskAttachment = {
+          id: `att-comment-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: uploadRes.name,
+          type: 'FILE',
+          url: uploadRes.url,
+          fileType: uploadRes.type,
+          fileSize: formatFileSize(uploadRes.size),
+          uploadedBy: currentUser.id,
+          uploadedByName: currentUser.name,
+          uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        };
+        setCommentAttachments((prev) => [...prev, newAtt]);
+      } catch (err: any) {
+        setChatUploadError(err.message || 'Gagal mengunggah berkas.');
       }
-      const newAtt: TaskAttachment = {
-        id: `att-comment-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        name: file.name,
-        type: 'FILE',
-        url: fileUrl,
-        fileType: file.type || 'application/octet-stream',
-        fileSize: formatFileSize(file.size),
-        uploadedBy: currentUser.id,
-        uploadedByName: currentUser.name,
-        uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      };
-      setCommentAttachments((prev) => [...prev, newAtt]);
     }
     e.target.value = '';
   };
@@ -550,20 +548,20 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
       case 'NEED_COMMENTS':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200/80 shadow-2xs">
-            <span>Need comments</span>
+            <span>Perlu Tanggapan</span>
           </span>
         );
       case 'CLOSED':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200/80 shadow-2xs">
-            <span>Closed</span>
+            <span>Selesai</span>
           </span>
         );
       case 'IN_PROGRESS':
       default:
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-sky-100 text-sky-800 border border-sky-200/80 shadow-2xs">
-            <span>In Progress</span>
+            <span>Sedang Berjalan</span>
           </span>
         );
     }
@@ -1121,9 +1119,9 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
                               : 'bg-sky-50 text-sky-800 border border-sky-200/80 hover:bg-sky-100/80'
                           }`}
                         >
-                          <option value="NEED_COMMENTS">Need comments</option>
-                          <option value="IN_PROGRESS">In Progress</option>
-                          <option value="CLOSED">Closed</option>
+                          <option value="NEED_COMMENTS">Perlu Tanggapan</option>
+                          <option value="IN_PROGRESS">Sedang Berjalan</option>
+                          <option value="CLOSED">Selesai</option>
                         </select>
                         <span
                           className={`w-2 h-2 rounded-full absolute left-2.5 pointer-events-none ${
@@ -1687,6 +1685,24 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
                       </button>
                     </form>
 
+                    {/* Inline Peringatan Validasi Upload Berkas */}
+                    {chatUploadError && (
+                      <div className="flex items-center justify-between gap-1.5 mt-2 px-3 py-1.5 text-xs text-rose-600 bg-rose-50 border border-rose-200/90 rounded-xl animate-in fade-in duration-200">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                          <span className="font-medium">{chatUploadError}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setChatUploadError(null)}
+                          className="text-rose-400 hover:text-rose-700 ml-1 shrink-0 cursor-pointer p-0.5"
+                          title="Tutup pesan"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+
                     {/* Comment Attachments Preview Badges */}
                     {commentAttachments.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mt-2 px-1">
@@ -1826,9 +1842,9 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
                     onChange={(e) => setNewStatus(e.target.value as ChatTopicStatus)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-purple-500 focus:bg-white cursor-pointer"
                   >
-                    <option value="NEED_COMMENTS">Need comments</option>
-                    <option value="IN_PROGRESS">In Progress</option>
-                    <option value="CLOSED">Closed</option>
+                    <option value="NEED_COMMENTS">Perlu Tanggapan</option>
+                    <option value="IN_PROGRESS">Sedang Berjalan</option>
+                    <option value="CLOSED">Selesai</option>
                   </select>
                 </div>
 
