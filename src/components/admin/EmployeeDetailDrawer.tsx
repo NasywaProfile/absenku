@@ -376,21 +376,6 @@ export function EmployeeDetailDrawer({
             </div>
           )}
         </div>
-
-        {/* Drawer Footer - Hapus Karyawan (Jika bukan Super Admin) */}
-        {employee.role !== 'SUPER_ADMIN' && onDeleteUser && (
-          <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-            <span className="text-[11px] text-slate-400 font-medium">Hapus akun dan riwayat staf</span>
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirm(true)}
-              className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Hapus Karyawan Ini</span>
-            </button>
-          </div>
-        )}
       </div>
 
       {showDeleteConfirm && (

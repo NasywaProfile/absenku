@@ -73,8 +73,6 @@ export function AdminEmployeeManagement({
   const [showAddModal, setShowAddModal] = useState(false);
   const [isAddModalFullScreen, setIsAddModalFullScreen] = useState(false);
   const [dialogMessage, setDialogMessage] = useState<{ title: string; message: string; variant: 'warning' | 'danger' | 'info' | 'success' } | null>(null);
-  const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
-
   // Form Tambah Karyawan Baru
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -236,17 +234,6 @@ export function AdminEmployeeManagement({
               </h2>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {isSuperAdmin && (
-                <button
-                  type="button"
-                  onClick={() => setShowPurgeConfirm(true)}
-                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95"
-                  title="Hapus semua akun karyawan dan seluruh riwayat presensi & pengajuan kecuali Super Admin"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Hapus Semua Karyawan &amp; Riwayat</span>
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => setShowAddModal(true)}
@@ -832,28 +819,6 @@ export function AdminEmployeeManagement({
         onConfirm={() => setDialogMessage(null)}
         onCancel={() => setDialogMessage(null)}
       />
-
-      {/* Dialog Konfirmasi Hapus Semua Karyawan & Riwayat (Kecuali Super Admin) */}
-      {showPurgeConfirm && (
-        <ModernConfirmDialog
-          isOpen={showPurgeConfirm}
-          onCancel={() => setShowPurgeConfirm(false)}
-          onConfirm={() => {
-            setShowPurgeConfirm(false);
-            if (onPurgeAllExceptSuperAdmin) {
-              onPurgeAllExceptSuperAdmin();
-            } else {
-              AppStorage.purgeAllExceptSuperAdmin();
-              window.location.reload();
-            }
-          }}
-          title="Hapus Semua Karyawan & Seluruh Riwayat?"
-          message="Tindakan ini akan menghapus SEMUA data akun karyawan, seluruh catatan presensi, pengajuan cuti/izin/sakit/dinas, tugas harian, dan notifikasi KECUALI akun Super Admin. Anda akan dialihkan ke sesi Super Admin yang bersih."
-          confirmText="Ya, Hapus Semua Data"
-          cancelText="Batal"
-          variant="danger"
-        />
-      )}
     </div>
   );
 }
