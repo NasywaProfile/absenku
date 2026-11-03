@@ -28,6 +28,24 @@ Aplikasi web presensi modern, manajemen izin/cuti, pemantauan logbook tugas hari
 
 ---
 
+## 🗄️ Struktur Database MySQL (`absenku_db` via phpMyAdmin)
+
+Tabel pada database dirancang dengan istilah baku Bahasa Indonesia untuk keperluan dokumentasi akademik dan Tugas Akhir (TA):
+
+| No | Nama Tabel | Deskripsi Fungsi |
+| :---: | :--- | :--- |
+| 1 | `pengguna` | Menyimpan data akun, otentikasi, profil diri, peran, dan payroll karyawan |
+| 2 | `konfigurasi_kantor` | Pengaturan titik koordinat GPS kantor, radius geofence, dan jam kerja |
+| 3 | `presensi` | Log presensi masuk harian karyawan, deteksi GPS, dan status keterlambatan |
+| 4 | `pengajuan_izin` | Permohonan izin, cuti tahunan, sakit, dinas, dan status persetujuan |
+| 5 | `logbook_harian` | Laporan rekapan tugas harian dan akuntabilitas kerja karyawan |
+| 6 | `tugas_proyek` | Manajemen kartu tugas tim pada papan Kanban kolaboratif |
+| 7 | `topik_diskusi` | Ruang diskusi topik kerja tim, berkas materi, dan catatan proyek |
+| 8 | `pesan_diskusi` | Percakapan dan balasan interaktif di dalam topik atau kanal umum |
+| 9 | `personal_access_tokens` | Manajemen token keamanan REST API resmi via Laravel Sanctum |
+
+---
+
 ## 🛠️ Teknologi yang Digunakan
 
 - **Frontend:** React 19, TypeScript, Vite, Tailwind CSS v4, Lucide React, Radix UI.
