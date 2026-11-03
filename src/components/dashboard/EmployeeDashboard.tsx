@@ -5,9 +5,19 @@ import {
   Send,
   Clock,
   CheckCircle2,
+  AlertCircle,
+  MapPin,
+  CalendarDays,
 } from 'lucide-react';
 import { AttendanceRecord, OfficeConfig, TaskItem, User, getPriorityLabel } from '../../types/index.ts';
 import { getCurrentDateString, formatIndonesianDate } from '../../lib/time-utils.ts';
+import { AppStorage } from '../../lib/storage.ts';
+import {
+  getDailyStatus,
+  getCalendarCell,
+  getApprovedLeaveForDate,
+  isOffCategory,
+} from '../../lib/attendance-status.ts';
 import { ClockInOutModal } from '../attendance/ClockInOutModal.tsx';
 import { TaskDetailModal } from '../tasks/TaskDetailModal.tsx';
 
@@ -32,6 +42,17 @@ export function EmployeeDashboard({
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<TaskItem | null>(null);
   const today = new Date();
 
+  // Cek apakah ada pengajuan izin OFF (Sakit, Cuti/Izin) yang disetujui hari ini -> LANGSUNG OFF!
+  const userLeaves = AppStorage.getLeaveRequests();
+  const allAttendance = AppStorage.getAttendanceRecords();
+  const todayStr = getCurrentDateString();
+  const todayApprovedLeave = getApprovedLeaveForDate(
+    userLeaves,
+    { id: currentUser.id, name: currentUser.name },
+    todayStr
+  );
+  const isOffToday = Boolean(todayApprovedLeave && isOffCategory(todayApprovedLeave.category));
+
   // Simple Grid Calendar (for demonstration)
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -44,53 +65,82 @@ export function EmployeeDashboard({
           <h1 className="text-2xl font-bold text-slate-900">Halo, {currentUser.name}</h1>
           <p className="text-slate-500">{formatIndonesianDate(getCurrentDateString())}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setActiveModalType('CLOCK_IN')}
-          className="flex items-center gap-2 px-6 py-3 bg-[#1E3A8A] hover:bg-[#172554] text-white rounded-2xl font-bold shadow-md shadow-[#1E3A8A]/20 active:scale-[0.98] transition-all border border-[#1E3A8A]"
-        >
-          <LogIn className="w-5 h-5 text-white" />
-          Presensi Masuk
-        </button>
+        {isOffToday ? (
+          <div
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold border text-xs shadow-2xs ${
+              todayApprovedLeave?.category === 'SICK'
+                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : 'bg-sky-50 border-sky-200 text-sky-800'
+            }`}
+          >
+            {todayApprovedLeave?.category === 'SICK' ? (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            ) : (
+              <CalendarDays className="w-4 h-4 text-sky-600 shrink-0" />
+            )}
+            <span>
+              Status Hari Ini: OFF ({todayApprovedLeave?.category === 'SICK' ? 'Sakit' : 'Cuti / Izin'}) — Bebas Presensi
+            </span>
+          </div>
+        ) : todayRecord ? (
+          <div className="flex items-center gap-2 px-5 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl font-bold text-xs shadow-2xs">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>Sudah Presensi ({todayRecord.clockInTime} WIB)</span>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setActiveModalType('CLOCK_IN')}
+            className="flex items-center gap-2 px-6 py-3 bg-[#1E3A8A] hover:bg-[#172554] text-white rounded-2xl font-bold shadow-md shadow-[#1E3A8A]/20 active:scale-[0.98] transition-all border border-[#1E3A8A]"
+          >
+            <LogIn className="w-5 h-5 text-white" />
+            Presensi Masuk
+          </button>
+        )}
       </div>
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Calendar Card */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-          <h2 className="text-lg font-bold text-slate-900 mb-4">Kalender Presensi</h2>
-          <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold uppercase tracking-wider mb-2">
-            {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((d, i) => (
-              <div key={i} className={i === 0 || i === 6 ? 'text-red-500 font-extrabold' : 'text-slate-400'}>
-                {d}
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-2">
-            {days.map((day) => {
-              const dateObj = new Date(today.getFullYear(), today.getMonth(), day);
-              const dayOfWeek = dateObj.getDay();
-              const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-              const isToday = day === today.getDate();
-
-              return (
-                <div
-                  key={day}
-                  title={isWeekend ? 'Hari Libur (Sabtu / Minggu)' : undefined}
-                  className={`p-3 text-center rounded-xl font-bold text-lg ${
-                    isToday
-                      ? isWeekend
-                        ? 'bg-indigo-900 text-white border-2 border-red-500'
-                        : 'bg-indigo-900 text-white'
-                      : isWeekend
-                      ? 'border border-red-500 text-red-600 bg-red-50/30'
-                      : 'bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  {day}
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 mb-4">Kalender Presensi</h2>
+            <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold uppercase tracking-wider mb-2">
+              {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((d, i) => (
+                <div key={i} className={i === 0 || i === 6 ? 'text-red-500 font-extrabold' : 'text-slate-400'}>
+                  {d}
                 </div>
-              );
-            })}
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-2">
+              {days.map((day) => {
+                const isToday = day === today.getDate();
+                const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+                const dayStatus = getDailyStatus({
+                  user: { id: currentUser.id, name: currentUser.name },
+                  date: dateStr,
+                  records: allAttendance,
+                  leaves: userLeaves,
+                  today: todayStr,
+                });
+                const dayCell = getCalendarCell(dayStatus);
+                const statusLabel = dayCell.label;
+                const bgClass = `${dayCell.bg} ${dayCell.text} ${dayCell.isPlanned ? `${dayCell.border} border-dashed` : dayCell.border}`;
+
+                return (
+                  <div
+                    key={day}
+                    title={`${formatIndonesianDate(dateStr)} • ${statusLabel}`}
+                    className={`p-3 text-center rounded-xl font-bold text-base border transition-all ${bgClass} ${
+                      isToday ? 'ring-2 ring-[#1E3A8A] ring-offset-1 font-extrabold shadow-xs' : ''
+                    }`}
+                  >
+                    {day}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 

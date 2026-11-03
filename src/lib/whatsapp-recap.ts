@@ -2,10 +2,10 @@ import { AttendanceRecord, DailyTaskLog, LeaveRequest, User, EmploymentType } fr
 import { formatIndonesianDate } from './time-utils.ts';
 
 export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
-  INTERN: 'Magang',
+  INTERN: 'Magang (Internship)',
   FREELANCE: 'Freelance',
-  CONTRACT: 'Kontrak',
-  PERMANENT: 'Tetap',
+  CONTRACT: 'Karyawan Kontrak',
+  PERMANENT: 'Karyawan Tetap',
 };
 
 /**
@@ -41,11 +41,11 @@ export function generateWhatsAppAttendanceRecap(params: {
     ? dailyTask.tasks
     : attendance?.tasksDoneSummary && attendance.tasksDoneSummary.length > 0
     ? attendance.tasksDoneSummary
-    : ['Menyelesaikan aktivitas kerja harian & koordinasi tim'];
+    : [];
 
-  const formattedTasks = taskList
-    .map((task, idx) => `${idx + 1}. ${task}`)
-    .join('\n');
+  const formattedTasks = taskList.length > 0
+    ? taskList.map((task, idx) => `${idx + 1}. ${task}`).join('\n')
+    : '-';
 
   return `*LAPORAN KEHADIRAN & TASK HARIAN*
 📅 Tanggal : ${dateFormatted}

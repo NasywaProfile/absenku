@@ -1,5 +1,6 @@
 import { uploadToCloudinary } from './cloudinary';
 import { compressImageFile } from './image-compression';
+import { storeAttachmentInIDB } from './attachment-storage';
 
 export const FILE_SIZE_LIMITS = {
   IMAGE: 5 * 1024 * 1024,      // Maksimal 5 MB untuk foto/gambar
@@ -176,8 +177,14 @@ export async function uploadHybridFile(
       console.warn('Gagal upload gambar ke Cloudinary, fallback ke penyimpanan lokal:', err);
       // Fallback: gunakan data URL terkompresi
       const compressedDataUrl = await compressImageFile(file, 800, 800, 0.7);
+      let returnUrl = compressedDataUrl;
+      if (compressedDataUrl.length > 50000) {
+        const attId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        await storeAttachmentInIDB(attId, compressedDataUrl);
+        returnUrl = `idb:${attId}`;
+      }
       return {
-        url: compressedDataUrl,
+        url: returnUrl,
         name: file.name,
         size: file.size,
         type: file.type || 'image/jpeg',
@@ -250,8 +257,12 @@ export async function uploadHybridFile(
         reader.readAsDataURL(file);
       });
 
+      // Simpan berkas besar ke IndexedDB (kapasitas ratusan MB/GB) agar tidak melebihi kuota 5 MB localStorage
+      const attId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      await storeAttachmentInIDB(attId, dataUrl);
+
       return {
-        url: dataUrl,
+        url: `idb:${attId}`,
         name: file.name,
         size: file.size,
         type: file.type || 'application/octet-stream',

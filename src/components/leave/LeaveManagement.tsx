@@ -177,16 +177,21 @@ export function LeaveManagement({
     e.preventDefault();
     if (!reason.trim()) return;
 
-    AppStorage.submitLeaveRequest(currentUser, {
-      category,
-      startDate,
-      endDate,
-      totalDays,
-      reason,
-      attachmentName,
-      attachmentData,
-      attachmentType,
-    });
+    try {
+      AppStorage.submitLeaveRequest(currentUser, {
+        category,
+        startDate,
+        endDate,
+        totalDays,
+        reason,
+        attachmentName,
+        attachmentData,
+        attachmentType,
+      });
+    } catch (err: any) {
+      setFileAlert(err?.message || 'Pengajuan gagal dikirim.');
+      return;
+    }
 
     setShowModal(false);
     setReason('');
@@ -354,33 +359,6 @@ export function LeaveManagement({
 
   return (
     <div className="space-y-4 font-sans antialiased">
-      {/* Toast Notifikasi Email Otomatis */}
-      {emailDispatchedToast && (
-        <div className="p-4 bg-slate-900 text-white rounded-2xl shadow-xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <Mail className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="font-bold text-xs sm:text-sm text-white">
-                Notifikasi Email Otomatis Terkirim ke Admin
-              </p>
-              <p className="text-[11px] text-slate-300">
-                Email berisi rincian izin dan tautan persetujuan telah diteruskan ke administrator.
-              </p>
-            </div>
-          </div>
-          {onOpenEmailModal && (
-            <button
-              type="button"
-              onClick={onOpenEmailModal}
-              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-lg border border-white/20 cursor-pointer"
-            >
-              Lihat Log Email
-            </button>
-          )}
-        </div>
-      )}
 
       {/* 1. HEADER ATAS (1 BARIS RATA KANAN-KIRI) */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-3 sm:px-4 sm:py-3.5 flex flex-wrap items-center justify-between gap-3">
@@ -1011,29 +989,10 @@ export function LeaveManagement({
                     Bisa berupa surat keterangan sakit dokter, surat tugas dinas luar, atau surat izin resmi.
                   </p>
                 </div>
-
-                {/* Info Notifikasi Otomatis */}
-                <div className="p-3 bg-blue-50/70 border border-blue-200/70 rounded-xl text-xs text-blue-900 space-y-0.5">
-                  <p className="font-bold flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Notifikasi Email Otomatis</span>
-                  </p>
-                  <p className="text-slate-600 text-[11px]">
-                    Email notifikasi otomatis akan langsung dikirimkan ke HR Admin beserta perincian izin.
-                  </p>
-                </div>
               </div>
 
               {/* Sticky Footer Buttons */}
-              <div className="px-6 py-4 border-t border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  disabled={isUploadingAttachment}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs cursor-pointer disabled:opacity-50"
-                >
-                  Batal
-                </button>
+              <div className="px-6 py-4 border-t border-slate-100 bg-white flex items-center justify-end shrink-0">
                 <button
                   type="submit"
                   disabled={isUploadingAttachment}

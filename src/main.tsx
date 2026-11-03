@@ -19,14 +19,9 @@ if (typeof window !== 'undefined') {
     });
   }
 
-  // Otomatis refresh browser 1 kali jika versi aplikasi diperbarui untuk membersihkan cache RAM
+  // Set versi build
   try {
-    const currentVer = sessionStorage.getItem('app_build_version');
-    if (currentVer !== BUILD_VERSION) {
-      sessionStorage.setItem('app_build_version', BUILD_VERSION);
-      // Hard reload
-      window.location.reload();
-    }
+    sessionStorage.setItem('app_build_version', BUILD_VERSION);
   } catch (e) {
     console.warn('Session storage error:', e);
   }

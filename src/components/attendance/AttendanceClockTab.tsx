@@ -10,6 +10,9 @@ import {
   ShieldCheck,
   Eye,
   Users,
+  AlertCircle,
+  MapPin,
+  CalendarDays,
 } from 'lucide-react';
 import { AttendanceRecord, OfficeConfig, User, WorkMode } from '../../types/index.ts';
 import { GeolocationWidget } from './GeolocationWidget.tsx';
@@ -21,6 +24,12 @@ import {
   formatIndonesianDate,
 } from '../../lib/time-utils.ts';
 import { AppStorage } from '../../lib/storage.ts';
+import {
+  getApprovedLeaveForDate,
+  isOffCategory,
+  getDailyStatus,
+  getCalendarCell,
+} from '../../lib/attendance-status.ts';
 import { Tooltip } from '../ui/tooltip.tsx';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 
@@ -187,15 +196,41 @@ export function AttendanceClockTab({
     setIsWithinRadius(within);
   };
 
+  // Perizinan disetujui hari ini (prioritas: Sakit > Cuti/Izin > Dinas Luar > WFH)
+  const userLeaves = useMemo(() => AppStorage.getLeaveRequests(), [dataVersion]);
+  const todayApprovedLeave = useMemo(
+    () =>
+      getApprovedLeaveForDate(
+        userLeaves,
+        { id: currentUser.id, name: currentUser.name },
+        todayDateStr
+      ),
+    [userLeaves, currentUser, todayDateStr]
+  );
+  const isWfhApproved = todayApprovedLeave?.category === 'WFH';
+  const isBusinessTripApproved = todayApprovedLeave?.category === 'BUSINESS_TRIP';
+  // Cuti/Izin & Sakit = OFF & bebas presensi. WFH & Dinas Luar tetap wajib presensi.
+  const isOffToday = Boolean(todayApprovedLeave && isOffCategory(todayApprovedLeave.category));
+  const hasRemoteApproval = isWfhApproved || isBusinessTripApproved;
+  const effectiveWorkMode = isBusinessTripApproved ? 'DINAS' : isWfhApproved ? 'WFH' : workMode;
+
   const handleClockIn = () => {
     const today = getCurrentDateString();
     const time = getCurrentTimeString();
     const punctuality = calculateClockInPunctuality(
       time,
-      officeConfig.workStartHour,
-      officeConfig.gracePeriodMinutes
+      officeConfig.workStartHour || '08:00',
+      officeConfig.gracePeriodMinutes || 0
     );
     const isLate = punctuality.status === 'LATE';
+    const effectiveWorkMode = isBusinessTripApproved ? 'DINAS' : isWfhApproved ? 'WFH' : workMode;
+    const locationStatus = isBusinessTripApproved
+      ? 'DINAS_APPROVED'
+      : isWfhApproved
+      ? 'WFH_APPROVED'
+      : isWithinRadius
+      ? 'IN_OFFICE'
+      : 'OUT_OF_RANGE';
 
     const newRecord: AttendanceRecord = {
       id: `att_${Date.now()}`,
@@ -209,11 +244,10 @@ export function AttendanceClockTab({
       clockInLat: currentCoords?.latitude || officeConfig.latitude,
       clockInLng: currentCoords?.longitude || officeConfig.longitude,
       clockInDistanceMeter: distanceMeters !== null ? distanceMeters : 0,
-      clockInLocationStatus:
-        workMode === 'WFH' ? 'WFH_APPROVED' : isWithinRadius ? 'IN_OFFICE' : 'OUT_OF_RANGE',
+      clockInLocationStatus: locationStatus,
       clockInStatus: isLate ? 'LATE' : 'ON_TIME',
       clockInLateMinutes: isLate ? punctuality.lateMinutes : 0,
-      workMode,
+      workMode: effectiveWorkMode,
       notes: clockInNotes.trim() || undefined,
       syncStatus: 'SYNCED',
     };
@@ -378,61 +412,53 @@ export function AttendanceClockTab({
 
                   const att = allAttendance.find((a) => a.date === dateStr);
                   const log = allDailyTasks.find((t) => t.date === dateStr);
+                  const dayStatus = getDailyStatus({
+                    user: { id: currentUser.id, name: currentUser.name },
+                    date: dateStr,
+                    records: allAttendance,
+                    leaves: userLeaves,
+                    today: todayDateStr,
+                  });
+                  const dayCell = getCalendarCell(dayStatus);
                   const hasAtt = !!att;
                   const hasLog =
                     (log?.tasks && log.tasks.length > 0) ||
                     (att?.tasksDoneSummary && att.tasksDoneSummary.length > 0);
                   const isPendingLog = hasAtt && !hasLog;
 
+                  // Tentukan warna background dan status tanggal secara dinamis sesuai kehadiran & perizinan
+                  const statusLabel = dayCell.label;
+                  const bgClass = dayCell.bg;
+                  const borderClass = dayCell.isPlanned ? ` border-dashed` : dayCell.border;
+                  const textClass = dayCell.text;
+
                   return (
                     <button
                       key={i}
                       type="button"
                       onClick={() => setSelectedDate(dateStr)}
-                      title={isWeekend ? 'Hari Libur (Sabtu / Minggu)' : undefined}
-                      className={`py-1.5 rounded-xl font-medium transition-all relative flex flex-col items-center justify-center cursor-pointer ${
+                      title={`${formatIndonesianDate(dateStr)} • ${statusLabel}`}
+                      className={`py-1.5 rounded-xl font-bold transition-all relative flex flex-col items-center justify-center cursor-pointer border ${bgClass} ${borderClass} ${textClass} ${
                         isSelected
                           ? isWeekend
-                            ? 'bg-[#1E3A8A] text-white font-extrabold shadow-sm ring-2 ring-[#1E3A8A] ring-offset-1 border border-red-500'
-                            : 'bg-[#1E3A8A] text-white font-extrabold shadow-sm ring-2 ring-[#1E3A8A] ring-offset-1'
-                          : hasAtt
-                          ? isWeekend
-                            ? 'bg-blue-100/90 text-[#1E3A8A] font-bold border border-red-500'
-                            : 'bg-blue-100/90 text-[#1E3A8A] font-bold border border-blue-200'
-                          : isToday
-                          ? isWeekend
-                            ? 'bg-blue-50 text-[#1E3A8A] font-semibold border border-red-500'
-                            : 'bg-blue-50 text-[#1E3A8A] font-semibold border border-blue-200/60'
-                          : isWeekend
-                          ? 'border border-red-500 text-red-600 bg-red-50/30 font-semibold hover:bg-red-50/60'
-                          : 'text-slate-700 hover:bg-slate-200/60 border border-transparent'
+                            ? 'ring-2 ring-red-500 ring-offset-2 shadow-sm scale-105 z-10'
+                            : 'ring-2 ring-[#1E3A8A] ring-offset-2 shadow-sm scale-105 z-10'
+                          : 'hover:brightness-95 hover:scale-[1.02]'
                       }`}
                     >
                       <span>{day}</span>
 
-                      {/* Penanda Kehadiran & Logbook */}
+                      {/* Penanda Logbook */}
                       <div className="flex items-center gap-0.5 justify-center mt-0.5 min-h-[4px]">
-                        {hasAtt && (
-                          <span
-                            title="Presensi Hadir"
-                            className={`w-1 h-1 rounded-full ${
-                              isSelected ? 'bg-white' : 'bg-emerald-500'
-                            }`}
-                          />
-                        )}
                         {hasLog ? (
                           <span
                             title="Logbook Terisi"
-                            className={`w-1 h-1 rounded-full ${
-                              isSelected ? 'bg-white' : 'bg-[#1E3A8A]'
-                            }`}
+                            className="w-1.5 h-1.5 rounded-full bg-[#1E3A8A]"
                           />
                         ) : isPendingLog ? (
                           <span
                             title="Belum Isi Logbook"
-                            className={`w-1 h-1 rounded-full animate-pulse ${
-                              isSelected ? 'bg-white' : 'bg-amber-500'
-                            }`}
+                            className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"
                           />
                         ) : null}
                       </div>
@@ -442,42 +468,111 @@ export function AttendanceClockTab({
               </div>
             </div>
 
-            {/* Legend / Keterangan Penanda Singkat */}
-            <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-500 pt-2.5">
-              <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                Hadir
-              </span>
+            {/* Status Penanda Logbook */}
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[10px] text-slate-500 pt-2.5">
               <span className="flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#1E3A8A]" />
-                Logbook Terisi
+                <span>Titik Biru: Logbook Terisi</span>
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                Belum Isi Logbook
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-sm border border-rose-300 bg-rose-50/60" />
-                Libur (Sabtu & Minggu)
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                <span>Titik Kuning: Belum Isi Logbook</span>
               </span>
             </div>
 
             {/* Button Absen Masuk di Bawah Kalender Presensi (Navy Blue #1E3A8A) */}
             <div className="pt-3">
-              {isClockedIn ? (
-                <div className="w-full py-2.5 px-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-center text-xs font-semibold rounded-2xl flex items-center justify-center gap-2 shadow-2xs">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Presensi Masuk Tercatat Hari Ini ({todayRecord?.clockInTime} WIB)</span>
+              {isOffToday ? (
+                <div
+                  className={`w-full py-3 px-4 rounded-2xl border text-center text-xs font-semibold flex items-center justify-center gap-2 shadow-2xs ${
+                    todayApprovedLeave?.category === 'SICK'
+                      ? 'bg-rose-50 border-rose-200 text-rose-800'
+                      : todayApprovedLeave?.category === 'BUSINESS_TRIP'
+                      ? 'bg-purple-50 border-purple-200 text-purple-800'
+                      : 'bg-sky-50 border-sky-200 text-sky-800'
+                  }`}
+                >
+                  {todayApprovedLeave?.category === 'SICK' ? (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  ) : todayApprovedLeave?.category === 'BUSINESS_TRIP' ? (
+                    <MapPin className="w-4 h-4 text-purple-600 shrink-0" />
+                  ) : (
+                    <CalendarDays className="w-4 h-4 text-sky-600 shrink-0" />
+                  )}
+                  <span>
+                    Status Hari Ini: OFF (
+                    {todayApprovedLeave?.category === 'SICK'
+                      ? 'Sakit'
+                      : todayApprovedLeave?.category === 'BUSINESS_TRIP'
+                      ? 'Dinas Luar'
+                      : 'Cuti / Izin'}
+                    ) — Bebas Presensi
+                  </span>
+                </div>
+              ) : isClockedIn && todayRecord ? (
+                <div className={`w-full py-2.5 px-3 sm:px-4 border rounded-2xl flex items-center gap-2.5 shadow-2xs ${
+                  isWfhApproved
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                    : todayRecord.clockInStatus === 'LATE'
+                    ? 'bg-amber-50 border-amber-200 text-amber-900'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                }`}>
+                  <CheckCircle2 className={`w-4 h-4 shrink-0 self-start mt-0.5 ${
+                    isWfhApproved
+                      ? 'text-indigo-600'
+                      : todayRecord.clockInStatus === 'LATE'
+                      ? 'text-amber-600'
+                      : 'text-emerald-600'
+                  }`} />
+                  <div className="flex-1 min-w-0 text-[11px] sm:text-xs font-semibold leading-relaxed flex flex-col items-start gap-0.5 text-left">
+                    <span className="font-bold text-slate-900">Presensi Masuk ({todayRecord.clockInTime} WIB)</span>
+                    {(() => {
+                      const isWfh = isWfhApproved || todayRecord.workMode === 'WFH' || todayRecord.clockInLocationStatus === 'WFH_APPROVED';
+                      const isDinas = isBusinessTripApproved || todayRecord.workMode === 'DINAS' || todayRecord.clockInLocationStatus === 'DINAS_APPROVED';
+                      const isLate = todayRecord.clockInStatus === 'LATE';
+                      const lateMin = todayRecord.clockInLateMinutes || 0;
+
+                      let statusBadgeText = 'Hadir';
+                      let statusBadgeColor = 'text-emerald-700 font-bold';
+
+                      if (isWfh) {
+                        statusBadgeText = isLate && lateMin > 0 ? `WFH • Terlambat (${lateMin}m)` : 'WFH';
+                        statusBadgeColor = isLate ? 'text-amber-700 font-bold' : 'text-indigo-700 font-bold';
+                      } else if (isDinas) {
+                        statusBadgeText = isLate && lateMin > 0 ? `Dinas Luar • Terlambat (${lateMin}m)` : 'Dinas Luar';
+                        statusBadgeColor = isLate ? 'text-amber-700 font-bold' : 'text-purple-700 font-bold';
+                      } else if (isLate) {
+                        statusBadgeText = lateMin > 0 ? `Terlambat (${lateMin}m)` : 'Terlambat';
+                        statusBadgeColor = 'text-amber-700 font-bold';
+                      }
+
+                      const locationText = isWfh
+                        ? 'Rumah / WFH'
+                        : isDinas
+                        ? 'Dinas Luar'
+                        : todayRecord.clockInLocationStatus === 'OUT_OF_RANGE'
+                        ? `Di Luar Kantor (${todayRecord.clockInDistanceMeter ? `${Math.round(todayRecord.clockInDistanceMeter)}m` : 'Luar Radius'})`
+                        : 'Di Kantor';
+
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap text-[11px] sm:text-xs">
+                          <span className={statusBadgeColor}>{statusBadgeText}</span>
+                          <span className="text-slate-400 font-normal">&bull;</span>
+                          <span className="text-slate-700 font-medium">{locationText}</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
               ) : (
-                <Tooltip content="Catat presensi kehadiran masuk kantor hari ini dengan verifikasi GPS" position="top" className="w-full">
+                <Tooltip content="Catat presensi kehadiran masuk kerja hari ini dengan verifikasi GPS" position="top" className="w-full">
                   <button
                     type="button"
                     onClick={handleClockIn}
                     className="w-full py-3 px-4 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white text-xs font-bold rounded-2xl shadow-sm border border-[#1E3A8A] transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Clock className="w-4 h-4 text-white" />
-                    <span>Presensi Masuk</span>
+                    <span>Presensi Masuk Sekarang</span>
                   </button>
                 </Tooltip>
               )}
@@ -545,12 +640,15 @@ export function AttendanceClockTab({
           </div>
         </div>
 
-        {/* CARD KANAN: STATUS GEOFENCE RADAR (Ukuran sama persis dengan Kalender Presensi) */}
-        <div className="h-full">
+        {/* CARD KANAN: STATUS GEOFENCE RADAR (Mengisi 100% tinggi penuh sama dengan Kalender) */}
+        <div className="h-full flex flex-col min-h-0">
           <GeolocationWidget
             officeConfig={officeConfig}
             onLocationVerified={handleLocationUpdate}
             currentUser={currentUser}
+            workMode={effectiveWorkMode}
+            isWfhApproved={isWfhApproved}
+            isBusinessTripApproved={isBusinessTripApproved}
           />
         </div>
 

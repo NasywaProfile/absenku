@@ -9,7 +9,7 @@ import {
   ZoomOut,
   Image as ImageIcon,
 } from 'lucide-react';
-import { isImageFile, isPdfFile, openExternalLink, downloadMediaFile } from '../../lib/open-media.ts';
+import { isImageFile, isPdfFile, openExternalLink, downloadMediaFile, openDataUrlInNewTab } from '../../lib/open-media.ts';
 
 export interface MediaPreviewData {
   url: string;
@@ -45,30 +45,7 @@ export function MediaPreviewModal({ media, onClose }: MediaPreviewModalProps) {
     if (isLink) {
       openExternalLink(media.url);
     } else {
-      const win = window.open();
-      if (win) {
-        if (isPdf) {
-          win.document.title = media.name || 'Dokumen PDF';
-          win.document.write(
-            `<body style="margin:0; background:#1e293b; display:flex; justify-content:center; align-items:center; height:100vh; overflow:hidden;">
-              <iframe src="${media.url}" frameborder="0" style="width:100%; height:100%; border:none;"></iframe>
-            </body>`
-          );
-          win.document.close();
-        } else if (isImg) {
-          win.document.title = media.name || 'Pratinjau Gambar';
-          win.document.write(
-            `<body style="margin:0; background:#0f172a; display:flex; justify-content:center; align-items:center; min-height:100vh;">
-              <img src="${media.url}" style="max-width:95vw; max-height:95vh; object-fit:contain; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.5);" />
-            </body>`
-          );
-          win.document.close();
-        } else {
-          window.open(media.url, '_blank');
-        }
-      } else {
-        window.open(media.url, '_blank');
-      }
+      openDataUrlInNewTab(media.url, media.name || 'lampiran_berkas');
     }
   };
 

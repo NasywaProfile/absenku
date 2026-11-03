@@ -1,5 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { X, Search, User as UserIcon, Edit3, Building2, MapPin, Laptop } from 'lucide-react';
+import {
+  X,
+  Search,
+  User as UserIcon,
+  Edit3,
+  Building2,
+  MapPin,
+  Laptop,
+  Paperclip,
+  ExternalLink,
+  Lock,
+  Clock,
+  ClipboardList,
+  FileText,
+  CalendarDays,
+  AlertTriangle,
+} from 'lucide-react';
+import { openAttachmentDirectly } from '../../lib/open-media.ts';
 
 export interface TeamMemberItem {
   id?: string;
@@ -7,10 +24,16 @@ export interface TeamMemberItem {
   avatar?: string;
   role?: string;
   department?: string;
+  clockInTime?: string;
   statusBadge?: string;
-  statusColor?: 'emerald' | 'amber' | 'blue' | 'rose' | 'slate';
+  statusColor?: 'emerald' | 'amber' | 'blue' | 'rose' | 'slate' | 'indigo' | 'purple';
   locationBadge?: string;
-  locationColor?: 'emerald' | 'amber' | 'indigo' | 'slate';
+  locationColor?: 'emerald' | 'amber' | 'indigo' | 'purple' | 'slate';
+  attachmentName?: string;
+  attachmentData?: string;
+  attachmentType?: string;
+  logbookTasks?: string[];
+  notes?: string;
 }
 
 export interface TeamMembersModalProps {
@@ -20,6 +43,8 @@ export interface TeamMembersModalProps {
   subtitle?: string;
   members: TeamMemberItem[];
   isAdmin?: boolean;
+  currentUserId?: string;
+  currentUserName?: string;
   onEditMember?: (member: TeamMemberItem) => void;
 }
 
@@ -30,6 +55,8 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
   subtitle,
   members,
   isAdmin = false,
+  currentUserId,
+  currentUserName,
   onEditMember,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,28 +95,41 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
   const getStatusBadgeStyle = (color?: string) => {
     switch (color) {
       case 'emerald':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        return 'bg-[#DCFCE7] text-[#15803D] border-[#86EFAC]';
       case 'amber':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
+        return 'bg-[#FEF3C7] text-[#B45309] border-[#FCD34D]';
       case 'blue':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
+        return 'bg-[#DBEAFE] text-[#1D4ED8] border-[#93C5FD]';
       case 'rose':
-        return 'bg-rose-50 text-rose-700 border-rose-200';
+        return 'bg-[#FFEDD5] text-[#C2410C] border-[#FDBA74]';
+      case 'indigo':
+        return 'bg-[#E0E7FF] text-[#4338CA] border-[#A5B4FC]';
+      case 'purple':
+        return 'bg-[#F3E8FF] text-[#7E22CE] border-[#D8B4FE]';
       default:
         return 'bg-slate-100 text-slate-700 border-slate-200';
     }
   };
 
-  const getLocationBadgeStyle = (color?: string) => {
-    switch (color) {
-      case 'amber':
-        return 'bg-amber-50 text-amber-800 border-amber-200';
-      case 'indigo':
-        return 'bg-indigo-50 text-indigo-800 border-indigo-200';
-      case 'emerald':
-      default:
-        return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+  const getLocationBadgeStyle = (badge?: string, color?: string) => {
+    const text = (badge || '').toLowerCase();
+    if (text.includes('wfh') || text.includes('rumah')) {
+      return 'bg-sky-50 text-sky-800 border-sky-200';
     }
+    if (text.includes('dinas')) {
+      return 'bg-amber-50 text-amber-800 border-amber-200';
+    }
+    if (text.includes('luar') || text.includes('radius')) {
+      return 'bg-rose-50 text-rose-800 border-rose-200';
+    }
+    if (text.includes('dokter') || text.includes('sakit')) {
+      return 'bg-rose-50 text-rose-800 border-rose-200';
+    }
+    if (text.includes('izin') || text.includes('resmi') || text.includes('cuti')) {
+      return 'bg-sky-50 text-sky-800 border-sky-200';
+    }
+    // Default / Di Kantor
+    return 'bg-teal-50 text-teal-800 border-teal-200';
   };
 
   return (
@@ -144,13 +184,18 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                 const avatarSrc =
                   member.avatar && member.avatar.trim() !== '' ? member.avatar : fallbackAvatar;
 
+                const isSelf = Boolean(
+                  (currentUserId && member.id === currentUserId) ||
+                  (currentUserName && member.name.toLowerCase() === currentUserName.toLowerCase())
+                );
+
                 return (
                   <div
                     key={member.id || `${member.name}-${idx}`}
-                    className="relative p-3.5 bg-white hover:bg-blue-50/40 rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all flex items-center justify-between gap-2.5 group"
+                    className="relative p-3.5 bg-white hover:bg-blue-50/40 rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all flex flex-col gap-2.5 group"
                   >
-                    {/* Icon edit pen di pojok kanan atas card (Hanya untuk Role Admin & Super Admin) */}
-                    {isAdmin && onEditMember && (
+                    {/* Icon edit pen di pojok kanan atas card (Hanya untuk anggota tim lain) */}
+                    {isAdmin && onEditMember && !isSelf && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -164,59 +209,174 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                       </button>
                     )}
 
-                    {/* Kiri: Foto Profil & Informasi Karyawan */}
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="relative w-11 h-11 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-2xs group-hover:scale-105 transition-transform duration-200">
-                        <img
-                          src={avatarSrc}
-                          alt={member.name}
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).src = fallbackAvatar;
-                          }}
-                          className="w-full h-full object-cover"
-                        />
+                    {/* Baris Utama: Info Profil & Badges Status */}
+                    <div className="flex items-center justify-between gap-2.5 w-full">
+                      {/* Kiri: Foto Profil & Informasi Karyawan */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="relative w-11 h-11 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-2xs group-hover:scale-105 transition-transform duration-200">
+                          <img
+                            src={avatarSrc}
+                            alt={member.name}
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = fallbackAvatar;
+                            }}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-bold text-xs sm:text-sm text-slate-900 group-hover:text-[#1E3A8A] transition-colors truncate pr-7">
+                            {member.name}
+                          </h4>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            {(member.department || member.role) && (
+                              <span className="text-[11px] text-slate-500 truncate">
+                                {member.department || member.role}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="min-w-0 flex-1">
-                        <h4 className="font-bold text-xs sm:text-sm text-slate-900 group-hover:text-[#1E3A8A] transition-colors truncate pr-7">
-                          {member.name}
-                        </h4>
-                        {(member.department || member.role) && (
-                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                            {member.department || member.role}
-                          </p>
+                      {/* Kanan: Badge Waktu Presensi Masuk (Atas) & Badge Lokasi (Bawah) */}
+                      <div className="flex flex-col items-end gap-1 shrink-0 pt-2">
+                        {member.clockInTime ? (
+                          (() => {
+                            const isLate =
+                              member.statusColor === 'amber' ||
+                              Boolean(member.statusBadge && member.statusBadge.toLowerCase().includes('terlambat'));
+
+                            let lateLabel = 'Terlambat';
+                            if (member.statusBadge && member.statusBadge.includes('Terlambat')) {
+                              const match = member.statusBadge.match(/Terlambat(\s*\([^)]*\))?/i);
+                              if (match && match[0]) {
+                                lateLabel = match[0].replace(' mnt', 'm');
+                              }
+                            }
+
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border shadow-2xs ${
+                                  isLate
+                                    ? 'bg-[#FEF3C7] text-[#B45309] border-[#FCD34D]'
+                                    : 'bg-[#DCFCE7] text-[#15803D] border-[#86EFAC]'
+                                }`}
+                              >
+                                <Clock className="w-3 h-3 shrink-0" />
+                                <span>{member.clockInTime}</span>
+                                {isLate && (
+                                  <>
+                                    <span className="text-amber-400 font-normal">&bull;</span>
+                                    <span>{lateLabel}</span>
+                                  </>
+                                )}
+                              </span>
+                            );
+                          })()
+                        ) : member.statusBadge ? (
+                          <span
+                            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border shadow-2xs ${getStatusBadgeStyle(
+                              member.statusColor
+                            )}`}
+                          >
+                            {member.statusBadge.includes('•') ? (
+                              <>
+                                <span>{member.statusBadge.split('•')[0].trim()}</span>
+                                <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded-md">
+                                  • {member.statusBadge.split('•')[1].trim()}
+                                </span>
+                              </>
+                            ) : (
+                              <span>{member.statusBadge}</span>
+                            )}
+                          </span>
+                        ) : null}
+
+                        {member.locationBadge && (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getLocationBadgeStyle(
+                              member.locationBadge
+                            )}`}
+                          >
+                            {(() => {
+                              const text = (member.locationBadge || '').toLowerCase();
+                              if (text.includes('wfh') || text.includes('rumah')) {
+                                return <Laptop className="w-2.5 h-2.5 text-sky-600 shrink-0" />;
+                              }
+                              if (text.includes('dinas')) {
+                                return <MapPin className="w-2.5 h-2.5 text-amber-600 shrink-0" />;
+                              }
+                              if (text.includes('luar') || text.includes('radius')) {
+                                return <AlertTriangle className="w-2.5 h-2.5 text-rose-600 shrink-0" />;
+                              }
+                              if (text.includes('dokter') || text.includes('sakit')) {
+                                return <FileText className="w-2.5 h-2.5 text-rose-600 shrink-0" />;
+                              }
+                              if (text.includes('izin') || text.includes('resmi') || text.includes('cuti')) {
+                                return <CalendarDays className="w-2.5 h-2.5 text-sky-600 shrink-0" />;
+                              }
+                              return <Building2 className="w-2.5 h-2.5 text-teal-600 shrink-0" />;
+                            })()}
+                            <span>{member.locationBadge}</span>
+                          </span>
                         )}
                       </div>
                     </div>
 
-                    {/* Kanan: Badge Status Hadir & Di Kantor / Di Luar Kantor / WFH */}
-                    <div className="flex flex-col items-end gap-1 shrink-0 pt-3">
-                      {member.statusBadge && (
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeStyle(
-                            member.statusColor
-                          )}`}
-                        >
-                          {member.statusBadge}
-                        </span>
-                      )}
-                      {member.locationBadge && (
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getLocationBadgeStyle(
-                            member.locationColor
-                          )}`}
-                        >
-                          {member.locationColor === 'amber' ? (
-                            <MapPin className="w-2.5 h-2.5 text-amber-600" />
-                          ) : member.locationColor === 'indigo' ? (
-                            <Laptop className="w-2.5 h-2.5 text-indigo-600" />
-                          ) : (
-                            <Building2 className="w-2.5 h-2.5 text-emerald-600" />
-                          )}
-                          <span>{member.locationBadge}</span>
-                        </span>
-                      )}
-                    </div>
+                    {/* Dokumen / Surat Lampiran (Desain Elegan Persis Kontainer Logbook / Tugas Harian) */}
+                    {member.attachmentName && (
+                      <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5 w-full bg-slate-50/70 p-2.5 rounded-xl border border-slate-200/60">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
+                            <FileText className="w-3.5 h-3.5 text-[#1E3A8A]" />
+                            <span>Dokumen / Surat Lampiran:</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openAttachmentDirectly({
+                                url: member.attachmentData,
+                                name: member.attachmentName,
+                                type: member.attachmentType || 'FILE',
+                              });
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#1E3A8A] hover:bg-blue-900 text-white shadow-2xs transition-all cursor-pointer active:scale-95 shrink-0"
+                            title={`Buka surat / dokumen: ${member.attachmentName}`}
+                          >
+                            <span>Buka Surat</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-700 font-medium pl-1 truncate">
+                          <Paperclip className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="truncate">{member.attachmentName}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Logbook / Daftar Tugas Harian (Hanya Muncul Jika Sudah Diisi oleh Staf) */}
+                    {member.logbookTasks && member.logbookTasks.length > 0 && (
+                      <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5 w-full bg-slate-50/70 p-2.5 rounded-xl border border-slate-200/60">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
+                          <ClipboardList className="w-3.5 h-3.5 text-[#1E3A8A]" />
+                          <span>Logbook / Tugas Harian:</span>
+                        </div>
+                        <div className="flex flex-col gap-1 pl-1">
+                          {member.logbookTasks.map((task, tIdx) => (
+                            <div key={tIdx} className="flex items-start gap-1.5 text-[11px] text-slate-600 leading-snug">
+                              <span className="text-slate-400 mt-0.5 select-none">•</span>
+                              <span>{task}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {member.notes && member.notes.trim() && (
+                          <div className="text-[10px] text-slate-500 italic mt-0.5 pt-1 border-t border-slate-200/60">
+                            Catatan: {member.notes}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

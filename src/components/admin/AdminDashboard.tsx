@@ -36,6 +36,8 @@ import {
   MapPin,
   ExternalLink,
   Edit3,
+  Lock,
+  Laptop,
 } from 'lucide-react';
 import { AttendanceRecord, LeaveRequest, OfficeConfig, User, UserRole, EmploymentType, TaskItem, TaskStatus, TaskPriority, getPriorityLabel, ChatTopic } from '../../types/index.ts';
 import { formatIndonesianDate, formatIndonesianDateShort, getCurrentDateString } from '../../lib/time-utils.ts';
@@ -45,10 +47,10 @@ import {
   copyTextToClipboard,
   EMPLOYMENT_TYPE_LABELS,
 } from '../../lib/whatsapp-recap.ts';
-import { RegistrationApprovalList } from './RegistrationApprovalList.tsx';
 import { EmployeeDetailDrawer } from './EmployeeDetailDrawer.tsx';
 import { EditAttendanceModal } from './EditAttendanceModal.tsx';
 import { AppStorage } from '../../lib/storage.ts';
+import { getDailyStatus, getCalendarCell } from '../../lib/attendance-status.ts';
 import { EmptyStateTaskIllustration } from '../common/Illustrations.tsx';
 import { Tooltip } from '../ui/tooltip.tsx';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
@@ -63,6 +65,7 @@ interface AdminDashboardProps {
   users: User[];
   attendanceRecords?: AttendanceRecord[];
   records?: AttendanceRecord[];
+  todayRecord?: AttendanceRecord | null;
   leaves: LeaveRequest[];
   tasks?: any;
   officeConfig: OfficeConfig;
@@ -73,6 +76,7 @@ interface AdminDashboardProps {
   onUpdateRole?: (userId: string, newRole: UserRole) => void;
   onUpdateType?: (userId: string, newType: EmploymentType) => void;
   onToggleStatus?: (userId: string) => void;
+  onOpenClockModal?: () => void;
   onNavigateTab: (tabId: string) => void;
   onOpenEmailModal?: () => void;
   onOpenSettingsModal: () => void;
@@ -88,6 +92,7 @@ export function AdminDashboard({
   users,
   attendanceRecords: propAttendanceRecords,
   records: propRecords,
+  todayRecord: propTodayRecord,
   leaves,
   tasks: propTasks,
   officeConfig,
@@ -101,6 +106,7 @@ export function AdminDashboard({
   onUpdateRole = (userId, newRole) => AppStorage.updateUserRole(userId, newRole),
   onUpdateType = (userId, newType) => AppStorage.updateEmploymentType(userId, newType),
   onToggleStatus = (userId) => AppStorage.toggleUserActiveStatus(userId),
+  onOpenClockModal,
   onNavigateTab,
   onOpenEmailModal,
   onOpenSettingsModal,
@@ -172,8 +178,9 @@ export function AdminDashboard({
 
   // Load all attendance and daily tasks for calendar markers for admin user
   const adminAttendance = useMemo(() => {
-    return AppStorage.getAttendanceRecords().filter((r) => r.userId === currentUser.id);
-  }, [currentUser.id, dataVersion, attendanceRecords]);
+    const list = attendanceRecords.length > 0 ? attendanceRecords : AppStorage.getAttendanceRecords();
+    return list.filter((r) => r.userId === currentUser.id);
+  }, [currentUser.id, dataVersion, attendanceRecords, propTodayRecord]);
 
   const adminDailyTasks = useMemo(() => {
     return AppStorage.getDailyTasks().filter((t) => t.userId === currentUser.id);
@@ -311,13 +318,27 @@ export function AdminDashboard({
   const [isRejectModalFullScreen, setIsRejectModalFullScreen] = useState(false);
 
   const todayStr = getCurrentDateString();
-  const todayAttendance = attendanceRecords.filter((r) => r.date === todayStr);
+  const todayAttendance = attendanceRecords
+    .filter((r) => r.date === todayStr)
+    .sort((a, b) => (b.clockInTime || '').localeCompare(a.clockInTime || ''));
   const pendingLeaves = leaves.filter((l) => l.status === 'PENDING');
   const pendingRegistrations = users.filter((u) => u.status === 'PENDING_APPROVAL');
 
-  const todayRecord = attendanceRecords.find(
-    (r) => r.userId === currentUser.id && r.date === todayStr
-  );
+  const todayRecord =
+    propTodayRecord !== undefined
+      ? propTodayRecord
+      : attendanceRecords.find((r) => r.userId === currentUser.id && r.date === todayStr);
+
+  const isApprovedWfhToday = useMemo(() => {
+    return leaves.some(
+      (l) =>
+        (l.userId === currentUser.id || l.userName?.toLowerCase() === currentUser.name.toLowerCase()) &&
+        l.status === 'APPROVED' &&
+        (l.category === 'WFH' || (l as any).type === 'WFH') &&
+        todayStr >= l.startDate &&
+        todayStr <= l.endDate
+    );
+  }, [currentUser, todayStr, leaves]);
 
   const handleCopyWA = async (record: AttendanceRecord) => {
     const userObj = users.find((u) => u.id === record.userId) || currentUser;
@@ -455,16 +476,6 @@ export function AdminDashboard({
           )}
         </div>
       </div>
-
-      {/* Banner / Card Persetujuan Registrasi Akun Baru jika ada antrean */}
-      {pendingRegistrations.length > 0 && (
-        <RegistrationApprovalList
-          pendingUsers={pendingRegistrations}
-          onApprove={onApproveRegistration}
-          onReject={onRejectRegistration}
-          onNavigateToAll={() => onNavigateTab('employee_approvals')}
-        />
-      )}
 
       {/* 2. BARIS 1: 2-COLUMN EQUAL GRID (Sekilas Ruang Obrolan & Kalender Presensi) - 100% SAMA DENGAN BERANDA KARYAWAN */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
@@ -659,127 +670,153 @@ export function AdminDashboard({
                   const isSelected = selectedDate === dateStr;
                   const isToday = day === todayDateNum && isCurrentMonthAndYear;
                   const dayOfWeek = i % 7; // 0 = Min (Minggu), 6 = Sab (Sabtu)
-                  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                  const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6) && dateStr !== todayDateStr;
 
                   const att = adminAttendance.find((a) => a.date === dateStr);
                   const log = adminDailyTasks.find((t) => t.date === dateStr);
-                  const hasAtt = !isSuperAdmin && !!att;
+                  const dayStatus = getDailyStatus({
+                    user: { id: currentUser.id, name: currentUser.name },
+                    date: dateStr,
+                    records: adminAttendance,
+                    leaves: leaves,
+                    today: todayDateStr,
+                  });
+                  const dayCell = getCalendarCell(dayStatus);
+                  const hasAtt = !!att;
                   const hasLog =
-                    !isSuperAdmin &&
-                    ((log?.tasks && log.tasks.length > 0) ||
-                    (att?.tasksDoneSummary && att.tasksDoneSummary.length > 0));
-                  const isPendingLog = !isSuperAdmin && hasAtt && !hasLog;
+                    (log?.tasks && log.tasks.length > 0) ||
+                    (att?.tasksDoneSummary && att.tasksDoneSummary.length > 0);
+                  const isPendingLog = hasAtt && !hasLog;
+
+                  // Tentukan warna background dan status tanggal secara dinamis sesuai kehadiran & perizinan
+                  const statusLabel = dayCell.label;
+                  const bgClass = dayCell.bg;
+                  const borderClass = dayCell.isPlanned ? ` border-dashed` : dayCell.border;
+                  const textClass = dayCell.text;
 
                   return (
                     <button
                       key={i}
                       type="button"
                       onClick={() => setSelectedDate(dateStr)}
-                      title={isWeekend ? 'Hari Libur (Sabtu / Minggu)' : undefined}
-                      className={`py-1.5 rounded-xl font-medium transition-all relative flex flex-col items-center justify-center cursor-pointer ${
+                      title={`${dateStr} • ${statusLabel}`}
+                      className={`py-1.5 rounded-xl font-bold transition-all relative flex flex-col items-center justify-center cursor-pointer border ${bgClass} ${borderClass} ${textClass} ${
                         isSelected
                           ? isWeekend
-                            ? 'bg-[#1E3A8A] text-white font-extrabold shadow-sm ring-2 ring-[#1E3A8A] ring-offset-1 border border-red-500'
-                            : 'bg-[#1E3A8A] text-white font-extrabold shadow-sm ring-2 ring-[#1E3A8A] ring-offset-1'
-                          : hasAtt
-                          ? isWeekend
-                            ? 'bg-blue-100/90 text-[#1E3A8A] font-bold border border-red-500'
-                            : 'bg-blue-100/90 text-[#1E3A8A] font-bold border border-blue-200'
-                          : isToday
-                          ? isWeekend
-                            ? 'bg-blue-50 text-[#1E3A8A] font-semibold border border-red-500'
-                            : 'bg-blue-50 text-[#1E3A8A] font-semibold border border-blue-200/60'
-                          : isWeekend
-                          ? 'border border-red-500 text-red-600 bg-red-50/30 font-semibold hover:bg-red-50/60'
-                          : 'text-slate-700 hover:bg-slate-200/60 border border-transparent'
+                            ? 'ring-2 ring-red-500 ring-offset-2 shadow-sm scale-105 z-10'
+                            : 'ring-2 ring-[#1E3A8A] ring-offset-2 shadow-sm scale-105 z-10'
+                          : 'hover:brightness-95 hover:scale-[1.02]'
                       }`}
                     >
                       <span>{day}</span>
 
-                      {/* Penanda Kehadiran & Logbook (Hanya untuk Admin Operasional) */}
-                      {!isSuperAdmin && (
-                        <div className="flex items-center gap-0.5 justify-center mt-0.5 min-h-[4px]">
-                          {hasAtt && (
-                            <span
-                              title="Presensi Hadir"
-                              className={`w-1 h-1 rounded-full ${
-                                isSelected ? 'bg-white' : 'bg-emerald-500'
-                              }`}
-                            />
-                          )}
-                          {hasLog ? (
-                            <span
-                              title="Logbook Terisi"
-                              className={`w-1 h-1 rounded-full ${
-                                isSelected ? 'bg-white' : 'bg-[#1E3A8A]'
-                              }`}
-                            />
-                          ) : isPendingLog ? (
-                            <span
-                              title="Belum Isi Logbook"
-                              className={`w-1 h-1 rounded-full animate-pulse ${
-                                isSelected ? 'bg-white' : 'bg-amber-500'
-                              }`}
-                            />
-                          ) : null}
-                        </div>
-                      )}
+                      {/* Penanda Kehadiran & Logbook */}
+                      <div className="flex items-center gap-0.5 justify-center mt-0.5 min-h-[4px]">
+                        {hasLog ? (
+                          <span
+                            title="Logbook Terisi"
+                            className="w-1.5 h-1.5 rounded-full bg-[#1E3A8A]"
+                          />
+                        ) : isPendingLog ? (
+                          <span
+                            title="Belum Isi Logbook"
+                            className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"
+                          />
+                        ) : null}
+                      </div>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Legend / Keterangan Penanda Singkat */}
-            {isSuperAdmin ? (
-              <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-500 pt-2.5">
-                <span className="flex items-center gap-1">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-[#1E3A8A]" />
-                  Hari Terpilih
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2.5 h-2.5 rounded-sm border border-rose-300 bg-rose-50/60" />
-                  Libur Akhir Pekan (Sabtu &amp; Minggu)
-                </span>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-500 pt-2.5">
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  Hadir
-                </span>
+            {/* Status Penanda Logbook */}
+            {!isSuperAdmin && (
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[10px] text-slate-500 pt-2.5">
                 <span className="flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#1E3A8A]" />
-                  Logbook Terisi
+                  <span>Titik Biru: Logbook Terisi</span>
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                  Belum Isi Logbook
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2.5 h-2.5 rounded-sm border border-rose-300 bg-rose-50/60" />
-                  Libur (Sabtu &amp; Minggu)
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span>Titik Kuning: Belum Isi Logbook</span>
                 </span>
               </div>
             )}
 
-            {/* Button Absen Masuk (Hanya untuk Admin Operasional) */}
+            {/* Button Absen Masuk: Khusus Admin Operasional / Karyawan (Super Admin tidak perlu presensi masuk) */}
             {!isSuperAdmin && (
               <div className="pt-3">
                 {todayRecord?.clockInTime ? (
-                  <div className="w-full py-2.5 px-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-center text-xs font-semibold rounded-2xl flex items-center justify-center gap-2 shadow-2xs">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>Presensi Masuk Tercatat ({todayRecord.clockInTime} WIB)</span>
+                  <div className={`w-full py-2.5 px-3 sm:px-4 border rounded-2xl flex items-center gap-2.5 shadow-2xs ${
+                    isApprovedWfhToday
+                      ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                      : todayRecord.clockInStatus === 'LATE'
+                      ? 'bg-amber-50 border-amber-200 text-amber-900'
+                      : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  }`}>
+                    <CheckCircle2 className={`w-4 h-4 shrink-0 self-start mt-0.5 ${
+                      isApprovedWfhToday
+                        ? 'text-indigo-600'
+                        : todayRecord.clockInStatus === 'LATE'
+                        ? 'text-amber-600'
+                        : 'text-emerald-600'
+                    }`} />
+                    <div className="flex-1 min-w-0 text-[11px] sm:text-xs font-semibold leading-relaxed flex flex-col items-start gap-0.5 text-left">
+                      <span className="font-bold text-slate-900">Presensi Masuk ({todayRecord.clockInTime} WIB)</span>
+                      {(() => {
+                        const isWfh = isApprovedWfhToday || todayRecord.workMode === 'WFH' || todayRecord.clockInLocationStatus === 'WFH_APPROVED';
+                        const isDinas = todayRecord.workMode === 'DINAS' || todayRecord.clockInLocationStatus === 'DINAS_APPROVED';
+                        const isLate = todayRecord.clockInStatus === 'LATE';
+                        const lateMin = todayRecord.clockInLateMinutes || 0;
+
+                        let statusBadgeText = 'Hadir';
+                        let statusBadgeColor = 'text-emerald-700 font-bold';
+
+                        if (isWfh) {
+                          statusBadgeText = isLate && lateMin > 0 ? `WFH • Terlambat (${lateMin}m)` : 'WFH';
+                          statusBadgeColor = isLate ? 'text-amber-700 font-bold' : 'text-indigo-700 font-bold';
+                        } else if (isDinas) {
+                          statusBadgeText = isLate && lateMin > 0 ? `Dinas Luar • Terlambat (${lateMin}m)` : 'Dinas Luar';
+                          statusBadgeColor = isLate ? 'text-amber-700 font-bold' : 'text-purple-700 font-bold';
+                        } else if (isLate) {
+                          statusBadgeText = lateMin > 0 ? `Terlambat (${lateMin}m)` : 'Terlambat';
+                          statusBadgeColor = 'text-amber-700 font-bold';
+                        }
+
+                        const locationText = isWfh
+                          ? 'Rumah / WFH'
+                          : isDinas
+                          ? 'Dinas Luar'
+                          : todayRecord.clockInLocationStatus === 'OUT_OF_RANGE'
+                          ? `Di Luar Kantor (${todayRecord.clockInDistanceMeter ? `${Math.round(todayRecord.clockInDistanceMeter)}m` : 'Luar Radius'})`
+                          : 'Di Kantor';
+
+                        return (
+                          <div className="flex items-center gap-1.5 flex-wrap text-[11px] sm:text-xs">
+                            <span className={statusBadgeColor}>{statusBadgeText}</span>
+                            <span className="text-slate-400 font-normal">&bull;</span>
+                            <span className="text-slate-700 font-medium">{locationText}</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                 ) : (
-                  <Tooltip content="Buka menu presensi untuk presensi masuk kantor hari ini dengan verifikasi" position="top" className="w-full">
+                  <Tooltip content="Buka modal presensi untuk presensi masuk kantor hari ini dengan verifikasi GPS & Peta" position="top" className="w-full">
                     <button
                       type="button"
-                      onClick={() => onNavigateTab('clock')}
+                      onClick={() => {
+                        if (onOpenClockModal) {
+                          onOpenClockModal();
+                        } else {
+                          onNavigateTab('clock');
+                        }
+                      }}
                       className="w-full py-3 px-4 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white text-xs font-bold rounded-2xl shadow-sm border border-[#1E3A8A] transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <Clock className="w-4 h-4 text-white" />
-                      <span>Presensi Masuk (Presensi Sekarang)</span>
+                      <span>Presensi Masuk Sekarang</span>
                     </button>
                   </Tooltip>
                 )}
@@ -950,23 +987,36 @@ export function AdminDashboard({
                           <p className="font-bold text-slate-900 text-xs sm:text-sm truncate group-hover/card:text-[#1E3A8A] transition-colors leading-snug">
                             {rec.userName}
                           </p>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 inline-flex items-center gap-1 ${
-                            rec.clockInLocationStatus === 'OUT_OF_RANGE' || rec.workMode === 'WFH'
-                              ? 'bg-amber-50 text-amber-800 border-amber-200'
-                              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          }`}>
-                            {rec.clockInLocationStatus === 'OUT_OF_RANGE' || rec.workMode === 'WFH' ? (
-                              <>
-                                <MapPin className="w-3 h-3 text-amber-600" />
-                                <span>Di Luar Kantor</span>
-                              </>
-                            ) : (
-                              <>
-                                <Building2 className="w-3 h-3 text-emerald-600" />
-                                <span>Di Kantor</span>
-                              </>
-                            )}
-                          </span>
+                          {(() => {
+                            const isRecWfh = rec.workMode === 'WFH' || rec.clockInLocationStatus === 'WFH_APPROVED';
+                            const isRecDinas = rec.workMode === 'DINAS' || rec.clockInLocationStatus === 'DINAS_APPROVED';
+                            const isOutOfRange = !isRecWfh && !isRecDinas && rec.clockInLocationStatus === 'OUT_OF_RANGE';
+
+                            let locBadge = 'Di Kantor';
+                            let locClass = 'bg-teal-50 text-teal-800 border-teal-200';
+                            let locIcon = <Building2 className="w-3 h-3 text-teal-600" />;
+
+                            if (isRecWfh) {
+                              locBadge = 'Rumah / WFH';
+                              locClass = 'bg-sky-50 text-sky-800 border-sky-200';
+                              locIcon = <Laptop className="w-3 h-3 text-sky-600" />;
+                            } else if (isRecDinas) {
+                              locBadge = 'Dinas Luar';
+                              locClass = 'bg-amber-50 text-amber-800 border-amber-200';
+                              locIcon = <MapPin className="w-3 h-3 text-amber-600" />;
+                            } else if (isOutOfRange) {
+                              locBadge = 'Di Luar Kantor';
+                              locClass = 'bg-rose-50 text-rose-800 border-rose-200';
+                              locIcon = <MapPin className="w-3 h-3 text-rose-600" />;
+                            }
+
+                            return (
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 inline-flex items-center gap-1 ${locClass}`}>
+                                {locIcon}
+                                <span>{locBadge}</span>
+                              </span>
+                            );
+                          })()}
                         </div>
                         {/* Baris 2: Jam Presensi Masuk */}
                         <div className="flex items-center gap-2 text-xs text-slate-500 font-normal mt-1 flex-wrap">
@@ -979,25 +1029,49 @@ export function AdminDashboard({
 
                     {/* Kanan: Badge Status Kehadiran Presisi Pas di Tengah Kartu */}
                     <div className="shrink-0 my-auto self-center">
-                      <span
-                        className={`px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold border inline-flex items-center gap-1.5 ${
-                          rec.clockInStatus === 'LATE'
-                            ? 'bg-[#FEF3C7] text-[#B45309] border-[#FDE68A]'
-                            : 'bg-[#DCFCE7] text-[#15803D] border-[#86EFAC]'
-                        }`}
-                      >
-                        {rec.clockInStatus === 'LATE' ? (
-                          <>
-                            <Clock className="w-3.5 h-3.5 text-[#B45309]" />
-                            <span>Terlambat</span>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5 text-[#15803D]" />
-                            <span>Tepat Waktu</span>
-                          </>
-                        )}
-                      </span>
+                      {(() => {
+                        const isRecWfh = rec.workMode === 'WFH' || rec.clockInLocationStatus === 'WFH_APPROVED';
+                        const isRecDinas = rec.workMode === 'DINAS' || rec.clockInLocationStatus === 'DINAS_APPROVED';
+                        const isRecLate = rec.clockInStatus === 'LATE';
+                        const recLateMin = rec.clockInLateMinutes || 0;
+
+                        let stText = 'Hadir';
+                        let stClass = 'bg-[#DCFCE7] text-[#15803D] border-[#86EFAC]';
+                        let stIcon = <CheckCircle2 className="w-3.5 h-3.5 text-[#15803D]" />;
+
+                        if (isRecWfh) {
+                          if (isRecLate && recLateMin > 0) {
+                            stText = `WFH • Terlambat (${recLateMin}m)`;
+                            stClass = 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]';
+                            stIcon = <Clock className="w-3.5 h-3.5 text-[#B45309]" />;
+                          } else {
+                            stText = 'WFH';
+                            stClass = 'bg-indigo-50 text-indigo-800 border-indigo-200';
+                            stIcon = <Laptop className="w-3.5 h-3.5 text-indigo-600" />;
+                          }
+                        } else if (isRecDinas) {
+                          if (isRecLate && recLateMin > 0) {
+                            stText = `Dinas Luar • Terlambat (${recLateMin}m)`;
+                            stClass = 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]';
+                            stIcon = <Clock className="w-3.5 h-3.5 text-[#B45309]" />;
+                          } else {
+                            stText = 'Dinas Luar';
+                            stClass = 'bg-purple-50 text-purple-800 border-purple-200';
+                            stIcon = <MapPin className="w-3.5 h-3.5 text-purple-600" />;
+                          }
+                        } else if (isRecLate) {
+                          stText = recLateMin > 0 ? `Terlambat (${recLateMin}m)` : 'Terlambat';
+                          stClass = 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]';
+                          stIcon = <Clock className="w-3.5 h-3.5 text-[#B45309]" />;
+                        }
+
+                        return (
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold border inline-flex items-center gap-1.5 ${stClass}`}>
+                            {stIcon}
+                            <span>{stText}</span>
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                 );
@@ -1143,7 +1217,7 @@ export function AdminDashboard({
               </h2>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Menampilkan 1 tugas terbaru dari tiap proses kerja tim &bull; Buka Kanban untuk seluruh tugas.
+              Menampilkan 1 tugas terbaru dari tiap proses kerja tim
             </p>
           </div>
 
@@ -1713,7 +1787,7 @@ export function AdminDashboard({
           className={`fixed inset-0 z-50 flex animate-in fade-in duration-200 ${
             isAttendanceModalFullScreen
               ? 'items-center justify-center p-0'
-              : 'items-center justify-center p-3 sm:p-5 md:p-6'
+              : 'justify-end items-center p-2.5 sm:p-4 md:p-5'
           }`}
         >
           <div
@@ -1724,26 +1798,17 @@ export function AdminDashboard({
             className={`relative z-10 bg-white shadow-2xl flex flex-col min-h-0 overflow-hidden transition-all duration-300 font-sans ${
               isAttendanceModalFullScreen
                 ? 'w-full h-full max-w-none max-h-none rounded-none border-0'
-                : 'w-full max-w-xl max-h-[92vh] rounded-[28px] border border-slate-200/90 animate-in zoom-in-95 duration-200'
+                : 'w-full max-w-xl max-h-[92vh] rounded-[28px] border border-slate-200/90 animate-in slide-in-from-right duration-200'
             }`}
           >
             {/* Modal Header */}
-            <div className="px-5 sm:px-6 py-4.5 border-b border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-[#1E3A8A] border border-blue-100 flex items-center justify-center shrink-0">
-                  <UserCheck className="w-5 h-5 text-[#1E3A8A]" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-bold text-slate-900 text-base sm:text-lg tracking-tight truncate">Rincian Presensi Masuk</h3>
-                  <p className="text-xs text-slate-500 mt-0.5 truncate">Detail catatan presensi masuk staf hari ini</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
+              {/* Tombol Maximize di pojok kiri atas (menggantikan icon user) */}
+              <div className="w-9 shrink-0 flex items-center justify-start">
                 <button
                   type="button"
                   onClick={() => setIsAttendanceModalFullScreen(!isAttendanceModalFullScreen)}
-                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer"
+                  className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer shrink-0 mt-0.5"
                   title={isAttendanceModalFullScreen ? "Perkecil Tampilan" : "Perbesar Layar Penuh"}
                 >
                   {isAttendanceModalFullScreen ? (
@@ -1752,20 +1817,34 @@ export function AdminDashboard({
                     <Maximize2 className="w-4 h-4 text-slate-600" />
                   )}
                 </button>
+              </div>
+
+              {/* Judul & Subjudul diposisikan di tengah persis */}
+              <div className="flex-1 min-w-0 text-center px-1 sm:px-3 space-y-0.5 flex flex-col items-center justify-center pt-0.5">
+                <h3 className="font-bold text-slate-900 text-base sm:text-lg tracking-tight truncate leading-snug">
+                  Rincian Presensi Masuk
+                </h3>
+                <p className="text-xs text-slate-500 font-medium leading-normal truncate">
+                  Detail catatan presensi masuk staf hari ini
+                </p>
+              </div>
+
+              {/* Tombol Tutup X di pojok kanan atas */}
+              <div className="w-9 shrink-0 flex items-center justify-end">
                 <button
                   type="button"
                   onClick={() => setSelectedAttendanceDetail(null)}
-                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full border border-slate-200 transition-colors cursor-pointer"
+                  className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full border border-slate-200 transition-colors cursor-pointer shrink-0 mt-0.5"
                   title="Tutup"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
                 </button>
               </div>
             </div>
 
             {/* Modal Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs sm:text-sm">
-              {/* Profil Karyawan Card */}
+              {/* Profil Karyawan Card (Tulisan Lihat Profil Dihapus) */}
               <div
                 className="p-3.5 bg-slate-50 hover:bg-blue-50/50 rounded-2xl border border-slate-200 flex items-center justify-between gap-3 cursor-pointer group transition-colors"
                 onClick={() => setSimpleProfilePopup({ name: selectedAttendanceDetail.userName, avatar: selectedAttendanceDetail.userAvatar })}
@@ -1782,13 +1861,10 @@ export function AdminDashboard({
                       {selectedAttendanceDetail.userName}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {selectedAttendanceDetail.department || 'Divisi Tim'} &bull; {selectedAttendanceDetail.employmentType || 'Karyawan'}
+                      {selectedAttendanceDetail.department || 'Divisi Tim'} &bull; {EMPLOYMENT_TYPE_LABELS[selectedAttendanceDetail.employmentType] || selectedAttendanceDetail.employmentType || 'Karyawan'}
                     </p>
                   </div>
                 </div>
-                <span className="text-[11px] font-semibold text-[#1E3A8A] bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 shrink-0">
-                  Lihat Profil
-                </span>
               </div>
 
               {/* Grid Status & Waktu */}
@@ -1800,27 +1876,64 @@ export function AdminDashboard({
                 </div>
 
                 <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status Ketepatan</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status Kehadiran</span>
                   <div>
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1 border ${
-                        selectedAttendanceDetail.clockInStatus === 'LATE'
-                          ? 'bg-amber-50 text-amber-800 border-amber-200'
-                          : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                      }`}
-                    >
-                      {selectedAttendanceDetail.clockInStatus === 'LATE' ? (
-                        <>
-                          <Clock className="w-3 h-3 text-amber-600" />
-                          <span>Terlambat {selectedAttendanceDetail.clockInLateMinutes > 0 ? `(${selectedAttendanceDetail.clockInLateMinutes} Menit)` : ''}</span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          <span>Tepat Waktu</span>
-                        </>
-                      )}
-                    </span>
+                    {(() => {
+                      const isWfh = selectedAttendanceDetail.workMode === 'WFH' || selectedAttendanceDetail.clockInLocationStatus === 'WFH_APPROVED';
+                      const isDinas = selectedAttendanceDetail.workMode === 'DINAS' || selectedAttendanceDetail.clockInLocationStatus === 'DINAS_APPROVED';
+                      const isLate = selectedAttendanceDetail.clockInStatus === 'LATE';
+                      const lateMin = selectedAttendanceDetail.clockInLateMinutes || 0;
+
+                      if (isWfh) {
+                        return (
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${
+                            isLate && lateMin > 0
+                              ? 'bg-[#FEF3C7] text-[#B45309] border border-amber-300'
+                              : 'bg-[#E0E7FF] text-[#4338CA] border border-indigo-200'
+                          }`}>
+                            <span>WFH</span>
+                            {isLate && lateMin > 0 ? (
+                              <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded-md">
+                                • Terlambat ({lateMin}m)
+                              </span>
+                            ) : null}
+                          </span>
+                        );
+                      }
+
+                      if (isDinas) {
+                        return (
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${
+                            isLate && lateMin > 0
+                              ? 'bg-[#FEF3C7] text-[#B45309] border border-amber-300'
+                              : 'bg-purple-50 text-purple-800 border border-purple-200'
+                          }`}>
+                            <span>Dinas Luar</span>
+                            {isLate && lateMin > 0 ? (
+                              <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded-md">
+                                • Terlambat ({lateMin}m)
+                              </span>
+                            ) : null}
+                          </span>
+                        );
+                      }
+
+                      if (isLate) {
+                        return (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A] inline-flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5 text-[#B45309]" />
+                            <span>Terlambat {lateMin > 0 ? `(${lateMin}m)` : ''}</span>
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#DCFCE7] text-[#15803D] border border-[#86EFAC] inline-flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#15803D]" />
+                          <span>Hadir</span>
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1829,19 +1942,63 @@ export function AdminDashboard({
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mode Kerja &amp; Lokasi</span>
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-white text-slate-700 border border-slate-200">
-                    {selectedAttendanceDetail.workMode === 'WFO' ? 'Bekerja di Kantor' : 'Work From Home (WFH)'}
-                  </span>
+                  {(() => {
+                    const isWfh = selectedAttendanceDetail.workMode === 'WFH' || selectedAttendanceDetail.clockInLocationStatus === 'WFH_APPROVED';
+                    const isDinas = selectedAttendanceDetail.workMode === 'DINAS' || selectedAttendanceDetail.clockInLocationStatus === 'DINAS_APPROVED';
+                    const inOffice = selectedAttendanceDetail.clockInLocationStatus === 'IN_OFFICE';
+
+                    if (isWfh) {
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
+                          <Laptop className="w-3 h-3 text-sky-600" />
+                          <span>Rumah / WFH</span>
+                        </span>
+                      );
+                    }
+                    if (isDinas) {
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                          <MapPin className="w-3 h-3 text-amber-600" />
+                          <span>Dinas Luar</span>
+                        </span>
+                      );
+                    }
+                    if (inOffice) {
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                          <Building2 className="w-3 h-3 text-teal-600" />
+                          <span>Di Kantor</span>
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+                        <MapPin className="w-3 h-3 text-rose-600" />
+                        <span>Di Luar Kantor</span>
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="text-xs text-slate-600 flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
                   <span>
-                    {selectedAttendanceDetail.clockInLocationStatus === 'IN_OFFICE'
-                      ? 'Dalam Radius Geofence Kantor'
-                      : selectedAttendanceDetail.workMode === 'WFH'
-                      ? 'Lokasi WFH Terdaftar'
-                      : 'Di Luar Radius Kantor'}
-                    {selectedAttendanceDetail.clockInDistanceMeter > 0 && ` (${Math.round(selectedAttendanceDetail.clockInDistanceMeter)}m)`}
+                    {(() => {
+                      const isWfh = selectedAttendanceDetail.workMode === 'WFH' || selectedAttendanceDetail.clockInLocationStatus === 'WFH_APPROVED';
+                      const isDinas = selectedAttendanceDetail.workMode === 'DINAS' || selectedAttendanceDetail.clockInLocationStatus === 'DINAS_APPROVED';
+                      const inOffice = selectedAttendanceDetail.clockInLocationStatus === 'IN_OFFICE';
+                      const dist = selectedAttendanceDetail.clockInDistanceMeter > 0 ? `${Math.round(selectedAttendanceDetail.clockInDistanceMeter)}m` : '';
+
+                      if (isWfh) {
+                        return `Lokasi WFH Terdaftar${dist ? ` (${dist} dari kantor)` : ''}`;
+                      }
+                      if (isDinas) {
+                        return 'Lokasi Tugas Dinas Luar Terdaftar';
+                      }
+                      if (inOffice) {
+                        return `Dalam Radius Geofence Kantor${dist ? ` (${dist})` : ''}`;
+                      }
+                      return `Di Luar Radius Kantor${dist ? ` (${dist})` : ''}`;
+                    })()}
                   </span>
                 </div>
               </div>
@@ -1883,19 +2040,44 @@ export function AdminDashboard({
                   <p className="text-slate-800 font-medium">"{selectedAttendanceDetail.notes}"</p>
                 </div>
               )}
+
+              {/* Logbook / Tugas Harian (Hanya Muncul Jika Sudah Diisi oleh Staf) */}
+              {(() => {
+                const staffLog = AppStorage.getDailyTasks().find(
+                  (t) =>
+                    (t.userId === selectedAttendanceDetail.userId ||
+                      t.userName.toLowerCase() === selectedAttendanceDetail.userName.toLowerCase()) &&
+                    t.date === selectedAttendanceDetail.date
+                );
+                const tasks: string[] =
+                  staffLog?.tasks && staffLog.tasks.length > 0
+                    ? staffLog.tasks
+                    : selectedAttendanceDetail.tasksDoneSummary && selectedAttendanceDetail.tasksDoneSummary.length > 0
+                    ? selectedAttendanceDetail.tasksDoneSummary
+                    : [];
+
+                if (tasks.length === 0) return null;
+
+                return (
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                      <ClipboardList className="w-3.5 h-3.5 text-[#1E3A8A]" />
+                      <span>Logbook / Tugas Harian</span>
+                    </div>
+                    <ul className="space-y-1 pl-4 list-disc text-xs text-slate-600">
+                      {tasks.map((tsk: string, i: number) => (
+                        <li key={i}>{tsk}</li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
             </div>
 
-            {/* Footer Modal */}
-            <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setSelectedAttendanceDetail(null)}
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs sm:text-sm cursor-pointer transition-colors active:scale-95"
-              >
-                Tutup
-              </button>
-
-              <div className="flex items-center gap-2">
+            {/* Footer Modal: Tombol Edit Status Presensi di Kanan (Hanya untuk presensi staf lain, tanpa button penjelasan jika presensi sendiri) */}
+            {!(selectedAttendanceDetail.userId === currentUser.id ||
+               selectedAttendanceDetail.userName.toLowerCase() === currentUser.name.toLowerCase()) && (
+              <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-white flex items-center justify-end gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -1903,25 +2085,13 @@ export function AdminDashboard({
                     setEditingAttendanceRecord(selectedAttendanceDetail);
                     setSelectedAttendanceDetail(null);
                   }}
-                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs sm:text-sm cursor-pointer shadow-xs active:scale-95 transition-all inline-flex items-center gap-1.5"
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs sm:text-sm cursor-pointer shadow-xs active:scale-95 transition-all inline-flex items-center gap-1.5"
                 >
                   <Edit3 className="w-4 h-4" />
                   <span>Edit Status Presensi</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedAttendanceDetail(null);
-                    onNavigateTab('history');
-                  }}
-                  className="px-4 py-2.5 bg-[#1E3A8A] hover:bg-[#172554] text-white font-bold rounded-xl text-xs sm:text-sm cursor-pointer shadow-xs active:scale-95 transition-all inline-flex items-center gap-1.5"
-                >
-                  <span>Buka Riwayat</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -2001,7 +2171,7 @@ export function AdminDashboard({
                       {selectedLeaveDetail.userName}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {selectedLeaveDetail.department || 'Divisi Tim'} &bull; {selectedLeaveDetail.employmentType || 'Karyawan'}
+                      {selectedLeaveDetail.department || 'Divisi Tim'} &bull; {EMPLOYMENT_TYPE_LABELS[selectedLeaveDetail.employmentType] || selectedLeaveDetail.employmentType || 'Karyawan'}
                     </p>
                   </div>
                 </div>
@@ -2154,6 +2324,8 @@ export function AdminDashboard({
         <EditAttendanceModal
           isOpen={!!editingAttendanceRecord}
           record={editingAttendanceRecord}
+          currentUserId={currentUser.id}
+          currentUserName={currentUser.name}
           onClose={() => {
             setEditingAttendanceRecord(null);
             if (returnToAttendanceDetailOnClose) {
@@ -2162,10 +2334,9 @@ export function AdminDashboard({
             }
           }}
           onSave={(updated) => {
+            AppStorage.saveAttendanceRecord(updated);
             if (onUpdateAttendanceRecord) {
               onUpdateAttendanceRecord(updated);
-            } else {
-              AppStorage.saveAttendanceRecord(updated);
             }
             setEditingAttendanceRecord(null);
             if (returnToAttendanceDetailOnClose) {

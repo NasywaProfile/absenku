@@ -31,30 +31,27 @@ export function timeStringToMinutes(timeStr: string): number {
  */
 export function calculateClockInPunctuality(
   clockInTimeStr: string,
-  workStartTimeStr: string = '08:30',
-  gracePeriodMinutes: number = 15
+  workStartTimeStr: string = '08:00',
+  gracePeriodMinutes: number = 0
 ): {
   status: AttendanceStatus;
   lateMinutes: number;
   remarks: string;
 } {
   const actualMinutes = timeStringToMinutes(clockInTimeStr);
-  const scheduledMinutes = timeStringToMinutes(workStartTimeStr);
-  const cutoffMinutes = scheduledMinutes + gracePeriodMinutes;
+  const scheduledMinutes = timeStringToMinutes(workStartTimeStr || '08:00');
+  const cutoffMinutes = scheduledMinutes + (gracePeriodMinutes || 0);
 
-  // Absen sebelum atau sama dengan batas toleransi
+  // Absen sebelum atau tepat pada jam masuk (atau batas toleransi)
   if (actualMinutes <= cutoffMinutes) {
-    const diff = actualMinutes - scheduledMinutes;
     return {
       status: 'ON_TIME',
       lateMinutes: 0,
-      remarks: actualMinutes <= scheduledMinutes
-        ? 'Tepat Waktu'
-        : `Dalam Batas Toleransi (${diff > 0 ? formatDurationHuman(diff) : '0 Menit'})`,
+      remarks: 'Tepat Waktu',
     };
   }
 
-  // Absen melewati batas toleransi -> Dihitung terlambat terhadap jam kerja awal
+  // Absen melewati batas jam masuk -> Dihitung terlambat terhadap jam masuk kantor
   const lateMinutes = actualMinutes - scheduledMinutes;
   return {
     status: 'LATE',

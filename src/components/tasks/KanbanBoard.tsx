@@ -258,9 +258,8 @@ export function KanbanBoard({
   const [newDesc, setNewDesc] = useState('');
   const [newPriority, setNewPriority] = useState<TaskPriority>('MEDIUM');
   const assignableUsers = users.filter((u) => u.role !== 'SUPER_ADMIN');
-  const [newAssigneeIds, setNewAssigneeIds] = useState<string[]>(() => {
-    const defaultUser = assignableUsers[0]?.id || users[0]?.id;
-    return defaultUser ? [defaultUser] : [];
+  const [newAssigneeId, setNewAssigneeId] = useState<string>(() => {
+    return assignableUsers[0]?.id || users[0]?.id || '';
   });
   const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('');
   const [newDueDate, setNewDueDate] = useState<string>('');
@@ -402,24 +401,21 @@ export function KanbanBoard({
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim() || !newDueDate) return;
-    if (newAssigneeIds.length === 0) {
-      alert('Pilih setidaknya satu anggota tim yang ditugaskan.');
+    if (!newAssigneeId) {
+      alert('Pilih anggota tim yang ditugaskan.');
       return;
     }
 
-    const selectedUsers = users.filter((u) => newAssigneeIds.includes(u.id));
-    const primaryUser = selectedUsers[0] || assignableUsers[0] || users[0];
+    const assignedUser = users.find((u) => u.id === newAssigneeId) || assignableUsers[0] || users[0];
 
-    const assigneesList: TaskAssignee[] = selectedUsers.map((u) => ({
-      id: u.id,
-      name: u.name,
-      avatar: u.avatar,
-      department: u.department,
-    }));
-
-    const formattedAssignedName = selectedUsers.length === 1
-      ? primaryUser.name
-      : `${primaryUser.name} (+${selectedUsers.length - 1} lainnya)`;
+    const assigneesList: TaskAssignee[] = [
+      {
+        id: assignedUser.id,
+        name: assignedUser.name,
+        avatar: assignedUser.avatar,
+        department: assignedUser.department,
+      },
+    ];
 
     AppStorage.addTask({
       id: `task-${Date.now()}`,
@@ -429,9 +425,9 @@ export function KanbanBoard({
       title: newTitle.trim(),
       description: newDesc.trim(),
       priority: newPriority,
-      assignedTo: primaryUser.id,
-      assignedName: formattedAssignedName,
-      assignedAvatar: primaryUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+      assignedTo: assignedUser.id,
+      assignedName: assignedUser.name,
+      assignedAvatar: assignedUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
       assignees: assigneesList,
       createdBy: currentUser.id,
       dueDate: newDueDate,
@@ -445,8 +441,8 @@ export function KanbanBoard({
     setNewDesc('');
     setNewPriority('MEDIUM');
     setNewDueDate('');
-    const defaultUser = assignableUsers[0]?.id || users[0]?.id;
-    setNewAssigneeIds(defaultUser ? [defaultUser] : []);
+    const defaultUser = assignableUsers[0]?.id || users[0]?.id || '';
+    setNewAssigneeId(defaultUser);
     setAssigneeSearchQuery('');
     setCreateAttachments([]);
   };
@@ -2292,59 +2288,53 @@ export function KanbanBoard({
                   </div>
                 </div>
 
-                {/* Tugaskan Kepada (Ditempatkan di Bawah & Dapat Memilih Lebih Dari Satu Orang) */}
+                {/* Tugaskan Kepada (Hanya Dapat Memilih Satu Orang) */}
                 <div className="space-y-2 pt-1">
                   <div className="flex items-center justify-between">
                     <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                       Tugaskan Kepada *
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (newAssigneeIds.length === assignableUsers.length) {
-                          setNewAssigneeIds([]);
-                        } else {
-                          setNewAssigneeIds(assignableUsers.map((u) => u.id));
-                        }
-                      }}
-                      className="text-[11px] font-bold text-[#1E3A8A] hover:underline cursor-pointer"
-                    >
-                      {newAssigneeIds.length === assignableUsers.length ? 'Batal Semua' : 'Pilih Semua'}
-                    </button>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      Pilih 1 orang
+                    </span>
                   </div>
 
-                  {/* Chips Anggota Tim Terpilih */}
-                  {newAssigneeIds.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-50/80 rounded-xl border border-slate-200/80">
-                      {newAssigneeIds.map((uid) => {
-                        const u = users.find((usr) => usr.id === uid);
-                        if (!u) return null;
-                        return (
-                          <span
-                            key={uid}
-                            className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 bg-white border border-blue-200 text-[#1E3A8A] rounded-lg text-xs font-semibold shadow-2xs animate-fadeIn"
-                          >
-                            {u.avatar ? (
-                              <img src={u.avatar} alt={u.name} className="w-4 h-4 rounded-full object-cover" />
-                            ) : (
-                              <span className="w-4 h-4 rounded-full bg-blue-100 text-[#1E3A8A] font-extrabold text-[9px] flex items-center justify-center">
-                                {u.name.charAt(0)}
-                              </span>
-                            )}
-                            <span className="truncate max-w-[120px]">{u.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => setNewAssigneeIds((prev) => prev.filter((id) => id !== uid))}
-                              className="text-slate-400 hover:text-rose-600 rounded-sm p-0.5 cursor-pointer transition-colors"
-                              title={`Hapus ${u.name}`}
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
+                  {/* Anggota Tim Terpilih */}
+                  {(() => {
+                    const selectedUser = users.find((usr) => usr.id === newAssigneeId);
+                    if (!selectedUser) return null;
+                    return (
+                      <div className="flex items-center justify-between p-2.5 bg-blue-50/80 rounded-xl border border-blue-200 text-[#1E3A8A] animate-fadeIn">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {selectedUser.avatar ? (
+                            <img
+                              src={selectedUser.avatar}
+                              alt={selectedUser.name}
+                              className="w-7 h-7 rounded-full object-cover border border-blue-300 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-7 h-7 rounded-full bg-blue-200 text-[#1E3A8A] font-bold text-xs flex items-center justify-center shrink-0">
+                              {selectedUser.name.charAt(0)}
+                            </div>
+                          )}
+                          <div className="truncate">
+                            <p className="font-bold text-xs truncate leading-snug">{selectedUser.name}</p>
+                            <p className="text-[10px] text-blue-600/80 truncate leading-snug">
+                              {selectedUser.department || 'Staf Operasional'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setNewAssigneeId('')}
+                          className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-white/60 transition-colors cursor-pointer"
+                          title="Batal pilih"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })()}
 
                   {/* Search Input Anggota Tim */}
                   <div className="relative">
@@ -2358,7 +2348,7 @@ export function KanbanBoard({
                     />
                   </div>
 
-                  {/* Daftar Anggota Tim (Checklist Multi-Select) */}
+                  {/* Daftar Anggota Tim (Single-Select) */}
                   <div className="max-h-48 overflow-y-auto space-y-1.5 p-1.5 bg-slate-50/50 rounded-2xl border border-slate-200 custom-scrollbar">
                     {assignableUsers
                       .filter((u) =>
@@ -2367,14 +2357,12 @@ export function KanbanBoard({
                         (u.department && u.department.toLowerCase().includes(assigneeSearchQuery.toLowerCase()))
                       )
                       .map((u) => {
-                        const isSelected = newAssigneeIds.includes(u.id);
+                        const isSelected = newAssigneeId === u.id;
                         return (
                           <div
                             key={u.id}
                             onClick={() => {
-                              setNewAssigneeIds((prev) =>
-                                isSelected ? prev.filter((id) => id !== u.id) : [...prev, u.id]
-                              );
+                              setNewAssigneeId(u.id);
                             }}
                             className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all border ${
                               isSelected
@@ -2403,13 +2391,17 @@ export function KanbanBoard({
                             </div>
 
                             <div
-                              className={`w-5 h-5 rounded-lg flex items-center justify-center border transition-all shrink-0 ml-2 ${
+                              className={`w-5 h-5 rounded-full flex items-center justify-center border transition-all shrink-0 ml-2 ${
                                 isSelected
-                                  ? 'bg-[#1E3A8A] border-[#1E3A8A] text-white'
+                                  ? 'border-[#1E3A8A] bg-[#1E3A8A] text-white'
                                   : 'border-slate-300 bg-white text-transparent'
                               }`}
                             >
-                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              <div
+                                className={`w-2 h-2 rounded-full bg-white transition-transform ${
+                                  isSelected ? 'scale-100' : 'scale-0'
+                                }`}
+                              />
                             </div>
                           </div>
                         );
@@ -2558,10 +2550,10 @@ export function KanbanBoard({
                 </button>
                 <button
                   type="submit"
-                  disabled={newAssigneeIds.length === 0}
+                  disabled={!newAssigneeId}
                   className="px-6 py-2.5 bg-[#1E3A8A] hover:bg-[#172554] disabled:opacity-50 disabled:pointer-events-none text-white font-bold text-xs rounded-xl shadow-xs transition-all duration-300 hover:-translate-y-0.5 cursor-pointer"
                 >
-                  Terbitkan Tugas {newAssigneeIds.length > 1 ? `(${newAssigneeIds.length} Anggota)` : ''}
+                  Terbitkan Tugas
                 </button>
               </div>
             </form>

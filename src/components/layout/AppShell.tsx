@@ -30,7 +30,7 @@ import {
   FolderOpen,
   MessageSquare,
 } from 'lucide-react';
-import { User, OfficeConfig, AttendanceRecord } from '../../types/index.ts';
+import { User, OfficeConfig, AttendanceRecord, EMPLOYMENT_TYPE_LABELS } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
 import { useOnlineStatus } from '../../lib/offline-sync.ts';
 import { NavIcon } from '../common/NavIcons.tsx';
@@ -99,17 +99,7 @@ export function AppShell({
   const getRoleAndTypeLabel = () => {
     if (currentUser.role === 'SUPER_ADMIN') return 'Super Admin';
     if (currentUser.role === 'ADMIN') return 'Administrator';
-    switch (currentUser.employmentType) {
-      case 'INTERN':
-        return 'Magang';
-      case 'FREELANCE':
-        return 'Freelance';
-      case 'CONTRACT':
-        return 'Karyawan Kontrak';
-      case 'PERMANENT':
-      default:
-        return 'Karyawan Tetap';
-    }
+    return EMPLOYMENT_TYPE_LABELS[currentUser.employmentType] || 'Karyawan Tetap';
   };
 
 
@@ -591,7 +581,7 @@ export function AppShell({
         {/* RIGHT WORKSPACE AREA */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden glass-page-bg relative">
           {/* TOP PERSISTENT NAVBAR HEADER */}
-          <header className="h-14 bg-white border-b border-slate-200/80 px-4 sm:px-5 lg:px-6 flex items-center justify-between shrink-0 relative z-20">
+          <header className={`h-14 bg-white border-b border-slate-200/80 px-4 sm:px-5 lg:px-6 flex items-center justify-between shrink-0 relative transition-all duration-150 ${profileDropdownOpen ? 'z-40' : 'z-30'}`}>
             {/* Left: Mobile hamburger + Active Tab Title & Colored Icon + Date Pill */}
             <div className="flex items-center gap-3 min-w-0">
               <button
@@ -626,7 +616,7 @@ export function AppShell({
               )}
 
               {/* Profile User Dropdown Pill in Navbar dengan Tooltip */}
-              <div className="relative">
+              <div className={`relative ${profileDropdownOpen ? 'z-50' : ''}`}>
                 <Tooltip
                   content={`${currentUser.name} • ${getRoleAndTypeLabel()} (${currentUser.position || currentUser.department || 'Karyawan'})`}
                   position="bottom"
@@ -654,14 +644,13 @@ export function AppShell({
                       )}
                     </div>
 
-                    {/* Nama Pengguna & Tanggal (Menggantikan teks biodata/posisi) */}
-                    <div className="text-left hidden sm:block max-w-[130px] md:max-w-[170px]">
+                    {/* Nama Pengguna & Email */}
+                    <div className="text-left hidden sm:block max-w-[150px] md:max-w-[200px]">
                       <p className="text-xs font-semibold text-slate-800 group-hover:text-slate-900 truncate leading-tight">
                         {currentUser.name}
                       </p>
-                      <p className="text-[10px] text-slate-400 group-hover:text-slate-500 truncate leading-tight capitalize flex items-center gap-1">
-                        <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
-                        <span className="truncate">{todayFormatted}</span>
+                      <p className="text-[10px] text-slate-400 group-hover:text-slate-500 truncate leading-tight">
+                        {currentUser.email}
                       </p>
                     </div>
 

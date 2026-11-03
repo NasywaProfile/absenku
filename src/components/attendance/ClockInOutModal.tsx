@@ -17,17 +17,16 @@ import { Coordinates, formatDistanceDisplay } from '../../lib/geo-utils.ts';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 import {
   calculateClockInPunctuality,
-  calculateWorkDurationMinutes,
   getCurrentTimeString,
   getCurrentDateString,
-  formatDurationHuman,
 } from '../../lib/time-utils.ts';
 import { AppStorage } from '../../lib/storage.ts';
+import { getApprovedLeaveForDate, isOffCategory } from '../../lib/attendance-status.ts';
 import { saveAttendanceWithOfflineSupport } from '../../lib/offline-sync.ts';
 import { GeofenceIllustration } from '../common/Illustrations.tsx';
 
 interface ClockInOutModalProps {
-  type: AttendanceType;
+  type?: AttendanceType;
   currentUser: User;
   officeConfig: OfficeConfig;
   existingTodayRecord?: AttendanceRecord;
@@ -36,7 +35,6 @@ interface ClockInOutModalProps {
 }
 
 export function ClockInOutModal({
-  type,
   currentUser,
   officeConfig,
   existingTodayRecord,
@@ -55,18 +53,25 @@ export function ClockInOutModal({
   const currentTime = getCurrentTimeString();
   const currentDate = getCurrentDateString();
 
-  // Cek apakah ada izin WFH yang aktif hari ini
+  // Cek perizinan yang disetujui hari ini (prioritas: Sakit > Cuti/Izin > Dinas Luar > WFH)
   const userLeaves = AppStorage.getLeaveRequests();
-  const todayWfhRequest = userLeaves.find(
-    (l: any) => l.userId === currentUser.id && (l.category === 'WFH' || l.type === 'WFH') && currentDate >= l.startDate && currentDate <= l.endDate
+  const todayApprovedLeave = getApprovedLeaveForDate(
+    userLeaves,
+    { id: currentUser.id, name: currentUser.name },
+    currentDate
   );
-  const isWfhApproved = todayWfhRequest?.status === 'APPROVED';
+  const isWfhApproved = todayApprovedLeave?.category === 'WFH';
+  const isBusinessTripApproved = todayApprovedLeave?.category === 'BUSINESS_TRIP';
+  // WFH & Dinas Luar tetap wajib presensi, hanya lokasinya boleh di luar radius kantor
+  const hasRemoteApproval = isWfhApproved || isBusinessTripApproved;
+  // Cuti/Izin & Sakit = OFF, bebas presensi
+  const isOffToday = Boolean(todayApprovedLeave && isOffCategory(todayApprovedLeave.category));
 
-  // Hitung ketepatan waktu untuk Clock In
+  // Hitung ketepatan waktu untuk Clock In berdasarkan konfigurasi Super Admin
   const punctuality = calculateClockInPunctuality(
     currentTime,
-    officeConfig.workStartHour,
-    officeConfig.gracePeriodMinutes
+    officeConfig.workStartHour || '08:00',
+    officeConfig.gracePeriodMinutes || 0
   );
 
   const handleLocationVerified = (
@@ -83,13 +88,18 @@ export function ClockInOutModal({
   const handleActionSubmit = () => {
     setSubmitError(null);
 
+    if (isOffToday) {
+      setSubmitError('Hari ini Anda berstatus OFF (' + (todayApprovedLeave?.category === 'SICK' ? 'Sakit' : 'Cuti / Izin') + ') sehingga tidak perlu presensi.');
+      return;
+    }
+
     if (!coords) {
       setSubmitError('Sinyal GPS lokasi belum terdeteksi. Pastikan izin lokasi browser aktif atau klik tombol Segarkan GPS.');
       return;
     }
 
-    // Jika di luar radius dan tidak ada izin WFH yang disetujui, beri peringatan
-    if (!isWithinRadius && !isWfhApproved) {
+    // Jika di luar radius dan tidak ada izin WFH/Dinas Luar yang disetujui, beri peringatan
+    if (!isWithinRadius && !hasRemoteApproval) {
       setShowLocationDialog(true);
       return;
     }
@@ -102,66 +112,40 @@ export function ClockInOutModal({
     setIsSubmitting(true);
 
     try {
-      if (type === 'CLOCK_IN') {
-        const locationStatus = isWfhApproved
-          ? 'WFH_APPROVED'
-          : isWithinRadius
-          ? 'IN_OFFICE'
-          : 'OUT_OF_RANGE';
+      const locationStatus = isBusinessTripApproved
+        ? 'DINAS_APPROVED'
+        : isWfhApproved
+        ? 'WFH_APPROVED'
+        : isWithinRadius
+        ? 'IN_OFFICE'
+        : 'OUT_OF_RANGE';
 
-        const newRecord: AttendanceRecord = {
-          id: `att-${Date.now()}`,
-          userId: currentUser.id,
-          userName: currentUser.name,
-          userAvatar: currentUser.avatar,
-          department: currentUser.department,
-          employmentType: currentUser.employmentType || 'CONTRACT',
-          workMode: locationStatus === 'WFH_APPROVED' ? 'WFH' : 'WFO',
-          date: currentDate,
-          clockInTime: currentTime,
-          clockInLat: coords.latitude,
-          clockInLng: coords.longitude,
-          clockInDistanceMeter: distanceMeter,
-          clockInLocationStatus: locationStatus,
-          clockInStatus: punctuality.status,
-          clockInLateMinutes: punctuality.lateMinutes,
-          notes: notes.trim() || undefined,
-        };
+      // Ketepatan waktu presensi dihitung murni dari jam masuk kerja (bukan dipaksa terlambat karena radius)
+      const isLateClockIn = punctuality.status === 'LATE';
+      const clockInStatusResult = isLateClockIn ? 'LATE' : 'ON_TIME';
+      const lateMinutesResult = isLateClockIn ? punctuality.lateMinutes : 0;
 
-        const { record } = saveAttendanceWithOfflineSupport(newRecord, 'CLOCK_IN');
-        onSuccess(record);
-      } else {
-        if (!existingTodayRecord) {
-          throw new Error('Data Clock In hari ini tidak ditemukan.');
-        }
+      const newRecord: AttendanceRecord = {
+        id: `att-${Date.now()}`,
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userAvatar: currentUser.avatar,
+        department: currentUser.department,
+        employmentType: currentUser.employmentType || 'CONTRACT',
+        workMode: locationStatus === 'DINAS_APPROVED' ? 'DINAS' : locationStatus === 'WFH_APPROVED' ? 'WFH' : 'WFO',
+        date: currentDate,
+        clockInTime: currentTime,
+        clockInLat: coords.latitude,
+        clockInLng: coords.longitude,
+        clockInDistanceMeter: distanceMeter,
+        clockInLocationStatus: locationStatus,
+        clockInStatus: clockInStatusResult,
+        clockInLateMinutes: lateMinutesResult,
+        notes: notes.trim() || undefined,
+      };
 
-        const duration = calculateWorkDurationMinutes(
-          existingTodayRecord.clockInTime,
-          currentTime
-        );
-
-        const locationStatus = isWfhApproved
-          ? 'WFH_APPROVED'
-          : isWithinRadius
-          ? 'IN_OFFICE'
-          : 'OUT_OF_RANGE';
-
-        const updatedRecord: AttendanceRecord = {
-          ...existingTodayRecord,
-          clockOutTime: currentTime,
-          clockOutLat: coords.latitude,
-          clockOutLng: coords.longitude,
-          clockOutDistanceMeter: distanceMeter,
-          clockOutLocationStatus: locationStatus,
-          workDurationMinutes: duration,
-          notes: notes.trim()
-            ? (existingTodayRecord.notes && existingTodayRecord.notes.trim() ? `${existingTodayRecord.notes} | ${notes.trim()}` : notes.trim())
-            : (existingTodayRecord.notes || undefined),
-        };
-
-        const { record } = saveAttendanceWithOfflineSupport(updatedRecord, 'CLOCK_OUT');
-        onSuccess(record);
-      }
+      const { record } = saveAttendanceWithOfflineSupport(newRecord, 'CLOCK_IN');
+      onSuccess(record);
     } catch (err: unknown) {
       setSubmitError((err as Error).message || 'Gagal menyimpan presensi.');
       setIsSubmitting(false);
@@ -173,7 +157,7 @@ export function ClockInOutModal({
       className={`fixed inset-0 z-50 flex animate-in fade-in duration-200 font-sans overflow-hidden ${
         isFullScreen
           ? 'items-center justify-center p-0'
-          : 'items-center justify-center p-3 sm:p-5 md:p-6'
+          : 'justify-end items-center p-2.5 sm:p-4 md:p-5'
       }`}
     >
       {/* Backdrop */}
@@ -187,31 +171,18 @@ export function ClockInOutModal({
         className={`relative z-10 bg-white shadow-2xl flex flex-col min-h-0 overflow-hidden transition-all duration-300 font-sans ${
           isFullScreen
             ? 'w-full h-full max-w-none max-h-none rounded-none border-0'
-            : 'w-full max-w-xl max-h-[92vh] rounded-[28px] border border-slate-200/90 animate-in zoom-in-95 duration-200'
+            : 'w-full max-w-md sm:max-w-lg h-full max-h-[calc(100vh-1.25rem)] sm:max-h-[calc(100vh-2rem)] rounded-3xl border border-slate-200/80 animate-in slide-in-from-right duration-300 ease-out'
         }`}
       >
         
         {/* Header Modal */}
-        <div className="px-5 sm:px-6 py-4.5 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-[#1E3A8A] border border-blue-100 flex items-center justify-center shrink-0">
-              <Clock className="w-5 h-5 text-[#1E3A8A]" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-bold text-base sm:text-lg text-slate-900 tracking-tight truncate">
-                {type === 'CLOCK_IN' ? 'Presensi Masuk Kerja' : 'Presensi Pulang Kerja'}
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5 truncate">
-                {currentUser.name} &bull; {currentUser.department || 'Divisi'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
+        <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-start justify-between shrink-0 bg-white gap-3">
+          {/* Top-Left Zoom Button */}
+          <div className="w-9 shrink-0 flex items-start">
             <button
               type="button"
               onClick={() => setIsFullScreen(!isFullScreen)}
-              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer"
+              className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer shrink-0 mt-0.5"
               title={isFullScreen ? "Perkecil Tampilan" : "Perbesar Layar Penuh"}
             >
               {isFullScreen ? (
@@ -220,13 +191,27 @@ export function ClockInOutModal({
                 <Maximize2 className="w-4 h-4 text-slate-600" />
               )}
             </button>
+          </div>
+
+          {/* Judul & Subjudul diposisikan di tengah persis */}
+          <div className="flex-1 min-w-0 text-center px-1 sm:px-3 space-y-0.5 flex flex-col items-center justify-center pt-0.5">
+            <h3 className="font-bold text-base sm:text-lg text-slate-900 tracking-tight leading-snug">
+              Presensi Masuk Kerja
+            </h3>
+            <p className="text-xs text-slate-500 font-medium leading-normal truncate">
+              {currentUser.name} &bull; {currentUser.position || currentUser.department || 'UI UX'}
+            </p>
+          </div>
+
+          {/* Container Tombol Tutup Panel di pojok kanan atas */}
+          <div className="w-9 shrink-0 flex items-start justify-end">
             <button
               type="button"
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full border border-slate-200 transition-colors cursor-pointer"
+              className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full border border-slate-200 transition-colors cursor-pointer shrink-0 mt-0.5"
               title="Tutup"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
             </button>
           </div>
         </div>
@@ -241,104 +226,66 @@ export function ClockInOutModal({
             </div>
           )}
 
-          {/* Status Waktu & Ketepatan */}
-          <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-indigo-600" />
-              <span className="text-slate-500">Waktu Presensi:</span>
-              <span className="font-mono font-bold text-slate-900 text-sm">{currentTime} WIB</span>
+          {/* Status Waktu & Ketepatan (Center di Tampilan Mobile, Flex-Row di Desktop) */}
+          <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl flex flex-col items-center justify-center text-center sm:flex-row sm:items-center sm:justify-between sm:text-left gap-3">
+            <div className="space-y-1 flex flex-col items-center sm:items-start text-center sm:text-left w-full sm:w-auto">
+              <div className="flex items-center justify-center sm:justify-start gap-2">
+                <Clock className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span className="text-slate-500">Waktu Presensi:</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">{currentTime} WIB</span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium text-center sm:text-left">
+                Jam Masuk Wajib: <strong className="text-slate-800">{officeConfig.workStartHour || '08:00'} WIB</strong>
+              </p>
             </div>
 
-            {type === 'CLOCK_IN' ? (
-              <div>
-                <span
-                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                    punctuality.status === 'ON_TIME'
-                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                      : 'bg-orange-100 text-orange-900 border border-orange-300'
-                  }`}
-                >
-                  {punctuality.status === 'ON_TIME' ? (
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-700" />
-                  ) : (
-                    <AlertTriangle className="w-3.5 h-3.5 text-orange-700" />
-                  )}
-                  {punctuality.status === 'ON_TIME' ? (isWfhApproved ? 'Hadir (WFH)' : 'Hadir (Masuk)') : punctuality.remarks}
-                </span>
-              </div>
-            ) : (
-              existingTodayRecord && (
-                <div className="text-slate-600">
-                  Masuk pukul: <strong className="font-mono text-slate-900">{existingTodayRecord.clockInTime} WIB</strong>
-                </div>
-              )
-            )}
+            <div className="flex justify-center sm:justify-end w-full sm:w-auto">
+              <span
+                className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
+                  punctuality.status === 'ON_TIME'
+                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                    : 'bg-orange-100 text-orange-900 border border-orange-300'
+                }`}
+              >
+                {punctuality.status === 'ON_TIME' ? (
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-3.5 h-3.5 text-orange-700 shrink-0" />
+                )}
+                {punctuality.status === 'ON_TIME' ? (isWfhApproved ? 'Hadir (WFH)' : isBusinessTripApproved ? 'Hadir (Dinas Luar)' : 'Hadir (Masuk)') : punctuality.remarks}
+              </span>
+            </div>
           </div>
 
-          {/* Snapshot Geofence Radar Widget */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
+          {/* Snapshot Geofence Radar Widget (Mengisi card secara proporsional dan penuh) */}
+          <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs h-[380px] flex flex-col">
             <GeolocationWidget
               officeConfig={officeConfig}
               onLocationVerified={handleLocationVerified}
-            />
-          </div>
-
-          {/* Lokasi Kantor Tujuan */}
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 text-slate-600 min-w-0">
-              <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span className="truncate font-semibold text-slate-800">{officeConfig.name}</span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs font-semibold text-slate-500">
-                Radius: <strong className="text-slate-900">{officeConfig.geofenceRadiusMeter}m</strong>
-              </span>
-              <GeofenceIllustration className="w-8 h-8 opacity-90" />
-            </div>
-          </div>
-
-          {/* Catatan / Keterangan Opsional */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1.5">
-              Catatan / Keterangan (Opsional)
-            </label>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder={isWfhApproved ? 'Sedang WFH - tugas hari ini...' : 'Contoh: Hadir di kantor / meeting klien...'}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+              currentUser={currentUser}
+              isWfhApproved={isWfhApproved}
+              isBusinessTripApproved={isBusinessTripApproved}
             />
           </div>
         </div>
 
-        {/* Modal Footer (Action Buttons) */}
-        <div className="px-5 sm:px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-3 shrink-0 bg-white">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs sm:text-sm cursor-pointer transition-colors active:scale-95"
-          >
-            Batal
-          </button>
-
+        {/* Modal Footer (Action Button Full-Width) */}
+        <div className="px-5 sm:px-6 py-4 border-t border-slate-100 flex items-center shrink-0 bg-white">
           <button
             type="button"
             onClick={handleActionSubmit}
             disabled={isSubmitting || !coords}
-            className={`inline-flex items-center justify-center gap-2 px-6 py-2.5 text-white font-bold rounded-xl shadow-xs transition-all duration-200 active:scale-95 cursor-pointer disabled:opacity-50 text-xs sm:text-sm ${
-              type === 'CLOCK_IN'
-                ? 'bg-[#1E3A8A] hover:bg-[#172554]'
-                : 'bg-rose-600 hover:bg-rose-700'
-            }`}
+            className="w-full py-3 px-6 text-white font-bold rounded-2xl shadow-xs transition-all duration-200 active:scale-[0.99] cursor-pointer disabled:opacity-50 text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#1E3A8A] hover:bg-[#172554]"
           >
-            <ShieldCheck className="w-4 h-4 text-white" />
+            <ShieldCheck className="w-4.5 h-4.5 text-white shrink-0" />
             <span>
               {isSubmitting
                 ? 'Memproses Presensi...'
-                : type === 'CLOCK_IN'
-                ? 'Konfirmasi Presensi Masuk'
-                : 'Konfirmasi Presensi Pulang'}
+                : isWfhApproved
+                ? 'Presensi Masuk (WFH) Sekarang'
+                : isBusinessTripApproved
+                ? 'Presensi Masuk (Dinas Luar) Sekarang'
+                : 'Presensi Masuk Sekarang'}
             </span>
           </button>
         </div>

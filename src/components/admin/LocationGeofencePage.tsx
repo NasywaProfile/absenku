@@ -74,25 +74,29 @@ export function LocationGeofencePage({
         style: {
           version: 8,
           sources: {
-            'osm-raster-tiles': {
+            'esri-tiles': {
               type: 'raster',
               tiles: [
-                'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
               ],
               tileSize: 256,
               attribution:
-                '&copy; <a href="https://maplibre.org" target="_blank" rel="noopener noreferrer">MapLibre</a>',
+                '&copy; <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a>',
             },
           },
           layers: [
             {
-              id: 'osm-raster-layer',
+              id: 'esri-layer',
               type: 'raster',
-              source: 'osm-raster-tiles',
+              source: 'esri-tiles',
               minzoom: 0,
               maxzoom: 19,
+              paint: {
+                // Shader styling minimalis modern: Mengubah warna kuning/oranye menjadi abu-abu pastel elegan
+                'raster-saturation': -0.72,
+                'raster-contrast': 0.08,
+                'raster-brightness-min': 0.04,
+              },
             },
           ],
         },
@@ -556,7 +560,7 @@ export function LocationGeofencePage({
             </div>
 
             {/* Jam Kerja */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+            <div className="pt-2">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 text-slate-500" />
@@ -567,20 +571,6 @@ export function LocationGeofencePage({
                   required
                   value={config.workStartHour}
                   onChange={(e) => setConfig({ ...config, workStartHour: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Jam Pulang Standar</span>
-                </label>
-                <input
-                  type="time"
-                  required
-                  value={config.workEndHour}
-                  onChange={(e) => setConfig({ ...config, workEndHour: e.target.value })}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold"
                 />
               </div>

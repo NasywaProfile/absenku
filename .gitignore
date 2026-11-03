@@ -7,6 +7,13 @@ coverage/
 .env*
 !.env.example
 
+# Playwright & test artifacts
+e2e/node_modules/
+e2e/results/
+e2e/.playwright-artifacts-*/
+test-results/
+playwright-report/
+
 # Agent / Tooling data
 .antigravity/
 .aistudio/

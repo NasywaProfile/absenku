@@ -7,6 +7,13 @@ export type AccountStatus = 'PENDING_APPROVAL' | 'ACTIVE' | 'INACTIVE';
 export type EmploymentType = 'INTERN' | 'FREELANCE' | 'CONTRACT' | 'PERMANENT';
 // Magang (Intern), Freelance, Karyawan Sementara (Kontrak), Karyawan Tetap
 
+export const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
+  INTERN: 'Magang (Internship)',
+  CONTRACT: 'Karyawan Kontrak',
+  PERMANENT: 'Karyawan Tetap',
+  FREELANCE: 'Freelance',
+};
+
 export interface User {
   id: string;
   name: string;
@@ -44,11 +51,12 @@ export interface User {
 }
 
 // Mode Kerja Absensi Masuk (Clock Out DIHAPUS sesuai spesifikasi)
-export type WorkMode = 'WFO' | 'WFH';
+export type WorkMode = 'WFO' | 'WFH' | 'DINAS';
 
 export type AttendanceStatus = 'ON_TIME' | 'LATE';
 
-export type LocationStatus = 'IN_OFFICE' | 'OUT_OF_RANGE' | 'WFH_APPROVED';
+// DINAS_APPROVED: presensi dari lokasi luar kantor karena Dinas Luar yang disetujui (tetap wajib presensi)
+export type LocationStatus = 'IN_OFFICE' | 'OUT_OF_RANGE' | 'WFH_APPROVED' | 'DINAS_APPROVED';
 
 export type AttendanceType = 'CLOCK_IN' | 'CLOCK_OUT';
 

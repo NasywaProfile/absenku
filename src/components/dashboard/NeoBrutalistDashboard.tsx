@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { User, OfficeConfig, AttendanceRecord, LeaveRequest, TaskItem, TaskStatus, TaskPriority, getPriorityLabel, ChatTopic } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
+import { getDailyStatus, getCalendarCell } from '../../lib/attendance-status.ts';
 import { getCurrentDateString, formatIndonesianDate } from '../../lib/time-utils.ts';
 import { TaskDetailModal } from '../tasks/TaskDetailModal.tsx';
 import { EmptyStateTaskIllustration } from '../common/Illustrations.tsx';
@@ -42,7 +43,7 @@ interface NeoBrutalistDashboardProps {
   records: AttendanceRecord[];
   leaves: LeaveRequest[];
   tasks?: any;
-  onOpenClockModal: (type: 'CLOCK_IN' | 'CLOCK_OUT') => void;
+  onOpenClockModal: () => void;
   onNavigateTab: (tabId: string) => void;
   onSwitchUser?: (userId: string) => void;
   onResetTodayAttendance?: () => void;
@@ -51,10 +52,15 @@ interface NeoBrutalistDashboardProps {
 export function NeoBrutalistDashboard({
   currentUser,
   users = [currentUser],
+  officeConfig,
   todayRecord,
+  records: propRecords,
+  leaves: propLeaves,
   tasks: propTasks,
   onOpenClockModal,
   onNavigateTab,
+  onSwitchUser,
+  onResetTodayAttendance,
 }: NeoBrutalistDashboardProps) {
   // Mode tampilan Tugas Saya: 'CARDS' | 'TABLE'
   const [taskViewMode, setTaskViewMode] = useState<'CARDS' | 'TABLE'>('CARDS');
@@ -103,7 +109,19 @@ export function NeoBrutalistDashboard({
   const [savedSuccessMessage, setSavedSuccessMessage] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
 
+  const isApprovedWfhToday = useMemo(() => {
+    const leavesList = propLeaves || AppStorage.getLeaves();
+    return leavesList.some(
+      (l) =>
+        (l.userId === currentUser.id || l.userName?.toLowerCase() === currentUser.name.toLowerCase()) &&
+        l.status === 'APPROVED' &&
+        (l.category === 'WFH' || (l as any).type === 'WFH') &&
+        todayDateStr >= l.startDate &&
+        todayDateStr <= l.endDate
+    );
+  }, [currentUser, todayDateStr, dataVersion, propLeaves]);
 
+  const allLeaves = useMemo(() => propLeaves || AppStorage.getLeaves(), [dataVersion, propLeaves]);
 
   // Modern dialog confirmation state (no browser alert/confirm popup)
   const [confirmModal, setConfirmModal] = useState<{
@@ -138,8 +156,9 @@ export function NeoBrutalistDashboard({
 
   // Load all attendance and daily tasks for calendar markers
   const allAttendance = useMemo(() => {
-    return AppStorage.getAttendanceRecords().filter((r) => r.userId === currentUser.id);
-  }, [currentUser.id, dataVersion, todayRecord]);
+    const list = propRecords || AppStorage.getAttendanceRecords();
+    return list.filter((r) => r.userId === currentUser.id);
+  }, [currentUser.id, dataVersion, todayRecord, propRecords]);
 
   const allDailyTasks = useMemo(() => {
     return AppStorage.getDailyTasks().filter((t) => t.userId === currentUser.id);
@@ -394,59 +413,51 @@ export function NeoBrutalistDashboard({
 
                   const att = allAttendance.find((a: AttendanceRecord) => a.date === dateStr);
                   const log = allDailyTasks.find((t: any) => t.date === dateStr);
+                  const dayStatus = getDailyStatus({
+                    user: { id: currentUser.id, name: currentUser.name },
+                    date: dateStr,
+                    records: allAttendance,
+                    leaves: allLeaves,
+                    today: todayDateStr,
+                  });
+                  const dayCell = getCalendarCell(dayStatus);
                   const hasAtt = !!att;
                   const hasLog = (log?.tasks && log.tasks.length > 0) || (att?.tasksDoneSummary && att.tasksDoneSummary.length > 0);
                   const isPendingLog = hasAtt && !hasLog;
+
+                  // Tentukan warna background dan status tanggal secara dinamis sesuai kehadiran & perizinan
+                  const statusLabel = dayCell.label;
+                  const bgClass = dayCell.bg;
+                  const borderClass = dayCell.isPlanned ? ` border-dashed` : dayCell.border;
+                  const textClass = dayCell.text;
 
                   return (
                     <button
                       key={i}
                       type="button"
                       onClick={() => setSelectedDate(dateStr)}
-                      title={isWeekend ? 'Hari Libur (Sabtu / Minggu)' : undefined}
-                      className={`py-1.5 rounded-xl font-medium transition-all relative flex flex-col items-center justify-center cursor-pointer ${
+                      title={`${dateStr} • ${statusLabel}`}
+                      className={`py-1.5 rounded-xl font-bold transition-all relative flex flex-col items-center justify-center cursor-pointer border ${bgClass} ${borderClass} ${textClass} ${
                         isSelected
                           ? isWeekend
-                            ? 'bg-[#1E3A8A] text-white font-extrabold shadow-sm ring-2 ring-[#1E3A8A] ring-offset-1 border border-red-500'
-                            : 'bg-[#1E3A8A] text-white font-extrabold shadow-sm ring-2 ring-[#1E3A8A] ring-offset-1'
-                          : hasAtt
-                          ? isWeekend
-                            ? 'bg-blue-100/90 text-[#1E3A8A] font-bold border border-red-500'
-                            : 'bg-blue-100/90 text-[#1E3A8A] font-bold border border-blue-200'
-                          : isToday
-                          ? isWeekend
-                            ? 'bg-blue-50 text-[#1E3A8A] font-semibold border border-red-500'
-                            : 'bg-blue-50 text-[#1E3A8A] font-semibold border border-blue-200/60'
-                          : isWeekend
-                          ? 'border border-red-500 text-red-600 bg-red-50/30 font-semibold hover:bg-red-50/60'
-                          : 'text-slate-700 hover:bg-slate-200/60 border border-transparent'
+                            ? 'ring-2 ring-red-500 ring-offset-2 shadow-sm scale-105 z-10'
+                            : 'ring-2 ring-[#1E3A8A] ring-offset-2 shadow-sm scale-105 z-10'
+                          : 'hover:brightness-95 hover:scale-[1.02]'
                       }`}
                     >
                       <span>{day}</span>
 
                       {/* Penanda Kehadiran & Logbook */}
                       <div className="flex items-center gap-0.5 justify-center mt-0.5 min-h-[4px]">
-                        {hasAtt && (
-                          <span
-                            title="Presensi Hadir"
-                            className={`w-1 h-1 rounded-full ${
-                              isSelected ? 'bg-white' : 'bg-emerald-500'
-                            }`}
-                          />
-                        )}
                         {hasLog ? (
                           <span
                             title="Logbook Terisi"
-                            className={`w-1 h-1 rounded-full ${
-                              isSelected ? 'bg-white' : 'bg-[#1E3A8A]'
-                            }`}
+                            className="w-1.5 h-1.5 rounded-full bg-[#1E3A8A]"
                           />
                         ) : isPendingLog ? (
                           <span
                             title="Belum Isi Logbook"
-                            className={`w-1 h-1 rounded-full animate-pulse ${
-                              isSelected ? 'bg-white' : 'bg-amber-500'
-                            }`}
+                            className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"
                           />
                         ) : null}
                       </div>
@@ -456,38 +467,80 @@ export function NeoBrutalistDashboard({
               </div>
             </div>
 
-            {/* Legend / Keterangan Penanda Singkat */}
-            <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-500 pt-2.5">
-              <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                Hadir
-              </span>
+            {/* Status Penanda Logbook */}
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[10px] text-slate-500 pt-2.5">
               <span className="flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#1E3A8A]" />
-                Logbook Terisi
+                <span>Titik Biru: Logbook Terisi</span>
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                Belum Isi Logbook
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-sm border border-rose-300 bg-rose-50/60" />
-                Libur (Sabtu &amp; Minggu)
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                <span>Titik Kuning: Belum Isi Logbook</span>
               </span>
             </div>
 
             {/* Indicator / Status Bawah Presensi */}
             <div className="pt-3">
               {todayRecord?.clockInTime ? (
-                <div className="w-full py-2.5 px-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-center text-xs font-semibold rounded-2xl flex items-center justify-center gap-2 shadow-2xs">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Presensi Masuk Tercatat Hari Ini ({todayRecord.clockInTime} WIB)</span>
+                <div className={`w-full py-2.5 px-3 sm:px-4 border rounded-2xl flex items-center gap-2.5 shadow-2xs ${
+                  isApprovedWfhToday
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                    : todayRecord.clockInStatus === 'LATE'
+                    ? 'bg-amber-50 border-amber-200 text-amber-900'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                }`}>
+                  <CheckCircle2 className={`w-4 h-4 shrink-0 self-start mt-0.5 ${
+                    isApprovedWfhToday
+                      ? 'text-indigo-600'
+                      : todayRecord.clockInStatus === 'LATE'
+                      ? 'text-amber-600'
+                      : 'text-emerald-600'
+                  }`} />
+                  <div className="flex-1 min-w-0 text-[11px] sm:text-xs font-semibold leading-relaxed flex flex-col items-start gap-0.5 text-left">
+                    <span className="font-bold text-slate-900">Presensi Masuk ({todayRecord.clockInTime} WIB)</span>
+                    {(() => {
+                      const isWfh = isApprovedWfhToday || todayRecord.workMode === 'WFH' || todayRecord.clockInLocationStatus === 'WFH_APPROVED';
+                      const isDinas = todayRecord.workMode === 'DINAS' || todayRecord.clockInLocationStatus === 'DINAS_APPROVED';
+                      const isLate = todayRecord.clockInStatus === 'LATE';
+                      const lateMin = todayRecord.clockInLateMinutes || 0;
+
+                      let statusBadgeText = 'Hadir';
+                      let statusBadgeColor = 'text-emerald-700 font-bold';
+
+                      if (isWfh) {
+                        statusBadgeText = isLate && lateMin > 0 ? `WFH • Terlambat (${lateMin}m)` : 'WFH';
+                        statusBadgeColor = isLate ? 'text-amber-700 font-bold' : 'text-indigo-700 font-bold';
+                      } else if (isDinas) {
+                        statusBadgeText = isLate && lateMin > 0 ? `Dinas Luar • Terlambat (${lateMin}m)` : 'Dinas Luar';
+                        statusBadgeColor = isLate ? 'text-amber-700 font-bold' : 'text-purple-700 font-bold';
+                      } else if (isLate) {
+                        statusBadgeText = lateMin > 0 ? `Terlambat (${lateMin}m)` : 'Terlambat';
+                        statusBadgeColor = 'text-amber-700 font-bold';
+                      }
+
+                      const locationText = isWfh
+                        ? 'Rumah / WFH'
+                        : isDinas
+                        ? 'Dinas Luar'
+                        : todayRecord.clockInLocationStatus === 'OUT_OF_RANGE'
+                        ? `Di Luar Kantor (${todayRecord.clockInDistanceMeter ? `${Math.round(todayRecord.clockInDistanceMeter)}m` : 'Luar Radius'})`
+                        : 'Di Kantor';
+
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap text-[11px] sm:text-xs">
+                          <span className={statusBadgeColor}>{statusBadgeText}</span>
+                          <span className="text-slate-400 font-normal">&bull;</span>
+                          <span className="text-slate-700 font-medium">{locationText}</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
               ) : (
                 <Tooltip content="Buka modal presensi untuk presensi masuk kantor hari ini" position="top" className="w-full">
                   <button
                     type="button"
-                    onClick={() => onOpenClockModal('CLOCK_IN')}
+                    onClick={() => onOpenClockModal()}
                     className="w-full py-3 px-4 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white text-xs font-bold rounded-2xl shadow-sm border border-[#1E3A8A] transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Clock className="w-4 h-4 text-white" />
@@ -704,9 +757,6 @@ export function NeoBrutalistDashboard({
                 Tugas Saya
               </h2>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Kelola tugas pribadi, pengerjaan harian (Today's), dan tinjau detail aktivitas tim.
-            </p>
           </div>
 
           <div className="flex items-center gap-2">

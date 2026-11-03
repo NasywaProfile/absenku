@@ -21,7 +21,10 @@ import { CompleteProfileModal } from './components/employee/CompleteProfileModal
 import { PendingApprovalScreen } from './components/auth/PendingApprovalScreen.tsx';
 import { ModernConfirmDialog } from './components/common/ModernConfirmDialog.tsx';
 import { AppStorage } from './lib/storage.ts';
-import { getCurrentDateString } from './lib/time-utils.ts';
+import { getApprovedLeaveForDate, isOffCategory } from './lib/attendance-status.ts';
+import { getCurrentDateString, getCurrentTimeString, calculateClockInPunctuality, calculateWorkDurationMinutes } from './lib/time-utils.ts';
+import { calculateHaversineDistance } from './lib/geo-utils.ts';
+import { saveAttendanceWithOfflineSupport } from './lib/offline-sync.ts';
 import { User, OfficeConfig, AttendanceRecord, LeaveRequest, TaskItem, UserRole } from './types/index.ts';
 
 export default function App() {
@@ -36,7 +39,7 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [showResetAppModal, setShowResetAppModal] = useState<boolean>(false);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState<string | null>(null);
-  const [clockModalType, setClockModalType] = useState<'CLOCK_IN' | 'CLOCK_OUT' | null>(null);
+  const [isClockInModalOpen, setIsClockInModalOpen] = useState<boolean>(false);
 
   // Muat state dari persistent local storage
   const loadData = useCallback(() => {
@@ -64,6 +67,12 @@ export default function App() {
   // Handler reset presensi hari ini
   const handleResetTodayAttendance = () => {
     AppStorage.clearTodayAttendance();
+    loadData();
+  };
+
+  // Handler hapus seluruh histori presensi
+  const handleClearAllAttendance = () => {
+    AppStorage.clearAllAttendance();
     loadData();
   };
 
@@ -140,6 +149,17 @@ export default function App() {
     loadData();
   };
 
+  const handlePurgeAllExceptSuperAdmin = () => {
+    AppStorage.purgeAllExceptSuperAdmin();
+    const freshUser = AppStorage.getCurrentUser();
+    if (freshUser) {
+      setCurrentUser(freshUser);
+      setSessionUser(freshUser);
+    }
+    loadData();
+    setActiveTab('employees');
+  };
+
   // Handler ACC Izin Cuti oleh Admin
   const handleApproveLeave = (leaveId: string) => {
     if (!currentUser) return;
@@ -190,6 +210,109 @@ export default function App() {
     setCurrentUser(updatedUser);
     setSessionUser(updatedUser);
     loadData();
+  };
+
+  // Auto-detect pergantian hari (00.01 Pagi / lewat tengah malam) untuk mereset tombol presensi masuk otomatis
+  useEffect(() => {
+    let lastDate = getCurrentDateString();
+    const timer = setInterval(() => {
+      const currentDate = getCurrentDateString();
+      if (currentDate !== lastDate) {
+        lastDate = currentDate;
+        loadData(); // Memuat ulang data untuk tanggal baru dan mereset status presensi
+      }
+    }, 5000);
+
+    return () => clearInterval(timer);
+  }, [loadData]);
+
+  // Handler Presensi Langsung (Tanpa Popup Modal) saat tombol diklik di beranda
+  const handleDirectClockAction = () => {
+    if (!currentUser || !officeConfig) return;
+
+    const currentTime = getCurrentTimeString();
+    const currentDate = getCurrentDateString();
+
+    // HANYA BISA ABSEN SEKALI PER HARI (Jika sudah presensi masuk hari ini, hentikan)
+    if (todayRecord?.clockInTime) {
+      return;
+    }
+
+    const userLeaves = AppStorage.getLeaveRequests();
+    const todayApprovedLeave = getApprovedLeaveForDate(
+      userLeaves,
+      { id: currentUser.id, name: currentUser.name },
+      currentDate
+    );
+    const isOffToday = Boolean(todayApprovedLeave && isOffCategory(todayApprovedLeave.category));
+    if (isOffToday) {
+      alert(`Hari ini Anda berstatus OFF (${todayApprovedLeave?.category === 'SICK' ? 'Sakit' : 'Cuti / Izin'}) sehingga bebas presensi.`);
+      return;
+    }
+
+    const punctuality = calculateClockInPunctuality(
+      currentTime,
+      officeConfig.workStartHour || '08:00',
+      officeConfig.gracePeriodMinutes || 0
+    );
+
+    const executeSave = (lat: number, lng: number) => {
+      const officeCoords = {
+        latitude: officeConfig.latitude || -7.9439,
+        longitude: officeConfig.longitude || 112.6322,
+      };
+      const dist = calculateHaversineDistance({ latitude: lat, longitude: lng }, officeCoords);
+      const isGeofenceActive = officeConfig.isGeofenceActive ?? true;
+      const radiusMeters = officeConfig.geofenceRadiusMeter || 100;
+      const withinRadius = isGeofenceActive ? dist <= radiusMeters : true;
+
+      const isWfhApproved = todayApprovedLeave?.category === 'WFH';
+      const isBusinessTripApproved = todayApprovedLeave?.category === 'BUSINESS_TRIP';
+
+      const locationStatus = isBusinessTripApproved
+        ? 'DINAS_APPROVED'
+        : isWfhApproved
+        ? 'WFH_APPROVED'
+        : withinRadius
+        ? 'IN_OFFICE'
+        : 'OUT_OF_RANGE';
+
+      const newRecord: AttendanceRecord = {
+        id: `att-${Date.now()}`,
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userAvatar: currentUser.avatar,
+        department: currentUser.department,
+        employmentType: currentUser.employmentType || 'CONTRACT',
+        workMode:
+          locationStatus === 'DINAS_APPROVED'
+            ? 'DINAS'
+            : locationStatus === 'WFH_APPROVED'
+            ? 'WFH'
+            : 'WFO',
+        date: currentDate,
+        clockInTime: currentTime,
+        clockInLat: lat,
+        clockInLng: lng,
+        clockInDistanceMeter: dist,
+        clockInLocationStatus: locationStatus,
+        clockInStatus: punctuality.status,
+        clockInLateMinutes: punctuality.lateMinutes,
+      };
+
+      saveAttendanceWithOfflineSupport(newRecord, 'CLOCK_IN');
+      loadData();
+    };
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => executeSave(pos.coords.latitude, pos.coords.longitude),
+        () => executeSave(officeConfig.latitude || -7.978645, officeConfig.longitude || 112.630541),
+        { timeout: 3000, enableHighAccuracy: true }
+      );
+    } else {
+      executeSave(officeConfig.latitude || -7.978645, officeConfig.longitude || 112.630541);
+    }
   };
 
   // JIKA BELUM LOGIN: TAMPILKAN AUTH GATEWAY (LOGIN / REGISTER KARYAWAN)
@@ -252,17 +375,6 @@ export default function App() {
           loadData();
         }}
         onLogout={handleLogout}
-        onSwitchToAdmin={() => {
-          const adminUser = users.find((u) => u.role === 'SUPER_ADMIN' || u.role === 'ADMIN') || users[0];
-          if (adminUser) {
-            AppStorage.setSessionUser(adminUser.id);
-            AppStorage.setCurrentUserId(adminUser.id);
-            setSessionUser(adminUser);
-            setCurrentUser(adminUser);
-            setActiveTab('dashboard');
-            loadData();
-          }
-        }}
       />
     );
   }
@@ -328,6 +440,8 @@ export default function App() {
                 onApproveTask={handleApproveTask}
                 onRequestTaskRevision={handleRequestTaskRevision}
                 onDeleteTask={handleDeleteTask}
+                todayRecord={todayRecord}
+                onOpenClockModal={() => setIsClockInModalOpen(true)}
                 onNavigateTab={(tab) => setActiveTab(tab)}
                 onOpenSettingsModal={() => setShowSettingsModal(true)}
                 onUpdateUser={handleUpdateEmployee}
@@ -406,6 +520,7 @@ export default function App() {
                   if (u) handleUpdateEmployee({ ...u, status: u.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' });
                 }}
                 onUpdateRecord={handleUpdateAttendanceRecord}
+                onClearAllAttendance={handleClearAllAttendance}
               />
             )}
 
@@ -431,6 +546,7 @@ export default function App() {
                 onDeleteUser={handleDeleteEmployee}
                 onApproveRegistration={handleApproveRegistration}
                 onRejectRegistration={handleRejectRegistration}
+                onPurgeAllExceptSuperAdmin={handlePurgeAllExceptSuperAdmin}
               />
             )}
 
@@ -469,7 +585,7 @@ export default function App() {
                 records={records}
                 tasks={tasks}
                 leaves={leaves}
-                onOpenClockModal={(type) => setClockModalType(type)}
+                onOpenClockModal={() => setIsClockInModalOpen(true)}
                 onNavigateTab={(tab) => setActiveTab(tab)}
                 onSwitchUser={handleSwitchUser}
                 onResetTodayAttendance={handleResetTodayAttendance}
@@ -495,6 +611,7 @@ export default function App() {
                 leaves={leaves}
                 dailyTasks={AppStorage.getDailyTasks()}
                 onUpdateRecord={handleUpdateAttendanceRecord}
+                onClearAllAttendance={handleClearAllAttendance}
               />
             )}
 
@@ -543,16 +660,16 @@ export default function App() {
         )}
       </AppShell>
 
-      {/* Clock In / Out Modal Popup */}
-      {clockModalType && (
+      {/* Clock In Modal Popup */}
+      {isClockInModalOpen && (
         <ClockInOutModal
-          type={clockModalType}
+          type="CLOCK_IN"
           currentUser={currentUser}
           officeConfig={officeConfig}
           existingTodayRecord={todayRecord}
-          onClose={() => setClockModalType(null)}
+          onClose={() => setIsClockInModalOpen(false)}
           onSuccess={() => {
-            setClockModalType(null);
+            setIsClockInModalOpen(false);
             loadData();
           }}
         />
@@ -572,6 +689,7 @@ export default function App() {
         <CompleteProfileModal
           currentUser={currentUser}
           onComplete={handleCompleteProfile}
+          onLogout={handleLogout}
         />
       )}
 

@@ -31,29 +31,167 @@ import {
   INITIAL_OFFICE_CONFIG,
   INITIAL_CHAT_TOPICS,
 } from './mock-data.ts';
+import {
+  findConflictingLeave,
+  getApprovedLeaveForDate,
+  countInclusiveDays,
+  shiftDate,
+  isDateInRange,
+  LEAVE_CATEGORY_LABEL,
+} from './attendance-status.ts';
+import { storeAttachmentInIDB } from './attachment-storage.ts';
+import { hashPassword, verifyPassword, isPasswordEncrypted } from './crypto-utils.ts';
+import { ApiClient } from './api-client.ts';
 
 const STORAGE_KEYS = {
-  USERS: 'absenku_users_v5',
-  CURRENT_USER_ID: 'absenku_current_user_id_v5',
-  ATTENDANCE: 'absenku_attendance_v5',
-  DAILY_TASKS: 'absenku_daily_tasks_v5',
-  TASKS: 'absenku_kanban_tasks_v5',
-  LEAVES: 'absenku_leaves_v5',
-  EMAILS: 'absenku_emails_v5',
-  MESSAGES: 'absenku_discussion_v5',
-  IDEAS: 'absenku_ideas_v5',
-  OFFICE_CONFIG: 'absenku_office_config_v5',
-  CHAT_TOPICS: 'absenku_chat_topics_v5',
+  USERS: 'absenku_users_v9',
+  CURRENT_USER_ID: 'absenku_current_user_id_v9',
+  ATTENDANCE: 'absenku_attendance_v9',
+  DAILY_TASKS: 'absenku_daily_tasks_v9',
+  TASKS: 'absenku_kanban_tasks_v9',
+  LEAVES: 'absenku_leaves_v9',
+  EMAILS: 'absenku_emails_v9',
+  MESSAGES: 'absenku_discussion_v9',
+  IDEAS: 'absenku_ideas_v9',
+  OFFICE_CONFIG: 'absenku_office_config_v9',
+  CHAT_TOPICS: 'absenku_chat_topics_v9',
 };
 
-// Bersihkan data dummy versi lama dari localStorage pengguna
-try {
-  const oldKeys = Object.keys(localStorage);
-  oldKeys.forEach((key) => {
-    if (key.startsWith('absenku_') && !key.endsWith('_v5')) {
-      localStorage.removeItem(key);
+/**
+ * Safe wrapper untuk localStorage.setItem yang mampu menangani QuotaExceededError
+ * secara otomatis dengan memindahkan berkas base64 besar ke IndexedDB.
+ */
+function safeSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err: any) {
+    console.warn(`[AppStorage] LocalStorage kuota terlampaui saat menulis ke "${key}". Memulai mitigasi pembebasan kuota...`, err);
+
+    if (key === STORAGE_KEYS.LEAVES) {
+      try {
+        const parsed: LeaveRequest[] = JSON.parse(value);
+        const sanitized = parsed.map((l) => {
+          if (l.attachmentData && l.attachmentData.length > 500) {
+            const attId = `leave_att_${l.id}`;
+            storeAttachmentInIDB(attId, l.attachmentData).catch(() => {});
+            return {
+              ...l,
+              attachmentData: `idb:${attId}`,
+            };
+          }
+          return l;
+        });
+        localStorage.setItem(key, JSON.stringify(sanitized));
+        console.info('[AppStorage] Berhasil memangkas dan menyimpan leaves ke localStorage via IndexedDB.');
+        return;
+      } catch (e1) {
+        try {
+          const parsed: LeaveRequest[] = JSON.parse(value);
+          const stripped = parsed.map((l) => ({ ...l, attachmentData: undefined }));
+          localStorage.setItem(key, JSON.stringify(stripped));
+          console.info('[AppStorage] Berhasil menyimpan stripped leaves ke localStorage.');
+          return;
+        } catch (e2) {}
+      }
     }
-  });
+
+    if (key === STORAGE_KEYS.ATTENDANCE) {
+      try {
+        const parsed: AttendanceRecord[] = JSON.parse(value);
+        const stripped = parsed.map((a) => {
+          if (a.clockInPhoto && a.clockInPhoto.length > 1000) {
+            return { ...a, clockInPhoto: undefined };
+          }
+          return a;
+        });
+        localStorage.setItem(key, JSON.stringify(stripped));
+        return;
+      } catch (e3) {}
+    }
+
+    // Bersihkan temporary data jika masih penuh
+    try {
+      localStorage.removeItem('absenku_offline_queue');
+      localStorage.setItem(key, value);
+    } catch (finalErr) {
+      console.error(`[AppStorage] Gagal menyelamatkan key "${key}":`, finalErr);
+    }
+  }
+}
+
+// Auto-sanitasi pada saat inisialisasi: bersihkan data base64 raksasa di absenku_leaves_v9 yang ada di browser pengguna saat ini
+try {
+  const existingLeavesRaw = localStorage.getItem(STORAGE_KEYS.LEAVES);
+  if (existingLeavesRaw && (existingLeavesRaw.includes('data:application/pdf') || existingLeavesRaw.includes('data:image/'))) {
+    const parsedLeaves: LeaveRequest[] = JSON.parse(existingLeavesRaw);
+    let hasBig = false;
+    const cleaned = parsedLeaves.map((l) => {
+      if (l.attachmentData && l.attachmentData.startsWith('data:') && l.attachmentData.length > 500) {
+        hasBig = true;
+        const attId = `leave_att_${l.id}`;
+        storeAttachmentInIDB(attId, l.attachmentData).catch(() => {});
+        return { ...l, attachmentData: `idb:${attId}` };
+      }
+      return l;
+    });
+    if (hasBig) {
+      localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify(cleaned));
+      console.info('[AppStorage] Berhasil memindahkan lampiran base64 lama ke IndexedDB dan melegakan kuota LocalStorage.');
+    }
+  }
+} catch (sanitiseErr) {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.LEAVES);
+    if (raw) {
+      const parsed: LeaveRequest[] = JSON.parse(raw);
+      const stripped = parsed.map((l) => ({ ...l, attachmentData: undefined }));
+      localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify(stripped));
+    }
+  } catch (_) {}
+}
+
+// Bersihkan semua data pengguna lama dan seluruh histori kecuali akun Super Admin
+const PURGE_FLAG = 'absenku_purged_except_superadmin_v9';
+try {
+  const isPurged = localStorage.getItem(PURGE_FLAG);
+  if (!isPurged) {
+    const oldKeys = Object.keys(localStorage);
+    oldKeys.forEach((key) => {
+      if (key.startsWith('absenku_') && !key.endsWith('_v9')) {
+        // Pertahankan konfigurasi kantor (koordinat jam kerja) jika sebelumnya sudah diatur
+        if (key.includes('office_config') && !localStorage.getItem(STORAGE_KEYS.OFFICE_CONFIG)) {
+          const existingConfig = localStorage.getItem(key);
+          if (existingConfig) {
+            localStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, existingConfig);
+          }
+        }
+        localStorage.removeItem(key);
+      }
+    });
+
+    // Simpan HANYA Super Admin
+    const superAdminOnly = INITIAL_USERS.filter((u) => u.role === 'SUPER_ADMIN');
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(superAdminOnly));
+    // Sesi tidak boleh dibuat otomatis: pengguna WAJIB login terlebih dahulu
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID);
+
+    // Kosongkan semua histori presensi, tugas, cuti/izin, notifikasi, dan pesan
+    localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.DAILY_TASKS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.EMAILS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.IDEAS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.CHAT_TOPICS, JSON.stringify([]));
+    localStorage.removeItem('absenku_offline_queue');
+
+    if (!localStorage.getItem(STORAGE_KEYS.OFFICE_CONFIG)) {
+      localStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(INITIAL_OFFICE_CONFIG));
+    }
+
+    localStorage.setItem(PURGE_FLAG, 'true');
+  }
 } catch (_) {}
 
 export const AppStorage = {
@@ -96,10 +234,36 @@ export const AppStorage = {
   },
 
   getCurrentUser(): User | null {
-    const users = this.getUsers();
+    // Tanpa sesi aktif => tidak ada pengguna (WAJIB login). Tidak boleh ada fallback otomatis
+    // ke Super Admin karena itu melewati halaman login.
     const currentId = this.getCurrentUserId();
     if (!currentId) return null;
-    return users.find((u) => u.id === currentId) || null;
+    const found = this.getUsers().find((u) => u.id === currentId);
+    if (!found) {
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID);
+      return null;
+    }
+    return found;
+  },
+
+  purgeAllExceptSuperAdmin(): void {
+    const users = this.getUsers();
+    let superAdmin = users.find((u) => u.role === 'SUPER_ADMIN');
+    if (!superAdmin) {
+      superAdmin = INITIAL_USERS.find((u) => u.role === 'SUPER_ADMIN') || INITIAL_USERS[0];
+    }
+    const superAdminOnly = [superAdmin];
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(superAdminOnly));
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, superAdmin.id);
+    localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.DAILY_TASKS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.EMAILS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.IDEAS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.CHAT_TOPICS, JSON.stringify([]));
+    localStorage.removeItem('absenku_offline_queue');
   },
 
   getUserById(id: string): User | null {
@@ -130,10 +294,49 @@ export const AppStorage = {
         (cleanId === 'superadmin' && u.role === 'SUPER_ADMIN')
     );
     if (!found) return null;
-    if (password && found.password && found.password !== password) {
+    // Password WAJIB diisi dan harus cocok (tidak ada lagi bypass dengan password kosong)
+    if (!password || !found.password || !verifyPassword(password, found.password)) {
       return null;
     }
+    // Migrasi otomatis password plaintext lama menjadi hash
+    if (!isPasswordEncrypted(found.password)) {
+      found.password = hashPassword(password);
+      this.updateUser(found);
+    }
     return found;
+  },
+
+  /**
+   * Reset password mandiri. Hanya untuk akun karyawan biasa dengan email DAN nama lengkap
+   * yang sama persis. Akun ADMIN / SUPER_ADMIN tidak dapat direset lewat jalur ini.
+   * (Catatan: reset aman sepenuhnya memerlukan verifikasi email dari backend.)
+   */
+  resetPasswordSelfService(
+    email: string,
+    fullName: string,
+    newPassword: string
+  ): { success: boolean; message?: string } {
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, message: 'Password baru minimal terdiri dari 6 karakter.' };
+    }
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = fullName.trim().toLowerCase();
+    const users = this.getUsers();
+    const matched = users.find(
+      (u) => u.email.toLowerCase() === cleanEmail && u.name.trim().toLowerCase() === cleanName
+    );
+    if (!matched) {
+      return { success: false, message: 'Data karyawan tidak ditemukan. Pastikan email dan nama lengkap sesuai.' };
+    }
+    if (matched.role !== 'EMPLOYEE') {
+      return {
+        success: false,
+        message: 'Reset password akun Admin / Super Admin tidak dapat dilakukan mandiri. Hubungi Super Admin.',
+      };
+    }
+    matched.password = hashPassword(newPassword.trim());
+    this.updateUser(matched);
+    return { success: true };
   },
 
   registerEmployee(data: {
@@ -147,7 +350,7 @@ export const AppStorage = {
     const res = this.registerNewUser({
       name: data.name,
       email: data.email,
-      password: data.password || 'password123',
+      password: data.password,
       phone: '',
       department: data.department || 'Operasional',
       position: data.position || 'Staf',
@@ -173,6 +376,37 @@ export const AppStorage = {
   deleteUser(userId: string): void {
     const users = this.getUsers().filter((u) => u.id !== userId);
     this.saveUsers(users);
+    const att = this.getAttendanceRecords().filter((a: AttendanceRecord) => a.userId !== userId);
+    this.saveAttendanceRecords(att);
+    const leaves = this.getLeaves().filter((l: LeaveRequest) => l.userId !== userId);
+    this.saveLeaves(leaves);
+    const tasks = this.getDailyTasks().filter((t: DailyTaskLog) => t.userId !== userId);
+    this.saveDailyTasks(tasks);
+
+    // Bersihkan tugas Kanban: hapus tugas yang hanya ditugaskan ke karyawan ini,
+    // dan lepaskan karyawan dari tugas yang dikerjakan bersama.
+    const cleanedKanban: TaskItem[] = [];
+    for (const t of this.getTasks()) {
+      const assignees = t.assignees && t.assignees.length > 0 ? t.assignees : undefined;
+      if (assignees) {
+        const remaining = assignees.filter((a) => a.id !== userId);
+        if (remaining.length === 0) continue;
+        if (remaining.length !== assignees.length) {
+          cleanedKanban.push({
+            ...t,
+            assignees: remaining,
+            assignedTo: t.assignedTo === userId ? remaining[0].id : t.assignedTo,
+            assignedName: t.assignedTo === userId ? remaining[0].name : t.assignedName,
+            assignedAvatar: t.assignedTo === userId ? remaining[0].avatar || '' : t.assignedAvatar,
+          });
+          continue;
+        }
+      } else if (t.assignedTo === userId) {
+        continue;
+      }
+      cleanedKanban.push(t);
+    }
+    this.saveTasks(cleanedKanban);
   },
 
   // Registrasi Akun Baru (WAJIB PENDING_APPROVAL)
@@ -193,6 +427,10 @@ export const AppStorage = {
     const users = this.getUsers();
     const emailNormalized = data.email.toLowerCase().trim();
 
+    if (!data.password || data.password.length < 6) {
+      return { success: false, message: 'Password wajib diisi minimal 6 karakter.' };
+    }
+
     if (users.some((u) => u.email.toLowerCase() === emailNormalized)) {
       return { success: false, message: 'Alamat email sudah terdaftar dalam sistem.' };
     }
@@ -201,7 +439,7 @@ export const AppStorage = {
       id: `usr_${Date.now()}`,
       name: data.name.trim(),
       email: emailNormalized,
-      password: data.password || 'password123',
+      password: hashPassword(data.password || ''),
       role: 'EMPLOYEE',
       status: 'PENDING_APPROVAL', // Wajib persetujuan Admin/Super Admin
       employmentType: data.employmentType,
@@ -245,6 +483,7 @@ export const AppStorage = {
       return u;
     });
     this.saveUsers(updated);
+    ApiClient.approveUser(userId).catch(() => {});
   },
 
   // Penolakan / Penghapusan Registrasi Akun Baru
@@ -255,6 +494,7 @@ export const AppStorage = {
     const users = this.getUsers();
     const updated = users.filter((u) => u.id !== userId);
     this.saveUsers(updated);
+    ApiClient.rejectUser(userId).catch(() => {});
   },
 
   // Promosi Role: Super Admin dapat mengangkat user menjadi Admin atau Super Admin
@@ -327,27 +567,40 @@ export const AppStorage = {
     try {
       const records: AttendanceRecord[] = JSON.parse(raw);
       let changed = false;
+      // Exclude Super Admin records
+      const activeRecords = records.filter(
+        (r) => r.userId !== 'usr_super_admin' && r.userName?.toLowerCase() !== 'super admin'
+      );
+      if (activeRecords.length !== records.length) {
+        changed = true;
+      }
       // Merge record dari INITIAL_ATTENDANCE jika belum ada
       INITIAL_ATTENDANCE.forEach((initRecord) => {
-        if (!records.some((r) => r.id === initRecord.id)) {
-          records.push(initRecord);
+        if (!activeRecords.some((r) => r.id === initRecord.id) && initRecord.userId !== 'usr_super_admin') {
+          activeRecords.push(initRecord);
           changed = true;
         }
       });
       if (changed) {
-        localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(records));
+        localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(activeRecords));
       }
-      return records;
+      return activeRecords;
     } catch {
       return INITIAL_ATTENDANCE;
     }
   },
 
   saveAttendanceRecords(records: AttendanceRecord[]): void {
-    localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(records));
+    const filtered = records.filter(
+      (r) => r.userId !== 'usr_super_admin' && r.userName?.toLowerCase() !== 'super admin'
+    );
+    safeSetItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(filtered));
   },
 
   recordClockIn(newRecord: AttendanceRecord): void {
+    if (newRecord.userId === 'usr_super_admin' || newRecord.userName?.toLowerCase() === 'super admin') {
+      return;
+    }
     const records = this.getAttendanceRecords();
     // Cegah duplikasi di hari yang sama untuk user yang sama
     const filtered = records.filter(
@@ -355,6 +608,19 @@ export const AppStorage = {
     );
     filtered.unshift(newRecord);
     this.saveAttendanceRecords(filtered);
+
+    // Kirim presensi ke Laravel Backend & MySQL
+    ApiClient.clockIn({
+      clock_in_time: newRecord.clockInTime,
+      clock_in_lat: newRecord.clockInLat,
+      clock_in_lng: newRecord.clockInLng,
+      clock_in_distance_meter: newRecord.clockInDistanceMeter,
+      clock_in_location_status: newRecord.clockInLocationStatus,
+      clock_in_status: newRecord.clockInStatus,
+      clock_in_late_minutes: newRecord.clockInLateMinutes,
+      work_mode: newRecord.workMode,
+      notes: newRecord.notes,
+    }).catch(() => {});
   },
 
   saveAttendanceRecord(newRecord: AttendanceRecord): void {
@@ -377,6 +643,24 @@ export const AppStorage = {
       (r) => !(r.userId === curUserId && r.date === today)
     );
     this.saveAttendanceRecords(records);
+  },
+
+  clearAllAttendance(): void {
+    this.saveAttendanceRecords([]);
+  },
+
+  clearPastTestHistory(): void {
+    const today = new Date().toISOString().substring(0, 10);
+
+    // 1. Bersihkan riwayat presensi lampau (sebelum hari ini)
+    const records = this.getAttendanceRecords();
+    const todayRecords = records.filter((r) => r.date >= today);
+    this.saveAttendanceRecords(todayRecords);
+
+    // 2. Bersihkan riwayat pengajuan izin/WFH lampau (sebelum hari ini)
+    const leaves = this.getLeaves();
+    const todayLeaves = leaves.filter((l) => l.endDate >= today);
+    this.saveLeaves(todayLeaves);
   },
 
   addToOfflineQueue(item: any): void {
@@ -818,22 +1102,28 @@ export const AppStorage = {
     try {
       const parsed: LeaveRequest[] = JSON.parse(raw);
       let hasUpdate = false;
-      parsed.forEach((l) => {
+      const activeLeaves = parsed.filter(
+        (l) => l.userId !== 'usr_super_admin' && l.userName?.toLowerCase() !== 'super admin'
+      );
+      if (activeLeaves.length !== parsed.length) {
+        hasUpdate = true;
+      }
+      activeLeaves.forEach((l) => {
         if ((l.category as string) === 'ANNUAL') {
           l.category = 'LEAVE';
           hasUpdate = true;
         }
       });
       for (const initL of INITIAL_LEAVES) {
-        if (!parsed.some((l) => l.id === initL.id)) {
-          parsed.push(initL);
+        if (!activeLeaves.some((l) => l.id === initL.id) && initL.userId !== 'usr_super_admin') {
+          activeLeaves.push(initL);
           hasUpdate = true;
         }
       }
       if (hasUpdate) {
-        localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify(parsed));
+        localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify(activeLeaves));
       }
-      return parsed;
+      return activeLeaves;
     } catch {
       return INITIAL_LEAVES;
     }
@@ -844,7 +1134,18 @@ export const AppStorage = {
   },
 
   saveLeaves(leaves: LeaveRequest[]): void {
-    localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify(leaves));
+    const sanitized = leaves.map((l) => {
+      if (l.attachmentData && l.attachmentData.startsWith('data:') && l.attachmentData.length > 500) {
+        const attId = `leave_att_${l.id}`;
+        storeAttachmentInIDB(attId, l.attachmentData).catch(() => {});
+        return {
+          ...l,
+          attachmentData: `idb:${attId}`,
+        };
+      }
+      return l;
+    });
+    safeSetItem(STORAGE_KEYS.LEAVES, JSON.stringify(sanitized));
   },
 
   submitLeaveRequest(
@@ -861,8 +1162,34 @@ export const AppStorage = {
     }
   ): LeaveRequest {
     const leaves = this.getLeaves();
+
+    // VALIDASI 1: tanggal akhir tidak boleh sebelum tanggal mulai
+    if (!data.startDate || !data.endDate || data.endDate < data.startDate) {
+      throw new Error('Tanggal selesai tidak boleh lebih awal dari tanggal mulai.');
+    }
+
+    // VALIDASI 2: tidak boleh bertabrakan dengan pengajuan lain (menunggu / disetujui)
+    const conflict = findConflictingLeave(leaves, { id: user.id, name: user.name }, data.startDate, data.endDate);
+    if (conflict) {
+      const conflictLabel = LEAVE_CATEGORY_LABEL[conflict.category] || conflict.category;
+      const conflictStatus = conflict.status === 'APPROVED' ? 'sudah disetujui' : 'masih menunggu persetujuan';
+      throw new Error(
+        `Tanggal bertabrakan dengan pengajuan ${conflictLabel} (${conflict.startDate}${
+          conflict.endDate !== conflict.startDate ? ` s/d ${conflict.endDate}` : ''
+        }) yang ${conflictStatus}. Batalkan pengajuan tersebut atau pilih tanggal lain.`
+      );
+    }
+
+    const id = `leave_${Date.now()}`;
+    let finalAttachmentData = data.attachmentData;
+    if (data.attachmentData && data.attachmentData.startsWith('data:') && data.attachmentData.length > 500) {
+      const attId = `leave_att_${id}`;
+      storeAttachmentInIDB(attId, data.attachmentData).catch(() => {});
+      finalAttachmentData = `idb:${attId}`;
+    }
+
     const newLeave: LeaveRequest = {
-      id: `leave_${Date.now()}`,
+      id,
       userId: user.id,
       userName: user.name,
       userAvatar: user.avatar,
@@ -874,7 +1201,7 @@ export const AppStorage = {
       totalDays: data.totalDays,
       reason: data.reason,
       attachmentName: data.attachmentName,
-      attachmentData: data.attachmentData,
+      attachmentData: finalAttachmentData,
       attachmentType: data.attachmentType,
       status: 'PENDING',
       appliedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -882,6 +1209,18 @@ export const AppStorage = {
 
     leaves.unshift(newLeave);
     this.saveLeaves(leaves);
+
+    // Kirim pengajuan ke Laravel Backend & MySQL
+    ApiClient.createLeave({
+      category: newLeave.category,
+      start_date: newLeave.startDate,
+      end_date: newLeave.endDate,
+      total_days: newLeave.totalDays,
+      reason: newLeave.reason,
+      attachment_name: newLeave.attachmentName,
+      attachment_data: newLeave.attachmentData,
+      attachment_type: newLeave.attachmentType,
+    }).catch(() => {});
 
     // TRIGGER EMAIL NOTIFIKASI OTOMATIS KE ADMIN
     const categoryLabels: Record<LeaveCategory, string> = {
@@ -924,43 +1263,200 @@ export const AppStorage = {
     }
   },
 
+  /**
+   * Menyelaraskan record presensi seorang karyawan dengan pengajuan WFH / Dinas Luar yang DISETUJUI.
+   * - Hari yang tertutup izin WFH  -> record ditandai WFH (WFH_APPROVED)
+   * - Hari yang tertutup Dinas Luar -> record ditandai Dinas Luar (DINAS_APPROVED)
+   * - Hari yang sebelumnya bertanda remote tetapi izinnya sudah tidak ada -> dikembalikan ke kantor / luar radius
+   * Dipanggil setiap kali pengajuan disetujui, ditolak, dibatalkan, atau dipecah.
+   */
+  reconcileRemoteRecords(user: { id: string; name: string }): void {
+    const leaves = this.getLeaves();
+    const records = this.getAttendanceRecords();
+    let changed = false;
+
+    const next = records.map((r) => {
+      const isTarget =
+        r.userId === user.id || r.userName?.toLowerCase() === user.name?.toLowerCase();
+      if (!isTarget) return r;
+
+      const leave = getApprovedLeaveForDate(leaves, user, r.date);
+      const isRemoteFlagged =
+        r.clockInLocationStatus === 'WFH_APPROVED' ||
+        r.clockInLocationStatus === 'DINAS_APPROVED' ||
+        r.workMode === 'WFH' ||
+        r.workMode === 'DINAS';
+
+      // Izin OFF menang: record dibiarkan sebagai arsip
+      if (leave && (leave.category === 'LEAVE' || leave.category === 'SICK')) return r;
+
+      if (leave && leave.category === 'WFH') {
+        if (r.workMode === 'WFH' && r.clockInLocationStatus === 'WFH_APPROVED') return r;
+        changed = true;
+        return { ...r, workMode: 'WFH' as const, clockInLocationStatus: 'WFH_APPROVED' as const };
+      }
+
+      if (leave && leave.category === 'BUSINESS_TRIP') {
+        if (r.workMode === 'DINAS' && r.clockInLocationStatus === 'DINAS_APPROVED') return r;
+        changed = true;
+        return { ...r, workMode: 'DINAS' as const, clockInLocationStatus: 'DINAS_APPROVED' as const };
+      }
+
+      // Tidak ada izin remote lagi, tetapi record masih bertanda remote -> kembalikan
+      if (isRemoteFlagged) {
+        changed = true;
+        const outOfRange = r.clockInDistanceMeter !== undefined && r.clockInDistanceMeter > 100;
+        return {
+          ...r,
+          workMode: 'WFO' as const,
+          clockInLocationStatus: outOfRange ? ('OUT_OF_RANGE' as const) : ('IN_OFFICE' as const),
+        };
+      }
+      return r;
+    });
+
+    if (changed) this.saveAttendanceRecords(next);
+  },
+
   approveLeave(leaveId: string, reviewerName: string): void {
     const leaves = this.getLeaves();
+    let approvedLeave: LeaveRequest | undefined;
     const updated = leaves.map((l) => {
       if (l.id === leaveId) {
-        return {
+        approvedLeave = {
           ...l,
           status: 'APPROVED' as const,
           reviewedBy: reviewerName,
           reviewedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
         };
+        return approvedLeave;
       }
       return l;
     });
     this.saveLeaves(updated);
+
+    if (approvedLeave) {
+      this.reconcileRemoteRecords({ id: approvedLeave.userId, name: approvedLeave.userName });
+      ApiClient.approveLeave(leaveId).catch(() => {});
+    }
   },
 
   rejectLeave(leaveId: string, reason: string, reviewerName: string): void {
     const leaves = this.getLeaves();
+    let rejectedLeave: LeaveRequest | undefined;
     const updated = leaves.map((l) => {
       if (l.id === leaveId) {
-        return {
+        rejectedLeave = {
           ...l,
           status: 'REJECTED' as const,
           rejectionReason: reason,
           reviewedBy: reviewerName,
           reviewedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
         };
+        return rejectedLeave;
       }
       return l;
     });
     this.saveLeaves(updated);
+
+    if (rejectedLeave) {
+      this.reconcileRemoteRecords({ id: rejectedLeave.userId, name: rejectedLeave.userName });
+      ApiClient.rejectLeave(leaveId, reason).catch(() => {});
+    }
   },
 
   deleteLeaveRequest(leaveId: string): void {
     const leaves = this.getLeaves();
+    const target = leaves.find((l) => l.id === leaveId);
     const updated = leaves.filter((l) => l.id !== leaveId);
     this.saveLeaves(updated);
+    ApiClient.deleteLeave(leaveId).catch(() => {});
+
+    // Jika yang dibatalkan adalah izin yang sudah disetujui, kembalikan record presensi terkait
+    if (target) {
+      this.reconcileRemoteRecords({ id: target.userId, name: target.userName });
+    }
+  },
+
+  /**
+   * Menetapkan status perizinan untuk SATU HARI saja (dipakai Edit Presensi oleh Admin).
+   * Pengajuan multi-hari yang menutupi hari tersebut DIPECAH menjadi "sebelum" dan "sesudah",
+   * sehingga hari-hari lain pada pengajuan yang sama tidak ikut berubah / terhapus.
+   * category = 'NONE' berarti menghapus izin pada hari itu saja.
+   */
+  setLeaveCategoryForDate(
+    user: { id: string; name: string; avatar?: string; department?: string; employmentType?: any },
+    date: string,
+    category: LeaveCategory | 'NONE',
+    options: { reason?: string; reviewerName?: string } = {}
+  ): void {
+    const reviewerName = options.reviewerName || 'Administrator';
+    const stamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const leaves = this.getLeaves();
+
+    const isTarget = (l: LeaveRequest) =>
+      l.userId === user.id || l.userName?.toLowerCase() === user.name?.toLowerCase();
+
+    const covering = leaves.filter(
+      (l) => isTarget(l) && l.status === 'APPROVED' && isDateInRange(date, l.startDate, l.endDate)
+    );
+    const sameCategory = category !== 'NONE' ? covering.find((l) => l.category === category) : undefined;
+
+    const result: LeaveRequest[] = leaves.filter((l) => !covering.includes(l));
+    let seq = 0;
+
+    covering.forEach((l) => {
+      if (l === sameCategory) {
+        // Kategori sama: pertahankan apa adanya (hanya perbarui alasan bila diisi admin)
+        result.push(options.reason?.trim() ? { ...l, reason: options.reason.trim() } : l);
+        return;
+      }
+      // Pecah: sebelum hari ini & sesudah hari ini tetap memakai kategori semula
+      if (l.startDate < date) {
+        const endBefore = shiftDate(date, -1);
+        result.push({
+          ...l,
+          id: `${l.id}_a${seq++}`,
+          endDate: endBefore,
+          totalDays: countInclusiveDays(l.startDate, endBefore),
+        });
+      }
+      if (l.endDate > date) {
+        const startAfter = shiftDate(date, 1);
+        result.push({
+          ...l,
+          id: `${l.id}_b${seq++}`,
+          startDate: startAfter,
+          totalDays: countInclusiveDays(startAfter, l.endDate),
+        });
+      }
+    });
+
+    if (category !== 'NONE' && !sameCategory) {
+      const template = covering[0];
+      result.push({
+        id: `leave_adm_${Date.now()}`,
+        userId: user.id,
+        userName: user.name,
+        userAvatar: user.avatar || template?.userAvatar || '',
+        department: user.department || template?.department || 'Divisi Operasional',
+        employmentType: user.employmentType || template?.employmentType || 'CONTRACT',
+        category,
+        startDate: date,
+        endDate: date,
+        totalDays: 1,
+        reason:
+          options.reason?.trim() ||
+          `Perizinan ${LEAVE_CATEGORY_LABEL[category]} ditetapkan oleh ${reviewerName}`,
+        status: 'APPROVED',
+        appliedAt: stamp,
+        reviewedBy: reviewerName,
+        reviewedAt: stamp,
+      });
+    }
+
+    this.saveLeaves(result);
+    this.reconcileRemoteRecords({ id: user.id, name: user.name });
   },
 
   // ==========================================
@@ -1143,6 +1639,17 @@ export const AppStorage = {
 
   updateOfficeConfig(newCfg: OfficeConfig): void {
     localStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(newCfg));
+    ApiClient.updateOfficeConfig({
+      name: newCfg.name,
+      address: newCfg.address,
+      latitude: newCfg.latitude,
+      longitude: newCfg.longitude,
+      geofence_radius_meter: newCfg.geofenceRadiusMeter,
+      work_start_hour: newCfg.workStartHour,
+      work_end_hour: newCfg.workEndHour,
+      grace_period_minutes: newCfg.gracePeriodMinutes,
+      is_geofence_active: newCfg.isGeofenceActive,
+    }).catch(() => {});
   },
 
   // ==========================================
@@ -1252,16 +1759,7 @@ export const AppStorage = {
 
   // Reset Data ke Factory Default
   resetToDefault(): void {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
-    localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(INITIAL_ATTENDANCE));
-    localStorage.setItem(STORAGE_KEYS.DAILY_TASKS, JSON.stringify(INITIAL_DAILY_TASKS));
-    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify(INITIAL_LEAVES));
-    localStorage.setItem(STORAGE_KEYS.EMAILS, JSON.stringify(INITIAL_EMAIL_NOTIFICATIONS));
-    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(INITIAL_DISCUSSION_MESSAGES));
-    localStorage.setItem(STORAGE_KEYS.IDEAS, JSON.stringify(INITIAL_IDEAS));
+    this.purgeAllExceptSuperAdmin();
     localStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(INITIAL_OFFICE_CONFIG));
-    localStorage.setItem(STORAGE_KEYS.CHAT_TOPICS, JSON.stringify(INITIAL_CHAT_TOPICS));
-    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, 'usr_super_admin');
   },
 };

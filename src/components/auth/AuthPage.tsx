@@ -7,6 +7,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { AppStorage } from '../../lib/storage.ts';
+import { ApiClient } from '../../lib/api-client.ts';
 import { User as UserType } from '../../types/index.ts';
 import { InteractiveDoodleScene } from '../common/InteractiveDoodleScene.tsx';
 
@@ -40,7 +41,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -52,6 +53,63 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
 
     setIsLoading(true);
 
+    try {
+      // 1. Coba login melalui API Laravel Backend & MySQL
+      const res = await ApiClient.login(loginIdentifier.trim(), loginPassword);
+      if (res && res.user) {
+        const localMatched = AppStorage.getUsers().find(
+          (u) => u.id === res.user.id || u.email.toLowerCase() === res.user.email.toLowerCase()
+        );
+        const apiUser: UserType = {
+          id: res.user.id,
+          name: res.user.name,
+          email: res.user.email,
+          role: res.user.role,
+          status: localMatched?.status || res.user.status,
+          employmentType: localMatched?.employmentType || res.user.employment_type || res.user.employmentType || 'CONTRACT',
+          department: localMatched?.department || res.user.department || 'Operasional',
+          position: localMatched?.position || res.user.position || 'Staf',
+          avatar: localMatched?.avatar || res.user.avatar || '',
+          phone: localMatched?.phone || res.user.phone || '',
+          joinDate: localMatched?.joinDate || res.user.join_date || res.user.joinDate || '',
+          leaveBalance: localMatched?.leaveBalance ?? res.user.leave_balance ?? res.user.leaveBalance ?? 12,
+          bankName: localMatched?.bankName || res.user.bank_name || res.user.bankName || '',
+          bankAccountNumber: localMatched?.bankAccountNumber || res.user.bank_account_number || res.user.bankAccountNumber || '',
+          bankAccountHolder: localMatched?.bankAccountHolder || res.user.bank_account_holder || res.user.bankAccountHolder || '',
+          emergencyContactName: localMatched?.emergencyContactName || res.user.emergency_contact_name || res.user.emergencyContactName || '',
+          emergencyContactPhone: localMatched?.emergencyContactPhone || res.user.emergency_contact_phone || res.user.emergencyContactPhone || '',
+          address: localMatched?.address || res.user.address || '',
+          registeredAt: localMatched?.registeredAt || res.user.registered_at || res.user.registeredAt || '',
+          isProfileComplete: localMatched?.isProfileComplete ?? Boolean(res.user.is_profile_complete ?? res.user.isProfileComplete),
+        };
+
+        AppStorage.updateUser(apiUser);
+        AppStorage.setSessionUser(apiUser.id);
+        setIsLoading(false);
+        onLoginSuccess(apiUser);
+        return;
+      }
+    } catch (apiErr: any) {
+      if (apiErr.status === 403) {
+        setIsLoading(false);
+        setErrorMsg(apiErr.message || 'Akun tidak diizinkan masuk.');
+        return;
+      }
+      // Jika akun dibuat via mock/test harness lokal di browser
+      const localUser = AppStorage.authenticate(loginIdentifier, loginPassword);
+      if (localUser) {
+        AppStorage.setSessionUser(localUser.id);
+        setIsLoading(false);
+        onLoginSuccess(localUser);
+        return;
+      }
+
+      setIsLoading(false);
+      setErrorMsg(apiErr.message || 'Email/username atau password tidak sesuai.');
+      return;
+    }
+
+    // Fallback autentikasi lokal
     setTimeout(() => {
       const user = AppStorage.authenticate(loginIdentifier, loginPassword);
 
@@ -64,10 +122,10 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
       AppStorage.setSessionUser(user.id);
       setIsLoading(false);
       onLoginSuccess(user);
-    }, 350);
+    }, 250);
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -84,6 +142,48 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
 
     setIsLoading(true);
 
+    try {
+      const regRes = await ApiClient.register({
+        name: regName.trim(),
+        email: regEmail.trim(),
+        password: regPassword,
+        department: regDepartment.trim() || 'Operasional',
+        position: 'Staf',
+      });
+
+      if (regRes && regRes.user) {
+        const newUser: UserType = {
+          id: regRes.user.id,
+          name: regRes.user.name,
+          email: regRes.user.email,
+          role: regRes.user.role || 'EMPLOYEE',
+          status: regRes.user.status || 'PENDING_APPROVAL',
+          employmentType: regRes.user.employment_type || 'CONTRACT',
+          department: regRes.user.department || 'Operasional',
+          position: regRes.user.position || 'Staf',
+          avatar: regRes.user.avatar || '',
+          phone: regRes.user.phone || '',
+          joinDate: regRes.user.join_date || '',
+          leaveBalance: regRes.user.leave_balance ?? 12,
+          registeredAt: regRes.user.registered_at || '',
+          isProfileComplete: false,
+        };
+
+        AppStorage.updateUser(newUser);
+        AppStorage.setSessionUser(newUser.id);
+        setIsLoading(false);
+        onLoginSuccess(newUser);
+        return;
+      }
+    } catch (apiErr: any) {
+      if (apiErr.status === 422 || apiErr.status === 400) {
+        setIsLoading(false);
+        setErrorMsg(apiErr.message || 'Gagal mendaftarkan akun. Email mungkin sudah terdaftar.');
+        return;
+      }
+    }
+
+    // Fallback pendaftaran lokal
     setTimeout(() => {
       const res = AppStorage.registerEmployee({
         name: regName.trim(),
@@ -100,10 +200,9 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
         return;
       }
 
-      // Setelah daftar: langsung masuk ke halaman webnya
       AppStorage.setSessionUser(res.user.id);
       onLoginSuccess(res.user);
-    }, 450);
+    }, 250);
   };
 
   const handleResetPasswordSubmit = (e: React.FormEvent) => {
@@ -124,33 +223,20 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
     setIsLoading(true);
 
     setTimeout(() => {
-      const allUsers = AppStorage.getUsers();
-      const cleanEmail = resetEmail.trim().toLowerCase();
-      const cleanName = resetName.trim().toLowerCase();
-
-      // Cari user berdasarkan nama panjang (nama lengkap terdaftar) ATAU email
-      const matched = allUsers.find(
-        (u) =>
-          (cleanName && u.name.toLowerCase() === cleanName) ||
-          (cleanEmail && u.email.toLowerCase() === cleanEmail) ||
-          (cleanName.length >= 3 && u.name.toLowerCase().includes(cleanName))
-      );
-
+      const res = AppStorage.resetPasswordSelfService(resetEmail, resetName, newPassword);
       setIsLoading(false);
 
-      if (!matched) {
-        setErrorMsg('Data karyawan tidak ditemukan. Pastikan nama lengkap (nama panjang) atau email sesuai.');
+      if (!res.success) {
+        setErrorMsg(res.message || 'Gagal mengatur ulang password.');
         return;
       }
 
-      matched.password = newPassword.trim();
-      AppStorage.updateUser(matched);
-      AppStorage.setSessionUser(matched.id);
-
-      setSuccessMsg('Kata sandi berhasil diperbarui! Mengalihkan ke akun Anda...');
+      setSuccessMsg('Kata sandi berhasil diperbarui! Silakan masuk dengan password baru Anda.');
+      setNewPassword('');
       setTimeout(() => {
-        onLoginSuccess(matched);
-      }, 500);
+        setSuccessMsg(null);
+        setAuthMode('LOGIN');
+      }, 1500);
     }, 400);
   };
 

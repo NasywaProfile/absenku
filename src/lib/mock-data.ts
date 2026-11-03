@@ -10,7 +10,7 @@ import {
   ChatTopic,
 } from '../types/index.ts';
 
-// 1. DATA PENGGUNA (Hanya 1 Akun Tunggal: Super Admin)
+// 1. DATA PENGGUNA TERDAFTAR (Hanya Akun Super Admin, Karyawan Belum Ada Terdaftar)
 export const INITIAL_USERS: User[] = [
   {
     id: 'usr_super_admin',
@@ -64,7 +64,7 @@ export const INITIAL_OFFICE_CONFIG: OfficeConfig = {
   geofenceRadiusMeter: 100,
   workStartHour: '08:00',
   workEndHour: '17:00',
-  gracePeriodMinutes: 15,
+  gracePeriodMinutes: 0,
   isGeofenceActive: true,
 };
 

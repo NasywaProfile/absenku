@@ -33,6 +33,7 @@ import { uploadHybridFile } from '../../lib/file-uploader.ts';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 import { SimpleProfileModal, SimpleProfileData } from '../common/SimpleProfileModal.tsx';
 import { openAttachmentDirectly } from '../../lib/open-media.ts';
+import { findConflictingLeave, LEAVE_CATEGORY_LABEL } from '../../lib/attendance-status.ts';
 
 interface MyLeaveRequestsProps {
   currentUser: User;
@@ -80,6 +81,7 @@ export function MyLeaveRequests({
   const [attachmentType, setAttachmentType] = useState<string | undefined>();
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [fileAlert, setFileAlert] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [emailDispatchedToast, setEmailDispatchedToast] = useState(false);
 
   // Format Tanggal Ringkas
@@ -138,21 +140,38 @@ export function MyLeaveRequests({
 
   const totalDays = calculateDays(startDate, endDate);
 
+  // Deteksi tabrakan tanggal dengan pengajuan lain (menunggu / disetujui) secara langsung
+  const liveConflict = showModal
+    ? findConflictingLeave(
+        AppStorage.getLeaveRequests(),
+        { id: currentUser.id, name: currentUser.name },
+        startDate,
+        endDate
+      )
+    : undefined;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!reason.trim()) return;
+    if (liveConflict) return;
 
-    AppStorage.submitLeaveRequest(currentUser, {
-      category,
-      startDate,
-      endDate,
-      totalDays,
-      reason,
-      attachmentName,
-      attachmentData,
-      attachmentType,
-    });
+    try {
+      AppStorage.submitLeaveRequest(currentUser, {
+        category,
+        startDate,
+        endDate,
+        totalDays,
+        reason,
+        attachmentName,
+        attachmentData,
+        attachmentType,
+      });
+    } catch (err: any) {
+      setSubmitError(err?.message || 'Pengajuan gagal dikirim.');
+      return;
+    }
 
+    setSubmitError(null);
     setShowModal(false);
     setReason('');
     setAttachmentName(undefined);
@@ -293,32 +312,6 @@ export function MyLeaveRequests({
 
   return (
     <div className="space-y-4 font-sans antialiased">
-      {emailDispatchedToast && (
-        <div className="p-4 bg-slate-900 text-white rounded-2xl shadow-xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <Mail className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="font-bold text-xs sm:text-sm text-white">
-                Notifikasi Email Otomatis Terkirim ke Admin
-              </p>
-              <p className="text-[11px] text-slate-300">
-                Email berisi rincian izin dan tautan persetujuan telah diteruskan ke administrator.
-              </p>
-            </div>
-          </div>
-          {onOpenEmailModal && (
-            <button
-              type="button"
-              onClick={onOpenEmailModal}
-              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-lg border border-white/20 cursor-pointer"
-            >
-              Lihat Log Email
-            </button>
-          )}
-        </div>
-      )}
 
       {currentUser.role === 'SUPER_ADMIN' && (
         <div className="bg-gradient-to-r from-[#1E3A8A] to-indigo-900 rounded-2xl p-4 text-white shadow-2xs flex items-center gap-3">
@@ -764,9 +757,9 @@ export function MyLeaveRequests({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setCancelTargetId(req.id);
+                            setSelectedLeaveDetail(req);
                           }}
-                          title="Hapus Pengajuan Izin"
+                          title="Lihat Detail & Batalkan Pengajuan"
                           className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-rose-200 shadow-2xs"
                         >
                           <Trash2 className="w-4 h-4 mx-auto" />
@@ -934,7 +927,11 @@ export function MyLeaveRequests({
                       type="date"
                       required
                       value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setStartDate(v);
+                        if (v && endDate < v) setEndDate(v);
+                      }}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 font-medium cursor-pointer outline-none focus:border-[#1E3A8A] focus:bg-white"
                     />
                   </div>
@@ -943,6 +940,7 @@ export function MyLeaveRequests({
                     <input
                       type="date"
                       required
+                      min={startDate}
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 font-medium cursor-pointer outline-none focus:border-[#1E3A8A] focus:bg-white"
@@ -951,8 +949,24 @@ export function MyLeaveRequests({
                 </div>
 
                 <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200/80 text-xs text-[#1E3A8A] font-medium">
-                  Total durasi pengajuan: <strong className="text-[#172554] font-bold">{totalDays} Hari Kerja</strong>
+                  Total durasi pengajuan: <strong className="text-[#172554] font-bold">{totalDays} Hari Kalender</strong>
                 </div>
+
+                {liveConflict && (
+                  <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-800 font-medium leading-relaxed">
+                    Tanggal ini bertabrakan dengan pengajuan{' '}
+                    <strong>{LEAVE_CATEGORY_LABEL[liveConflict.category]}</strong> ({liveConflict.startDate}
+                    {liveConflict.endDate !== liveConflict.startDate ? ` s/d ${liveConflict.endDate}` : ''}) yang{' '}
+                    {liveConflict.status === 'APPROVED' ? 'sudah disetujui' : 'masih menunggu persetujuan'}. Batalkan
+                    pengajuan tersebut atau pilih tanggal lain.
+                  </div>
+                )}
+                {submitError && !liveConflict && (
+                  <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-800 font-medium leading-relaxed">
+                    {submitError}
+                  </div>
+                )}
+
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">Alasan &amp; Keterangan Lengkap *</label>
@@ -1025,18 +1039,10 @@ export function MyLeaveRequests({
               </div>
 
               {/* Sticky Footer */}
-              <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  disabled={isUploadingAttachment}
-                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs cursor-pointer disabled:opacity-50"
-                >
-                  Batal
-                </button>
+              <div className="px-6 py-4 border-t border-slate-100 bg-white flex items-center justify-end shrink-0">
                 <button
                   type="submit"
-                  disabled={isUploadingAttachment}
+                  disabled={isUploadingAttachment || !!liveConflict}
                   className="px-6 py-2.5 bg-[#1E3A8A] hover:bg-[#172554] text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {isUploadingAttachment && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -1068,13 +1074,13 @@ export function MyLeaveRequests({
                 : 'w-full max-w-sm sm:max-w-md h-full max-h-[calc(100vh-1.25rem)] sm:max-h-[calc(100vh-2rem)] rounded-3xl border border-slate-200/80 animate-in slide-in-from-right duration-300 ease-out'
             }`}
           >
-            <div className="px-6 py-5 border-b border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
-                {/* Zoom Button di pojok kiri atas */}
+            <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between shrink-0 bg-white gap-3">
+              {/* Zoom Button di pojok kiri atas */}
+              <div className="w-9 shrink-0 flex items-start">
                 <button
                   type="button"
                   onClick={() => setIsDetailModalFullScreen(!isDetailModalFullScreen)}
-                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer shrink-0"
+                  className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer shrink-0 mt-0.5"
                   title={isDetailModalFullScreen ? "Perkecil Tampilan" : "Perbesar Layar Penuh"}
                 >
                   {isDetailModalFullScreen ? (
@@ -1083,19 +1089,25 @@ export function MyLeaveRequests({
                     <Maximize2 className="w-4 h-4 text-slate-600" />
                   )}
                 </button>
-                <div>
-                  <h3 className="font-bold text-base text-slate-900">Rincian Pengajuan Izin</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Detail permohonan dan status persetujuan</p>
-                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedLeaveDetail(null)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full border border-slate-200 transition-colors cursor-pointer shrink-0"
-                title="Tutup"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+              {/* Judul & Subjudul diposisikan di tengah persis */}
+              <div className="flex-1 min-w-0 text-center px-1 sm:px-3 space-y-1 flex flex-col items-center justify-center pt-1">
+                <h3 className="font-bold text-base text-slate-900 tracking-tight leading-snug">Rincian Pengajuan Izin</h3>
+                <p className="text-xs text-slate-500 leading-normal font-normal">Detail permohonan dan status persetujuan</p>
+              </div>
+
+              {/* Container Tombol Tutup Panel di pojok kanan atas */}
+              <div className="w-9 shrink-0 flex items-start justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSelectedLeaveDetail(null)}
+                  className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full border border-slate-200 transition-colors cursor-pointer shrink-0 mt-0.5"
+                  title="Tutup"
+                >
+                  <X className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs sm:text-sm">
@@ -1175,9 +1187,9 @@ export function MyLeaveRequests({
                 <button
                   type="button"
                   onClick={() => {
-                    setCancelTargetId(selectedLeaveDetail.id);
+                    executeCancelLeave(selectedLeaveDetail.id);
                   }}
-                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs"
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition-colors"
                 >
                   Batalkan Pengajuan Ini
                 </button>

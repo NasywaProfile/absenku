@@ -15,9 +15,11 @@ import {
   Copy,
   Briefcase,
   HeartHandshake,
+  Trash2,
 } from 'lucide-react';
 import { User, EmploymentType, UserRole, AttendanceRecord, DailyTaskLog } from '../../types/index.ts';
 import { EMPLOYMENT_TYPE_LABELS, copyTextToClipboard } from '../../lib/whatsapp-recap.ts';
+import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 
 interface EmployeeDetailDrawerProps {
   isOpen: boolean;
@@ -29,6 +31,7 @@ interface EmployeeDetailDrawerProps {
   onUpdateRole?: (userId: string, newRole: UserRole) => void;
   onUpdateType?: (userId: string, newType: EmploymentType) => void;
   onToggleStatus?: (userId: string) => void;
+  onDeleteUser?: (userId: string) => void;
 }
 
 export function EmployeeDetailDrawer({
@@ -38,11 +41,13 @@ export function EmployeeDetailDrawer({
   onUpdateRole,
   onUpdateType,
   onToggleStatus,
+  onDeleteUser,
 }: EmployeeDetailDrawerProps) {
   // Hanya menampilkan tab Data Diri dan Finansial sesuai permintaan
   const [activeTab, setActiveTab] = useState<'DATA_DIRI' | 'FINANSIAL'>('DATA_DIRI');
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [copiedBank, setCopiedBank] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
@@ -371,7 +376,41 @@ export function EmployeeDetailDrawer({
             </div>
           )}
         </div>
+
+        {/* Drawer Footer - Hapus Karyawan (Jika bukan Super Admin) */}
+        {employee.role !== 'SUPER_ADMIN' && onDeleteUser && (
+          <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-[11px] text-slate-400 font-medium">Hapus akun dan riwayat staf</span>
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Hapus Karyawan Ini</span>
+            </button>
+          </div>
+        )}
       </div>
+
+      {showDeleteConfirm && (
+        <ModernConfirmDialog
+          isOpen={showDeleteConfirm}
+          onCancel={() => setShowDeleteConfirm(false)}
+          onConfirm={() => {
+            setShowDeleteConfirm(false);
+            onClose();
+            if (onDeleteUser) {
+              onDeleteUser(employee.id);
+            }
+          }}
+          title="Hapus Karyawan?"
+          message={`Apakah Anda yakin ingin menghapus karyawan "${employee.name}"? Seluruh riwayat presensi, perizinan, dan tugas karyawan ini akan dihapus.`}
+          confirmText="Ya, Hapus"
+          cancelText="Batal"
+          variant="danger"
+        />
+      )}
     </div>
   );
 }

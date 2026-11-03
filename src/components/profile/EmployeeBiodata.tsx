@@ -271,7 +271,7 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
     .toUpperCase() || 'KR';
 
   return (
-    <div className="max-w-4xl mx-auto pb-14 font-sans antialiased">
+    <div className="w-full pb-14 font-sans antialiased">
       {/* Alert Notifikasi Sukses */}
       {saveSuccess && (
         <div className="mb-6 flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3.5 text-sm text-emerald-900 shadow-xs animate-in fade-in">

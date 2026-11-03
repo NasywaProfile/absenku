@@ -1679,6 +1679,8 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
                           handleSendComment(e);
                         }}
                         disabled={!commentText.trim() && commentAttachments.length === 0}
+                        title="Kirim pesan"
+                        aria-label="Kirim pesan"
                         className="w-8 h-8 rounded-full bg-[#1E3A8A] text-white flex items-center justify-center hover:bg-[#172554] active:scale-95 transition shrink-0 shadow-2xs disabled:opacity-40 cursor-pointer mb-1"
                       >
                         <ArrowUp className="w-4 h-4 stroke-[2.5]" />

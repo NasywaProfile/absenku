@@ -20,6 +20,9 @@ import {
   User as UserIcon,
   Edit3,
   MapPin,
+  Trash2,
+  AlertTriangle,
+  Lock,
 } from 'lucide-react';
 import {
   AttendanceRecord,
@@ -39,6 +42,14 @@ import { Tooltip } from '../ui/tooltip.tsx';
 import { SimpleProfileModal, SimpleProfileData } from '../common/SimpleProfileModal.tsx';
 import { TeamMembersModal, TeamMemberItem } from '../common/TeamMembersModal.tsx';
 import { EditAttendanceModal } from '../admin/EditAttendanceModal.tsx';
+import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
+import { SAMPLE_FALLBACK_PDF } from '../../lib/open-media.ts';
+import {
+  getDailyStatus,
+  getStatusStyle,
+  getApprovedLeaveForDate,
+  isOffCategory,
+} from '../../lib/attendance-status.ts';
 
 interface AttendanceHistoryProps {
   currentUser?: User;
@@ -53,7 +64,64 @@ interface AttendanceHistoryProps {
   onUpdateRole?: (userId: string, newRole: UserRole) => void;
   onUpdateType?: (userId: string, newType: EmploymentType) => void;
   onToggleStatus?: (userId: string) => void;
+  onClearAllAttendance?: () => void;
 }
+
+export type LocationBadgeType = 'OFFICE' | 'WFH' | 'BUSINESS_TRIP' | 'OUT_OF_RANGE' | 'LEAVE' | 'SICK';
+
+const LOCATION_TAG_CONFIG: Record<
+  LocationBadgeType,
+  { label: string; icon: React.ComponentType<{ className?: string }>; bg: string; text: string; border: string; iconColor: string }
+> = {
+  OFFICE: {
+    label: 'Di Kantor',
+    icon: Building2,
+    bg: 'bg-teal-50',
+    text: 'text-teal-800',
+    border: 'border-teal-200',
+    iconColor: 'text-teal-600',
+  },
+  WFH: {
+    label: 'Rumah / WFH',
+    icon: Laptop,
+    bg: 'bg-sky-50',
+    text: 'text-sky-800',
+    border: 'border-sky-200',
+    iconColor: 'text-sky-600',
+  },
+  BUSINESS_TRIP: {
+    label: 'Dinas Luar',
+    icon: MapPin,
+    bg: 'bg-amber-50',
+    text: 'text-amber-800',
+    border: 'border-amber-200',
+    iconColor: 'text-amber-600',
+  },
+  OUT_OF_RANGE: {
+    label: 'Di Luar Kantor',
+    icon: AlertTriangle,
+    bg: 'bg-rose-50',
+    text: 'text-rose-800',
+    border: 'border-rose-200',
+    iconColor: 'text-rose-600',
+  },
+  LEAVE: {
+    label: 'Cuti / Izin',
+    icon: CalendarDays,
+    bg: 'bg-sky-50',
+    text: 'text-sky-800',
+    border: 'border-sky-200',
+    iconColor: 'text-sky-600',
+  },
+  SICK: {
+    label: 'Sakit',
+    icon: AlertCircle,
+    bg: 'bg-rose-50',
+    text: 'text-rose-800',
+    border: 'border-rose-200',
+    iconColor: 'text-rose-600',
+  },
+};
 
 // Data row untuk Tampilan Matriks Grid Kehadiran sesuai referensi gambar screenshot (image_5f53700d.png)
 interface MatrixRow {
@@ -68,7 +136,13 @@ interface MatrixRow {
     isPurple?: boolean; // Border ungu jika check-in aktif
   };
   cutiAvatars: string[]; // Foto avatar karyawan yang sedang cuti/izin
-  statuses: Record<string, 'Hadir' | 'Tidak Hadir' | 'Cuti/Izin' | 'Libur'>;
+  statuses: Record<string, 'Hadir' | 'Terlambat' | 'WFH' | 'Sakit' | 'Dinas Luar' | 'Tidak Hadir' | 'Cuti/Izin' | 'Libur'>;
+  lateWfhMap?: Record<string, number>;
+  locations: {
+    hasOffice: boolean;
+    hasOutOfOffice: boolean;
+  };
+  locationTags: LocationBadgeType[];
 }
 
 export function AttendanceHistory({
@@ -80,12 +154,33 @@ export function AttendanceHistory({
   dailyTasks: propDailyTasks,
   userRole,
   onUpdateRecord,
+  onClearAllAttendance,
 }: AttendanceHistoryProps) {
+  const [dataVersion, setDataVersion] = useState(0);
+
   const currentUser = propCurrentUser || AppStorage.getCurrentUser() || ({} as User);
   const users = propUsers || AppStorage.getUsers() || [];
-  const attendanceRecords = propAttendanceRecords || propRecords || AppStorage.getAttendanceRecords() || [];
-  const leaves = propLeaves || AppStorage.getLeaveRequests() || [];
-  const dailyTasks = propDailyTasks || AppStorage.getDailyTasks() || [];
+
+  const attendanceRecords = useMemo(() => {
+    const storageRecs = AppStorage.getAttendanceRecords();
+    const source = storageRecs.length > 0 ? storageRecs : (propAttendanceRecords || propRecords || []);
+    return source.filter(
+      (r) => r.userId !== 'usr_super_admin' && r.userName?.toLowerCase() !== 'super admin'
+    );
+  }, [propAttendanceRecords, propRecords, dataVersion]);
+
+  const leaves = useMemo(() => {
+    const storageLeaves = AppStorage.getLeaveRequests();
+    const source = storageLeaves.length > 0 ? storageLeaves : (propLeaves || []);
+    return source.filter(
+      (l) => l.userId !== 'usr_super_admin' && l.userName?.toLowerCase() !== 'super admin'
+    );
+  }, [propLeaves, dataVersion]);
+
+  const dailyTasks = useMemo(() => {
+    const storageTasks = AppStorage.getDailyTasks();
+    return storageTasks.length > 0 ? storageTasks : (propDailyTasks || []);
+  }, [propDailyTasks, dataVersion]);
 
   const isAdmin =
     userRole === 'ADMIN' ||
@@ -98,6 +193,7 @@ export function AttendanceHistory({
     currentUser.role === 'SUPER_ADMIN' ? 'matrix' : 'matrix'
   );
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
+  const [showClearAllModal, setShowClearAllModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
@@ -129,225 +225,228 @@ export function AttendanceHistory({
   });
   const [returnToTeamModalOnClose, setReturnToTeamModalOnClose] = useState(false);
 
-  // Roster tim lengkap untuk melengkapi daftar presensi masuk sesuai countBadge
-  const fullTeamRoster: TeamMemberItem[] = [
-    {
-      name: 'Nasywa Davina Alissa Wijaya',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
-      department: 'Teknologi & Engineering',
-      role: 'UI/UX Designer',
-      statusBadge: 'Hadir (08:00)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Hendra Pratama',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&q=80',
-      department: 'Direksi Eksekutif',
-      role: 'Chief Executive Officer (CEO)',
-      statusBadge: 'Hadir (08:02)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Sarah Amelia',
-      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=256&q=80',
-      department: 'People & Culture (HR)',
-      role: 'HR & Operations Manager',
-      statusBadge: 'Hadir (08:05)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Ella Siregar',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=256&q=80',
-      department: 'Teknologi & Engineering',
-      role: 'Frontend Developer',
-      statusBadge: 'Hadir (08:10)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Fanny Maharani',
-      avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=256&q=80',
-      department: 'Quality Assurance',
-      role: 'QA Engineer',
-      statusBadge: 'Hadir (08:12)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Fida Salsabila',
-      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=256&q=80',
-      department: 'Finance & Accounting',
-      role: 'Finance Specialist',
-      statusBadge: 'Hadir (08:15)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Budi Santoso',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=256&q=80',
-      department: 'Teknologi & Engineering',
-      role: 'Junior Frontend Developer',
-      statusBadge: 'Hadir (08:16)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Awang Darmawan',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=256&q=80',
-      department: 'Teknologi & Engineering',
-      role: 'Fullstack Developer',
-      statusBadge: 'Hadir (08:18)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Fikar Ramadhan',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=256&q=80',
-      department: 'Teknologi & Engineering',
-      role: 'Backend Engineer',
-      statusBadge: 'Hadir (08:20)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Rian Pratama',
-      avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=256&q=80',
-      department: 'Infrastruktur & DevOps',
-      role: 'DevOps Specialist',
-      statusBadge: 'Hadir (08:22)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Dewi Lestari',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
-      department: 'Product Management',
-      role: 'Product Lead',
-      statusBadge: 'Hadir (08:25)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Dimas Anggara',
-      avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=256&q=80',
-      department: 'Teknologi & Engineering',
-      role: 'Mobile Developer',
-      statusBadge: 'Hadir (08:26)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Siti Rahma',
-      avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=256&q=80',
-      department: 'Marketing & Komunikasi',
-      role: 'Content Strategist',
-      statusBadge: 'Hadir (08:28)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Kevin Sanjaya',
-      avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=256&q=80',
-      department: 'Data Analytics',
-      role: 'Data Analyst',
-      statusBadge: 'Hadir (08:30)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Aulia Putri',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=256&q=80',
-      department: 'Operasional & CS',
-      role: 'Customer Support Lead',
-      statusBadge: 'Hadir (08:31)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Bagus Wicaksono',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=256&q=80',
-      department: 'IT Support',
-      role: 'System Administrator',
-      statusBadge: 'Hadir (08:33)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Mega Utami',
-      avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=256&q=80',
-      department: 'Finance & Accounting',
-      role: 'Senior Accountant',
-      statusBadge: 'Hadir (08:35)',
-      statusColor: 'emerald',
-    },
-    {
-      name: 'Reza Rahadian',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&q=80',
-      department: 'Bisnis & Kemitraan',
-      role: 'Business Development',
-      statusBadge: 'Hadir (08:38)',
-      statusColor: 'emerald',
-    },
-  ];
+  // Roster tim dari pengguna yang terdaftar di sistem
+  const fullTeamRoster: TeamMemberItem[] = useMemo(() => {
+    return users
+      .filter((u) => u.role === "EMPLOYEE")
+      .map((u) => ({
+        name: u.name,
+        avatar: u.avatar || "",
+        department: u.department,
+        role: u.position,
+        statusBadge: "Terdaftar",
+        statusColor: "emerald",
+      }));
+  }, [users]);
 
   // Helper untuk membuka pop-up semua orang yang presensi masuk pada tanggal tersebut
   const handleOpenCheckInMembersModal = (row: MatrixRow) => {
+    const todayDateStr = getCurrentDateString();
     const list: TeamMemberItem[] = [];
     const addedNames = new Set<string>();
 
-    const isOutOfRangeDate = row.rawDate === '2026-10-15' || row.rawDate === '2026-10-20';
-
-    // 1. Ambil dari kolom matriks yang statusnya 'Hadir'
-    employeeColumns.forEach((colName) => {
-      if (row.statuses[colName] === 'Hadir') {
-        const fullName = employeeNamesMap[colName] || colName;
-        const avatar = employeeAvatarMap[colName] || sampleAvatars[0];
-        list.push({
-          name: fullName,
-          avatar,
-          department: 'Divisi Operasional',
-          role: 'Karyawan',
-          statusBadge: 'Hadir (08:00)',
-          statusColor: 'emerald',
-          locationBadge: isOutOfRangeDate ? 'Di Luar Kantor' : 'Di Kantor',
-          locationColor: isOutOfRangeDate ? 'amber' : 'emerald',
-        });
-        addedNames.add(fullName);
-      }
-    });
-
-    // 2. Ambil dari attendance records riil jika ada
+    // 1. Ambil dari attendance records riil terlebih dahulu (Prioritas Utama)
     const allRecords = attendanceRecords || [];
     allRecords
-      .filter((rec) => rec.date === row.rawDate && rec.clockInTime)
+      .filter((rec) => {
+        const u = users.find((usr) => usr.id === rec.userId || usr.name.toLowerCase() === rec.userName.toLowerCase());
+        return rec.date === row.rawDate && rec.clockInTime && u?.role !== 'SUPER_ADMIN';
+      })
       .forEach((rec) => {
         if (!addedNames.has(rec.userName)) {
-          const isOutOfRange = rec.clockInLocationStatus === 'OUT_OF_RANGE' || rec.workMode === 'WFH';
+          const matchedUser = users.find(
+            (usr) => usr.id === rec.userId || usr.name.toLowerCase() === rec.userName.toLowerCase()
+          );
+
+          const ds = getDailyStatus({
+            user: { id: matchedUser?.id || rec.userId, name: matchedUser?.name || rec.userName },
+            date: row.rawDate,
+            records: attendanceRecords || [],
+            leaves: leaves || [],
+            today: todayDateStr,
+          });
+
+          // Cocokkan status persis sama dengan tabel matriks
+          const empCol = employeeColumns.find(
+            (col) =>
+              col.toLowerCase() === rec.userName.toLowerCase() ||
+              (matchedUser && col.toLowerCase() === matchedUser.name.toLowerCase())
+          );
+          const tableStatus = empCol ? row.statuses[empCol] : null;
+          const lateMin =
+            (empCol && row.lateWfhMap?.[empCol]) ||
+            (ds.isLate ? ds.lateMinutes : (rec.clockInLateMinutes || 0));
+
+          let statusText = 'Hadir';
+          let statusColor: 'emerald' | 'amber' | 'indigo' | 'purple' | 'rose' | 'slate' = 'emerald';
+
+          if (ds.key === 'WFH' || tableStatus === 'WFH') {
+            if (lateMin > 0 || ds.isLate) {
+              statusText = `WFH • Terlambat (${lateMin}m)`;
+              statusColor = 'amber';
+            } else {
+              statusText = 'WFH';
+              statusColor = 'indigo';
+            }
+          } else if (ds.key === 'BUSINESS_TRIP' || tableStatus === 'Dinas Luar') {
+            if (lateMin > 0 || ds.isLate) {
+              statusText = `Dinas Luar • Terlambat (${lateMin}m)`;
+              statusColor = 'amber';
+            } else {
+              statusText = 'Dinas Luar';
+              statusColor = 'purple';
+            }
+          } else if (ds.key === 'LATE' || tableStatus === 'Terlambat' || ds.isLate || rec.clockInStatus === 'LATE') {
+            statusText = lateMin > 0 ? `Terlambat (${lateMin}m)` : 'Terlambat';
+            statusColor = 'amber';
+          } else if (ds.key === 'SICK' || tableStatus === 'Sakit') {
+            statusText = 'Sakit';
+            statusColor = 'rose';
+          } else if (ds.key === 'LEAVE' || tableStatus === 'Cuti/Izin') {
+            statusText = 'Cuti/Izin';
+            statusColor = 'emerald';
+          } else if (ds.location === 'OUT_OF_RANGE' || rec.clockInLocationStatus === 'OUT_OF_RANGE') {
+            statusText = 'Luar Radius';
+            statusColor = 'rose';
+          } else {
+            statusText = 'Hadir';
+            statusColor = 'emerald';
+          }
+
+          const isWfh = ds.location === 'WFH' || tableStatus === 'WFH' || rec.clockInLocationStatus === 'WFH_APPROVED';
+          const isBusinessTrip = ds.location === 'BUSINESS_TRIP' || tableStatus === 'Dinas Luar' || rec.clockInLocationStatus === 'DINAS_APPROVED';
+          const isOutOfRange =
+            !isWfh &&
+            !isBusinessTrip &&
+            (rec.clockInLocationStatus === 'OUT_OF_RANGE' ||
+              (rec.clockInDistanceMeter !== undefined && rec.clockInDistanceMeter > 100));
+
+          const locationText = isWfh
+            ? 'Rumah / WFH'
+            : isBusinessTrip
+            ? 'Dinas Luar'
+            : isOutOfRange
+            ? `Di Luar Kantor (${rec.clockInDistanceMeter ? `${Math.round(rec.clockInDistanceMeter)}m` : 'Luar Radius'})`
+            : 'Di Kantor';
+
+          const userDailyTask = dailyTasks?.find(
+            (t) =>
+              (t.userId === (rec.userId || matchedUser?.id) ||
+                t.userName?.toLowerCase() === rec.userName.toLowerCase()) &&
+              t.date === row.rawDate
+          );
+          const tasks =
+            userDailyTask?.tasks && userDailyTask.tasks.length > 0
+              ? userDailyTask.tasks
+              : rec.tasksDoneSummary && rec.tasksDoneSummary.length > 0
+              ? rec.tasksDoneSummary
+              : undefined;
+          const notes = rec.notes?.trim() || userDailyTask?.notes?.trim() || undefined;
+          const clockTime = rec.clockInTime
+            ? rec.clockInTime.includes('WIB')
+              ? rec.clockInTime
+              : `${rec.clockInTime} WIB`
+            : undefined;
+
           list.push({
+            id: rec.userId || matchedUser?.id,
             name: rec.userName,
-            avatar: rec.userAvatar,
-            department: 'Divisi Operasional',
-            role: 'Karyawan',
-            statusBadge: `Hadir (${rec.clockInTime})`,
-            statusColor: 'emerald',
-            locationBadge: isOutOfRange ? 'Di Luar Kantor' : 'Di Kantor',
-            locationColor: isOutOfRange ? 'amber' : 'emerald',
+            avatar: rec.userAvatar || matchedUser?.avatar || '',
+            department: rec.department || matchedUser?.department || 'Divisi Operasional',
+            role: matchedUser?.position || matchedUser?.role || 'Karyawan',
+            clockInTime: clockTime,
+            statusBadge: statusText,
+            statusColor: statusColor as any,
+            locationBadge: locationText,
+            locationColor: (isWfh || isBusinessTrip) ? 'indigo' : isOutOfRange ? 'amber' : 'emerald',
+            logbookTasks: tasks,
+            notes: notes,
           });
           addedNames.add(rec.userName);
         }
       });
 
-    // 3. Lengkapi dari daftar tim sesuai countBadge jika ada (misal +10, +14, +17)
-    let targetCount = list.length;
-    if (row.checkIn.countBadge) {
-      const matchNum = row.checkIn.countBadge.match(/\d+/);
-      if (matchNum) {
-        targetCount = Math.max(targetCount, (row.checkIn.avatars?.length || 3) + parseInt(matchNum[0], 10));
-      }
-    }
+    // 2. Kolom matriks lainnya yang berstatus Hadir, Terlambat, WFH, atau Dinas Luar jika belum masuk
+    employeeColumns.forEach((colName) => {
+      const st = row.statuses[colName];
+      const fullName = employeeNamesMap[colName] || colName;
+      if ((st === 'Hadir' || st === 'Terlambat' || st === 'WFH' || st === 'Dinas Luar') && !addedNames.has(fullName) && !addedNames.has(colName)) {
+        const avatar = employeeAvatarMap[colName] || sampleAvatars[0];
+        const isLate = st === 'Terlambat';
+        const isWfh = st === 'WFH';
+        const isBusinessTrip = st === 'Dinas Luar';
+        const lateMin = row.lateWfhMap?.[colName];
 
-    fullTeamRoster.forEach((member) => {
-      if (list.length < targetCount && !addedNames.has(member.name)) {
-        const isCuti = employeeColumns.some(
-          (col) => employeeNamesMap[col] === member.name && row.statuses[col] === 'Cuti/Izin'
+        const userRec = (attendanceRecords || []).find(
+          (r) =>
+            r.date === row.rawDate &&
+            (r.userName.toLowerCase() === fullName.toLowerCase() ||
+              r.userName.toLowerCase() === colName.toLowerCase())
         );
-        if (!isCuti) {
-          list.push({
-            ...member,
-            statusBadge: 'Hadir (08:00)',
-            statusColor: 'emerald',
-            locationBadge: 'Di Kantor',
-            locationColor: 'emerald',
-          });
-          addedNames.add(member.name);
+        const userObj = users.find(
+          (u) =>
+            u.name.toLowerCase() === fullName.toLowerCase() ||
+            u.name.toLowerCase() === colName.toLowerCase()
+        );
+        const userDailyTask = dailyTasks?.find(
+          (t) =>
+            (t.userId === (userRec?.userId || userObj?.id) ||
+              t.userName?.toLowerCase() === fullName.toLowerCase() ||
+              t.userName?.toLowerCase() === colName.toLowerCase()) &&
+            t.date === row.rawDate
+        );
+
+        const tasks =
+          userDailyTask?.tasks && userDailyTask.tasks.length > 0
+            ? userDailyTask.tasks
+            : userRec?.tasksDoneSummary && userRec.tasksDoneSummary.length > 0
+            ? userRec.tasksDoneSummary
+            : undefined;
+        const notes = userRec?.notes?.trim() || userDailyTask?.notes?.trim() || undefined;
+        const clockTime = userRec?.clockInTime
+          ? userRec.clockInTime.includes('WIB')
+            ? userRec.clockInTime
+            : `${userRec.clockInTime} WIB`
+          : undefined;
+
+        let statusText: string = st;
+        let statusColor: 'emerald' | 'amber' | 'indigo' | 'purple' | 'rose' = 'emerald';
+        if (isWfh) {
+          if (lateMin) {
+            statusText = `WFH • Terlambat (${lateMin}m)`;
+            statusColor = 'amber';
+          } else {
+            statusText = 'WFH';
+            statusColor = 'indigo';
+          }
+        } else if (isBusinessTrip) {
+          if (lateMin) {
+            statusText = `Dinas Luar • Terlambat (${lateMin}m)`;
+            statusColor = 'amber';
+          } else {
+            statusText = 'Dinas Luar';
+            statusColor = 'purple';
+          }
+        } else if (isLate) {
+          statusText = lateMin ? `Terlambat (${lateMin}m)` : 'Terlambat';
+          statusColor = 'amber';
         }
+
+        list.push({
+          id: userObj?.id || userRec?.userId,
+          name: fullName,
+          avatar,
+          department: userObj?.department || 'Divisi Operasional',
+          role: userObj?.position || userObj?.role || 'Karyawan',
+          clockInTime: clockTime,
+          statusBadge: statusText,
+          statusColor: statusColor as any,
+          locationBadge: isWfh ? 'Rumah / WFH' : isBusinessTrip ? 'Dinas Luar' : 'Di Kantor',
+          locationColor: isWfh ? 'indigo' : isBusinessTrip ? 'purple' : 'emerald',
+          logbookTasks: tasks,
+          notes: notes,
+        });
+        addedNames.add(fullName);
       }
     });
 
@@ -360,40 +459,98 @@ export function AttendanceHistory({
     });
   };
 
-  // Helper untuk membuka pop-up semua orang yang cuti / izin pada tanggal tersebut
+  // Helper untuk membuka pop-up semua orang yang cuti / sakit / izin pada tanggal tersebut
   const handleOpenCutiMembersModal = (row: MatrixRow) => {
     const list: TeamMemberItem[] = [];
     const addedNames = new Set<string>();
 
-    // 1. Kolom matriks yang statusnya 'Cuti/Izin'
+    // 1. Kolom matriks yang statusnya 'Cuti/Izin' atau 'Sakit'
     employeeColumns.forEach((colName) => {
-      if (row.statuses[colName] === 'Cuti/Izin') {
+      const st = row.statuses[colName];
+      if (st === 'Cuti/Izin' || st === 'Sakit') {
         const fullName = employeeNamesMap[colName] || colName;
-        const avatar = employeeAvatarMap[colName] || cutiAvatarAwang;
+        const avatar = employeeAvatarMap[colName] || sampleAvatars[0] || '';
+
+        // Cari pengajuan cuti/sakit yang cocok
+        const matchedLeave = (leaves || []).find((l) => {
+          const u = users.find((usr) => usr.id === l.userId || usr.name.toLowerCase() === l.userName.toLowerCase());
+          const isNameMatch =
+            (u && (u.name.toLowerCase() === fullName.toLowerCase() || u.name.toLowerCase().includes(colName.toLowerCase()))) ||
+            l.userName.toLowerCase() === fullName.toLowerCase() ||
+            l.userName.toLowerCase().includes(colName.toLowerCase());
+          return (
+            l.status === 'APPROVED' &&
+            row.rawDate >= l.startDate &&
+            row.rawDate <= l.endDate &&
+            isNameMatch
+          );
+        });
+
+        const userObj = users.find(
+          (u) =>
+            u.name.toLowerCase() === fullName.toLowerCase() ||
+            u.name.toLowerCase().includes(colName.toLowerCase())
+        );
+
+        const isSick = st === 'Sakit';
+        const attachmentName =
+          matchedLeave?.attachmentName || (isSick ? 'Surat_Keterangan_Dokter.pdf' : undefined);
+        const attachmentData =
+          matchedLeave?.attachmentData || (isSick ? SAMPLE_FALLBACK_PDF : undefined);
+        const attachmentType =
+          matchedLeave?.attachmentType || (isSick ? 'application/pdf' : undefined);
+
         list.push({
+          id: userObj?.id || matchedLeave?.userId,
           name: fullName,
           avatar,
-          department: 'Divisi Operasional',
-          role: 'Karyawan',
-          statusBadge: 'Cuti / Izin',
-          statusColor: 'amber',
+          department: userObj?.department || matchedLeave?.department || 'Divisi Operasional',
+          role: userObj?.role || 'Karyawan',
+          statusBadge: isSick ? 'Sakit' : 'Cuti / Izin',
+          statusColor: isSick ? 'rose' : 'amber',
+          attachmentName,
+          attachmentData,
+          attachmentType,
         });
         addedNames.add(fullName);
       }
     });
 
-    // 2. Ambil dari leaves yang disetujui untuk tanggal ini
+    // 2. Ambil dari leaves yang disetujui untuk tanggal ini (khusus Cuti / Sakit / Izin)
     (leaves || [])
-      .filter((l) => l.status === 'APPROVED' && row.rawDate >= l.startDate && row.rawDate <= l.endDate)
+      .filter((l) => {
+        const u = users.find((usr) => usr.id === l.userId || usr.name.toLowerCase() === l.userName.toLowerCase());
+        return (
+          l.status === 'APPROVED' &&
+          l.category !== 'WFH' &&
+          l.category !== 'BUSINESS_TRIP' &&
+          row.rawDate >= l.startDate &&
+          row.rawDate <= l.endDate &&
+          u?.role !== 'SUPER_ADMIN'
+        );
+      })
       .forEach((l) => {
         if (!addedNames.has(l.userName)) {
+          const userObj = users.find((u) => u.id === l.userId || u.name.toLowerCase() === l.userName.toLowerCase());
+          const isSick = l.category === 'SICK';
+          const attachmentName =
+            l.attachmentName || (isSick ? 'Surat_Keterangan_Dokter.pdf' : undefined);
+          const attachmentData =
+            l.attachmentData || (isSick ? SAMPLE_FALLBACK_PDF : undefined);
+          const attachmentType =
+            l.attachmentType || (isSick ? 'application/pdf' : undefined);
+
           list.push({
+            id: l.userId || userObj?.id,
             name: l.userName,
-            avatar: l.userAvatar,
-            department: l.department || 'Divisi Operasional',
-            role: 'Karyawan',
-            statusBadge: l.category === 'SICK' ? 'Sakit' : 'Cuti Tahunan',
-            statusColor: 'amber',
+            avatar: l.userAvatar || userObj?.avatar,
+            department: l.department || userObj?.department || 'Divisi Operasional',
+            role: userObj?.role || 'Karyawan',
+            statusBadge: isSick ? 'Sakit' : 'Cuti / Izin',
+            statusColor: isSick ? 'rose' : 'amber',
+            attachmentName,
+            attachmentData,
+            attachmentType,
           });
           addedNames.add(l.userName);
         }
@@ -417,53 +574,54 @@ export function AttendanceHistory({
 
     setTeamMembersModalData({
       isOpen: true,
-      title: 'Daftar Karyawan Cuti / Izin',
-      subtitle: `Tanggal ${row.dateStr} • ${list.length} Karyawan Cuti / Izin`,
+      title: 'Daftar Karyawan Cuti / Sakit / Izin',
+      subtitle: `Tanggal ${row.dateStr} • ${list.length} Karyawan (Cuti / Sakit / Izin)`,
       members: list,
     });
   };
 
-  // Mapping nama lengkap & foto profil karyawan untuk kolom matriks
-  const employeeNamesMap: Record<string, string> = {
-    Alis: 'Nasywa Davina Alissa Wijaya',
-    Awang: 'Awang Darmawan',
-    Ella: 'Ella Siregar',
-    Fanny: 'Fanny Maharani',
-    Fida: 'Fida Salsabila',
-    Fikar: 'Fikar Ramadhan',
-  };
+  // Kolom nama karyawan di tabel presensi: Hanya menampilkan karyawan yang sudah terdaftar (Super Admin dikecualikan dari presensi)
+  const employeeColumns = useMemo(() => {
+    return users
+      .filter((u) => u.status === 'ACTIVE' && u.role !== 'SUPER_ADMIN')
+      .map((u) => u.name);
+  }, [users]);
 
-  const employeeAvatarMap: Record<string, string> = {
-    Alis: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
-    Awang: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=256&q=80',
-    Ella: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=256&q=80',
-    Fanny: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=256&q=80',
-    Fida: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=256&q=80',
-    Fikar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=256&q=80',
-  };
+  // Mapping nama & foto profil karyawan untuk kolom matriks
+  const employeeNamesMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    users
+      .filter((u) => u.role !== 'SUPER_ADMIN')
+      .forEach((u) => {
+        map[u.name] = u.name;
+      });
+    return map;
+  }, [users]);
+
+  const employeeAvatarMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    users
+      .filter((u) => u.role !== 'SUPER_ADMIN')
+      .forEach((u) => {
+        if (u.avatar) {
+          map[u.name] = u.avatar;
+        }
+      });
+    return map;
+  }, [users]);
+
+  // Avatar foto profil untuk check-in avatar stack
+  const sampleAvatars = useMemo(() => {
+    const list = users.map((u) => u.avatar).filter(Boolean);
+    if (list.length > 0) return list;
+    return [
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&q=80',
+    ];
+  }, [users]);
 
   const findUserByAvatar = (avatarUrl: string): SimpleProfileData => {
     const matched = users.find((u) => u.avatar === avatarUrl);
     if (matched) return { name: matched.name, avatar: matched.avatar };
-
-    if (avatarUrl.includes('photo-1534528741775') || avatarUrl === sampleAvatars[0]) {
-      return { name: 'Nasywa Davina Alissa Wijaya', avatar: avatarUrl };
-    }
-    if (avatarUrl.includes('photo-1507003211169') || avatarUrl === sampleAvatars[1]) {
-      return { name: 'Hendra Pratama', avatar: avatarUrl };
-    }
-    if (avatarUrl.includes('photo-1494790108377') || avatarUrl === sampleAvatars[2]) {
-      return { name: 'Ella Siregar', avatar: avatarUrl };
-    }
-    if (avatarUrl.includes('photo-1517841905240') || avatarUrl === sampleAvatars[3]) {
-      return { name: 'Fanny Maharani', avatar: avatarUrl };
-    }
-    if (avatarUrl === cutiAvatarAwang || avatarUrl.includes('photo-1500648767791')) {
-      return { name: 'Awang Darmawan', avatar: avatarUrl };
-    }
-    if (avatarUrl === cutiAvatarFikar || avatarUrl.includes('photo-1535713875002')) {
-      return { name: 'Fikar Ramadhan', avatar: avatarUrl };
-    }
     return { name: 'Karyawan Presensi', avatar: avatarUrl };
   };
 
@@ -472,374 +630,189 @@ export function AttendanceHistory({
   const [personalPage, setPersonalPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
-  // Daftar nama karyawan di kolom matriks (sesuai screenshot: Alis, Awang, Ella, Fanny, Fida, Fikar)
-  const employeeColumns = ['Alis', 'Awang', 'Ella', 'Fanny', 'Fida', 'Fikar'];
-
-  // Avatar foto profil realistis untuk check-in avatar stack
-  const sampleAvatars = [
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&q=80',
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=80&q=80',
-    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=80&q=80',
-    'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=80&q=80',
-  ];
-
-  const cutiAvatarAwang =
-    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=80&q=80';
-  const cutiAvatarFikar =
-    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80';
-
-  // Dataset Baris Matriks Sesuai Persis dengan Screenshot (image_5f53700d.png)
-  const baseMatrixRows: MatrixRow[] = [
-    {
-      index: 1,
-      dateStr: '21/10/2026',
-      rawDate: '2026-10-21',
-      isHoliday: false,
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[0], sampleAvatars[1], sampleAvatars[2]],
-        countBadge: '+10',
-        isPurple: false,
-      },
-      cutiAvatars: [],
-      statuses: {
-        Alis: 'Hadir',
-        Awang: 'Tidak Hadir',
-        Ella: 'Hadir',
-        Fanny: 'Hadir',
-        Fida: 'Tidak Hadir',
-        Fikar: 'Tidak Hadir',
-      },
-    },
-    {
-      index: 2,
-      dateStr: '20/10/2026',
-      rawDate: '2026-10-20',
-      isHoliday: false,
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[1], sampleAvatars[0], sampleAvatars[3]],
-        countBadge: '+14',
-        isPurple: false,
-      },
-      cutiAvatars: [cutiAvatarAwang],
-      statuses: {
-        Alis: 'Hadir',
-        Awang: 'Cuti/Izin',
-        Ella: 'Hadir',
-        Fanny: 'Hadir',
-        Fida: 'Hadir',
-        Fikar: 'Tidak Hadir',
-      },
-    },
-    {
-      index: 3,
-      dateStr: '19/10/2026',
-      rawDate: '2026-10-19',
-      isHoliday: false,
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[2], sampleAvatars[0], sampleAvatars[1]],
-        countBadge: '+17',
-        isPurple: true,
-      },
-      cutiAvatars: [cutiAvatarAwang],
-      statuses: {
-        Alis: 'Hadir',
-        Awang: 'Cuti/Izin',
-        Ella: 'Hadir',
-        Fanny: 'Hadir',
-        Fida: 'Hadir',
-        Fikar: 'Hadir',
-      },
-    },
-    {
-      index: 4,
-      dateStr: '18/10/2026',
-      rawDate: '2026-10-18',
-      isHoliday: true, // Libur Akhir Pekan (Row Merah Lembut)
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [],
-      },
-      cutiAvatars: [],
-      statuses: {
-        Alis: 'Libur',
-        Awang: 'Libur',
-        Ella: 'Libur',
-        Fanny: 'Libur',
-        Fida: 'Libur',
-        Fikar: 'Libur',
-      },
-    },
-    {
-      index: 5,
-      dateStr: '17/10/2026',
-      rawDate: '2026-10-17',
-      isHoliday: true, // Libur Akhir Pekan (Row Merah Lembut)
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[0], sampleAvatars[1]],
-      },
-      cutiAvatars: [],
-      statuses: {
-        Alis: 'Libur',
-        Awang: 'Libur',
-        Ella: 'Libur',
-        Fanny: 'Libur',
-        Fida: 'Libur',
-        Fikar: 'Libur',
-      },
-    },
-    {
-      index: 6,
-      dateStr: '16/10/2026',
-      rawDate: '2026-10-16',
-      isHoliday: false,
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[1], sampleAvatars[2], sampleAvatars[0]],
-        countBadge: '+17',
-        isPurple: true,
-      },
-      cutiAvatars: [],
-      statuses: {
-        Alis: 'Hadir',
-        Awang: 'Hadir',
-        Ella: 'Hadir',
-        Fanny: 'Hadir',
-        Fida: 'Hadir',
-        Fikar: 'Hadir',
-      },
-    },
-    {
-      index: 7,
-      dateStr: '15/10/2026',
-      rawDate: '2026-10-15',
-      isHoliday: false,
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[0], sampleAvatars[3], sampleAvatars[1]],
-        countBadge: '+17',
-        isPurple: false,
-      },
-      cutiAvatars: [],
-      statuses: {
-        Alis: 'Hadir',
-        Awang: 'Hadir',
-        Ella: 'Hadir',
-        Fanny: 'Hadir',
-        Fida: 'Hadir',
-        Fikar: 'Hadir',
-      },
-    },
-    {
-      index: 8,
-      dateStr: '14/10/2026',
-      rawDate: '2026-10-14',
-      isHoliday: false,
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[0], sampleAvatars[2], sampleAvatars[3]],
-        countBadge: '+17',
-        isPurple: false,
-      },
-      cutiAvatars: [cutiAvatarFikar],
-      statuses: {
-        Alis: 'Hadir',
-        Awang: 'Hadir',
-        Ella: 'Hadir',
-        Fanny: 'Hadir',
-        Fida: 'Hadir',
-        Fikar: 'Cuti/Izin',
-      },
-    },
-    {
-      index: 9,
-      dateStr: '13/10/2026',
-      rawDate: '2026-10-13',
-      isHoliday: false,
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[0], sampleAvatars[1], sampleAvatars[2]],
-        countBadge: '+17',
-        isPurple: false,
-      },
-      cutiAvatars: [cutiAvatarFikar],
-      statuses: {
-        Alis: 'Hadir',
-        Awang: 'Hadir',
-        Ella: 'Hadir',
-        Fanny: 'Hadir',
-        Fida: 'Hadir',
-        Fikar: 'Cuti/Izin',
-      },
-    },
-    {
-      index: 10,
-      dateStr: '12/10/2026',
-      rawDate: '2026-10-12',
-      isHoliday: false,
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[1], sampleAvatars[3], sampleAvatars[0]],
-        countBadge: '+17',
-        isPurple: false,
-      },
-      cutiAvatars: [cutiAvatarFikar],
-      statuses: {
-        Alis: 'Hadir',
-        Awang: 'Hadir',
-        Ella: 'Hadir',
-        Fanny: 'Hadir',
-        Fida: 'Hadir',
-        Fikar: 'Cuti/Izin',
-      },
-    },
-    {
-      index: 11,
-      dateStr: '11/10/2026',
-      rawDate: '2026-10-11',
-      isHoliday: true, // Libur Akhir Pekan (Row Merah Lembut)
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [],
-      },
-      cutiAvatars: [],
-      statuses: {
-        Alis: 'Libur',
-        Awang: 'Libur',
-        Ella: 'Libur',
-        Fanny: 'Libur',
-        Fida: 'Libur',
-        Fikar: 'Libur',
-      },
-    },
-    {
-      index: 12,
-      dateStr: '10/10/2026',
-      rawDate: '2026-10-10',
-      isHoliday: true, // Libur Akhir Pekan (Row Merah Lembut)
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[2], sampleAvatars[3]],
-      },
-      cutiAvatars: [],
-      statuses: {
-        Alis: 'Libur',
-        Awang: 'Libur',
-        Ella: 'Libur',
-        Fanny: 'Libur',
-        Fida: 'Libur',
-        Fikar: 'Libur',
-      },
-    },
-    {
-      index: 13,
-      dateStr: '09/10/2026',
-      rawDate: '2026-10-09',
-      isHoliday: false,
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[0], sampleAvatars[1], sampleAvatars[2]],
-        countBadge: '+17',
-        isPurple: true,
-      },
-      cutiAvatars: [],
-      statuses: {
-        Alis: 'Hadir',
-        Awang: 'Hadir',
-        Ella: 'Hadir',
-        Fanny: 'Hadir',
-        Fida: 'Hadir',
-        Fikar: 'Hadir',
-      },
-    },
-    {
-      index: 14,
-      dateStr: '08/10/2026',
-      rawDate: '2026-10-08',
-      isHoliday: false,
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[1], sampleAvatars[2], sampleAvatars[3]],
-        countBadge: '+17',
-        isPurple: false,
-      },
-      cutiAvatars: [],
-      statuses: {
-        Alis: 'Hadir',
-        Awang: 'Hadir',
-        Ella: 'Hadir',
-        Fanny: 'Hadir',
-        Fida: 'Hadir',
-        Fikar: 'Hadir',
-      },
-    },
-    {
-      index: 15,
-      dateStr: '07/10/2026',
-      rawDate: '2026-10-07',
-      isHoliday: false,
-      checkIn: {
-        hasCheckmark: true,
-        avatars: [sampleAvatars[0], sampleAvatars[3], sampleAvatars[1]],
-        countBadge: '+17',
-        isPurple: true,
-      },
-      cutiAvatars: [],
-      statuses: {
-        Alis: 'Hadir',
-        Awang: 'Hadir',
-        Ella: 'Tidak Hadir',
-        Fanny: 'Hadir',
-        Fida: 'Hadir',
-        Fikar: 'Hadir',
-      },
-    },
-  ];
-
-  // Integrasi presensi real-time dari attendanceRecords jika ada data hari ini
+  // Dataset Baris Matriks Dinamis: Dibangun sepenuhnya dari riwayat presensi yang tersimpan & pengajuan izin yang disetujui (Kecuali Super Admin)
   const allMatrixRows = useMemo(() => {
-    const today = new Date().toISOString().substring(0, 10);
-    const hasTodayInBase = baseMatrixRows.some((r) => r.rawDate === today);
+    const todayDateStr = getCurrentDateString();
+    const dateSet = new Set<string>();
 
-    // Cek apakah ada record presensi tersimpan hari ini
-    const todayRecord = attendanceRecords.find((r) => r.date === today);
+    // Riwayat presensi hanya mencakup tanggal hari ini ke belakang (<= todayDateStr)
+    (attendanceRecords || []).forEach((r) => {
+      const u = users.find((usr) => usr.id === r.userId || usr.name.toLowerCase() === r.userName?.toLowerCase());
+      if (r.date && r.date <= todayDateStr && u?.role !== 'SUPER_ADMIN') {
+        dateSet.add(r.date);
+      }
+    });
 
-    if (!hasTodayInBase && todayRecord) {
-      const dParts = today.split('-');
-      const todayFormatted = `${dParts[2]}/${dParts[1]}/${dParts[0]}`;
-      const dayOfWeek = new Date().getDay();
-      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    (leaves || []).forEach((l) => {
+      const u = users.find((usr) => usr.id === l.userId || usr.name.toLowerCase() === l.userName?.toLowerCase());
+      if (l.status === 'APPROVED' && l.startDate && l.endDate && u?.role !== 'SUPER_ADMIN') {
+        const [sy, sm, sd] = l.startDate.split('-').map(Number);
+        const [ey, em, ed] = l.endDate.split('-').map(Number);
+        const curr = new Date(sy, sm - 1, sd);
+        const end = new Date(ey, em - 1, ed);
+        while (curr <= end) {
+          const y = curr.getFullYear();
+          const m = String(curr.getMonth() + 1).padStart(2, '0');
+          const d = String(curr.getDate()).padStart(2, '0');
+          const dateStr = `${y}-${m}-${d}`;
+          if (dateStr <= todayDateStr) {
+            dateSet.add(dateStr);
+          }
+          curr.setDate(curr.getDate() + 1);
+        }
+      }
+    });
 
-      const dynamicRow: MatrixRow = {
-        index: 0,
-        dateStr: todayFormatted,
-        rawDate: today,
-        isHoliday: isWeekend,
-        checkIn: {
-          hasCheckmark: true,
-          avatars: [todayRecord.userAvatar || sampleAvatars[0], sampleAvatars[1], sampleAvatars[2]],
-          countBadge: '+12',
-          isPurple: true,
-        },
-        cutiAvatars: [],
-        statuses: {
-          Alis: 'Hadir',
-          Awang: 'Hadir',
-          Ella: 'Hadir',
-          Fanny: 'Hadir',
-          Fida: 'Hadir',
-          Fikar: 'Hadir',
-        },
-      };
-
-      return [dynamicRow, ...baseMatrixRows];
+    if (dateSet.size === 0) {
+      return [];
     }
 
-    return baseMatrixRows;
-  }, [attendanceRecords]);
+    // Ambil tanggal unik dan urutkan menurun secara pasti (terbaru paling atas)
+    const uniqueDates = Array.from(dateSet).sort((a, b) => b.localeCompare(a));
+
+    return uniqueDates.map((rawDate, idx) => {
+      const dParts = rawDate.split('-');
+      const dateFormatted = `${dParts[2]}/${dParts[1]}/${dParts[0]}`;
+      const dObj = new Date(rawDate);
+      const dayOfWeek = dObj.getDay();
+      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6) && rawDate !== todayDateStr;
+
+      const dayRecords = (attendanceRecords || []).filter((r) => {
+        const u = users.find((usr) => usr.id === r.userId || usr.name.toLowerCase() === r.userName?.toLowerCase());
+        return r.date === rawDate && u?.role !== 'SUPER_ADMIN';
+      });
+
+      const statuses: Record<string, 'Hadir' | 'Terlambat' | 'WFH' | 'Sakit' | 'Dinas Luar' | 'Tidak Hadir' | 'Cuti/Izin' | 'Libur'> = {};
+      const lateWfhMap: Record<string, number> = {};
+      const cutiAvatars: string[] = [];
+
+      employeeColumns.forEach((emp) => {
+        const matchedUser = users.find(
+          (u) =>
+            u.name.toLowerCase() === emp.toLowerCase() ||
+            u.name.toLowerCase().includes(emp.toLowerCase())
+        );
+
+        const ds = getDailyStatus({
+          user: { id: matchedUser?.id || emp, name: matchedUser?.name || emp },
+          date: rawDate,
+          records: dayRecords,
+          leaves: leaves || [],
+          today: todayDateStr,
+        });
+
+        let mappedStatus: 'Hadir' | 'Terlambat' | 'WFH' | 'Sakit' | 'Dinas Luar' | 'Tidak Hadir' | 'Cuti/Izin' | 'Libur' = 'Tidak Hadir';
+        if (ds.key === 'PRESENT') mappedStatus = 'Hadir';
+        else if (ds.key === 'LATE') mappedStatus = 'Terlambat';
+        else if (ds.key === 'WFH') mappedStatus = 'WFH';
+        else if (ds.key === 'BUSINESS_TRIP') mappedStatus = 'Dinas Luar';
+        else if (ds.key === 'SICK') mappedStatus = 'Sakit';
+        else if (ds.key === 'LEAVE') mappedStatus = 'Cuti/Izin';
+        else if (ds.key === 'HOLIDAY') mappedStatus = 'Libur';
+        else if (ds.key === 'TODAY_PENDING') mappedStatus = 'Tidak Hadir';
+        else mappedStatus = 'Tidak Hadir';
+
+        statuses[emp] = mappedStatus;
+
+        if (ds.isLate && ds.lateMinutes) {
+          lateWfhMap[emp] = ds.lateMinutes;
+        }
+
+        // Kumpulkan avatar hanya jika karyawan berstatus OFF (Sakit / Cuti / Izin)
+        if (ds.isOff) {
+          const cav = employeeAvatarMap[emp] || matchedUser?.avatar;
+          if (cav && !cutiAvatars.includes(cav)) {
+            cutiAvatars.push(cav);
+          }
+        }
+      });
+
+      // Karyawan yang benar-benar tercatat hadir (tidak berstatus OFF)
+      const clockedInRecords = dayRecords.filter((r) => {
+        if (!r.clockInTime) return false;
+        const u = users.find((usr) => usr.id === r.userId || usr.name.toLowerCase() === r.userName?.toLowerCase());
+        const ds = getDailyStatus({
+          user: { id: u?.id || r.userId, name: u?.name || r.userName },
+          date: rawDate,
+          records: dayRecords,
+          leaves: leaves || [],
+          today: todayDateStr,
+        });
+        return ds.isPresent;
+      });
+
+      const avatars = clockedInRecords.map((r) => r.userAvatar).filter(Boolean) as string[];
+
+      const hasOffice = clockedInRecords.some((r) => {
+        return (
+          r.clockInLocationStatus === 'IN_OFFICE' ||
+          (r.clockInLocationStatus !== 'OUT_OF_RANGE' &&
+            r.clockInLocationStatus !== 'WFH_APPROVED' &&
+            r.clockInLocationStatus !== 'DINAS_APPROVED' &&
+            (r.clockInDistanceMeter === undefined || r.clockInDistanceMeter <= 100))
+        );
+      });
+
+      const hasOutOfOffice = clockedInRecords.some((r) => {
+        return (
+          r.clockInLocationStatus === 'OUT_OF_RANGE' ||
+          (r.clockInDistanceMeter !== undefined &&
+            r.clockInDistanceMeter > 100 &&
+            r.clockInLocationStatus !== 'WFH_APPROVED' &&
+            r.clockInLocationStatus !== 'DINAS_APPROVED')
+        );
+      });
+
+      // Kumpulkan status lokasi unik
+      const locationTagSet = new Set<LocationBadgeType>();
+
+      clockedInRecords.forEach((r) => {
+        if (r.clockInLocationStatus === 'DINAS_APPROVED' || r.workMode === 'DINAS') {
+          locationTagSet.add('BUSINESS_TRIP');
+        } else if (r.clockInLocationStatus === 'WFH_APPROVED' || r.workMode === 'WFH') {
+          locationTagSet.add('WFH');
+        } else if (
+          r.clockInLocationStatus === 'OUT_OF_RANGE' ||
+          (r.clockInDistanceMeter !== undefined && r.clockInDistanceMeter > 100)
+        ) {
+          locationTagSet.add('OUT_OF_RANGE');
+        } else {
+          locationTagSet.add('OFFICE');
+        }
+      });
+
+      // Ditambah dari status karyawan (WFH atau Dinas Luar)
+      employeeColumns.forEach((emp) => {
+        const st = statuses[emp];
+        if (st === 'WFH') locationTagSet.add('WFH');
+        else if (st === 'Dinas Luar') locationTagSet.add('BUSINESS_TRIP');
+      });
+
+      const tagOrder: LocationBadgeType[] = ['OFFICE', 'WFH', 'BUSINESS_TRIP', 'OUT_OF_RANGE'];
+      const locationTags = tagOrder.filter((tag) => locationTagSet.has(tag));
+
+      return {
+        index: idx + 1,
+        dateStr: dateFormatted,
+        rawDate,
+        isHoliday: isWeekend,
+        checkIn: {
+          hasCheckmark: clockedInRecords.length > 0,
+          avatars: avatars.slice(0, 3),
+          countBadge: clockedInRecords.length > 3 ? `+${clockedInRecords.length - 3}` : undefined,
+          isPurple: isWeekend,
+        },
+        cutiAvatars,
+        statuses,
+        lateWfhMap,
+        locations: {
+          hasOffice,
+          hasOutOfOffice,
+        },
+        locationTags,
+      };
+    });
+  }, [attendanceRecords, leaves, employeeColumns, users]);
 
   // Filter & Urutan Data
   const displayedRows = useMemo(() => {
@@ -875,155 +848,92 @@ export function AttendanceHistory({
       });
     }
 
-    // Sorting
-    if (sortOrder === 'ASC') {
-      result.reverse();
-    }
+    // Pastikan histori terbaru selalu muncul di baris paling atas secara default (DESC)
+    result.sort((a, b) => {
+      const cmp = b.rawDate.localeCompare(a.rawDate);
+      return sortOrder === 'DESC' ? cmp : -cmp;
+    });
 
     return result;
   }, [allMatrixRows, filterType, specificDateFilter, searchQuery, sortOrder]);
 
   // Data Baris untuk Tampilan Absensi Pribadi (Desain persis Kehadiran Tim cuman khusus perorangan)
   const personalRows = useMemo(() => {
+    const todayDateStr = getCurrentDateString();
     return displayedRows.map((row) => {
-      const isWeekendHoliday = row.isHoliday;
       const myRecord = attendanceRecords.find(
-        (r) => r.userId === currentUser.id && r.date === row.rawDate
-      );
-      const myLeave = leaves.find(
-        (l) =>
-          l.userId === currentUser.id &&
-          l.status === 'APPROVED' &&
-          row.rawDate >= l.startDate &&
-          row.rawDate <= l.endDate
+        (r) => (r.userId === currentUser.id || r.userName.toLowerCase() === currentUser.name.toLowerCase()) && r.date === row.rawDate
       );
       const myTaskLog = dailyTasks?.find(
-        (t) => t.userId === currentUser.id && t.date === row.rawDate
+        (t) => (t.userId === currentUser.id || t.userName?.toLowerCase() === currentUser.name.toLowerCase()) && t.date === row.rawDate
       );
 
-      let statusText = 'Tidak Hadir';
-      let statusBadgeClass = 'bg-[#FFE4E6] text-[#E11D48] hover:bg-[#FECDD3]';
-      let clockIn = '—';
-      let clockOut = '—';
+      const ds = getDailyStatus({
+        user: { id: currentUser.id, name: currentUser.name },
+        date: row.rawDate,
+        records: attendanceRecords,
+        leaves: leaves || [],
+        today: todayDateStr,
+      });
+
+      const statusText = ds.fullLabel;
+      const statusBadgeClass = getStatusStyle(ds).pill;
+      const hasCheckmark = ds.isPresent || ds.isOff;
+      const clockIn = ds.isOff
+        ? 'OFF'
+        : myRecord?.clockInTime
+        ? `${myRecord.clockInTime} WIB`
+        : row.isHoliday
+        ? '-'
+        : '—';
+
       let locationMode = '—';
-      let taskSummary = 'Tanpa Keterangan';
-      let hasCheckmark = false;
-      let category: 'LEAVE' | 'WFH' | 'SICK' | 'BUSINESS_TRIP' | undefined = undefined;
-
-      if (isWeekendHoliday) {
-        statusText = 'Libur';
-        hasCheckmark = false;
-        clockIn = '-';
+      if (ds.isOff) {
+        locationMode = `OFF (${ds.shortLabel})`;
+      } else if (ds.location === 'WFH') {
+        locationMode = 'Rumah / WFH';
+      } else if (ds.location === 'BUSINESS_TRIP') {
+        locationMode = 'Dinas Luar';
+      } else if (ds.location === 'OUT_OF_RANGE') {
+        const dist = myRecord?.clockInDistanceMeter !== undefined ? Math.round(myRecord.clockInDistanceMeter) : null;
+        locationMode = dist ? `Di Luar Kantor (${dist}m)` : 'Di Luar Kantor';
+      } else if (ds.location === 'OFFICE') {
+        locationMode = 'Di Kantor';
+      } else if (row.isHoliday) {
         locationMode = 'Libur Akhir Pekan';
-        taskSummary = 'Hari Libur';
-      } else if (myLeave) {
-        category = myLeave.category;
-        if (myLeave.category === 'LEAVE') {
-          statusText = 'Izin / Cuti';
-          statusBadgeClass = 'bg-[#DCFCE7] text-[#15803D] hover:bg-[#BBF7D0]';
-          locationMode = 'Izin Resmi';
-        } else if (myLeave.category === 'WFH') {
-          statusText = 'WFH';
-          statusBadgeClass = 'bg-[#FEF3C7] text-[#B45309] hover:bg-[#FDE68A]';
-          locationMode = 'WFH (Remote)';
-        } else if (myLeave.category === 'SICK') {
-          statusText = 'Sakit';
-          statusBadgeClass = 'bg-[#FFEDD5] text-[#C2410C] hover:bg-[#FED7AA]';
-          locationMode = 'Surat Dokter';
-        } else if (myLeave.category === 'BUSINESS_TRIP') {
-          statusText = 'Dinas Luar';
-          statusBadgeClass = 'bg-[#E0E7FF] text-[#4338CA] hover:bg-[#C7D2FE]';
-          locationMode = 'Kunjungan Dinas Luar';
-        }
-        taskSummary = myLeave.reason || 'Pengajuan Perizinan Disetujui';
-      } else if (myRecord) {
-        hasCheckmark = true;
-        clockIn = myRecord.clockInTime ? `${myRecord.clockInTime} WIB` : '08:15 WIB';
-        clockOut = myRecord.clockOutTime ? `${myRecord.clockOutTime} WIB` : '17:30 WIB';
-        if (myRecord.workMode === 'WFH') {
-          category = 'WFH';
-          locationMode = 'WFH (Remote)';
-        } else {
-          locationMode = 'WFO Kantor';
-        }
-        taskSummary =
-          myRecord.tasksDoneSummary && myRecord.tasksDoneSummary.length > 0
-            ? myRecord.tasksDoneSummary.join(', ')
-            : myTaskLog?.tasks && myTaskLog.tasks.length > 0
-            ? myTaskLog.tasks.join(', ')
-            : 'Selesai bertugas operasional';
-
-        if (myRecord.clockInStatus === 'LATE') {
-          statusText = 'Terlambat';
-          statusBadgeClass = 'bg-[#FEF3C7] text-[#B45309] hover:bg-[#FDE68A]';
-        } else {
-          statusText = 'Hadir';
-          statusBadgeClass = 'bg-[#E0F2FE] text-[#0369A1] hover:bg-[#BAE6FD]';
-        }
-      } else {
-        // Riwayat data historis demo untuk 4 kategori: Izin/Cuti, WFH, Sakit, & Dinas Luar
-        if (row.rawDate === '2026-10-20' || row.rawDate === '2026-10-19') {
-          category = 'LEAVE';
-          statusText = 'Izin / Cuti';
-          statusBadgeClass = 'bg-[#DCFCE7] text-[#15803D] hover:bg-[#BBF7D0]';
-          locationMode = 'Izin Resmi';
-          taskSummary = 'Cuti Tahunan & Keperluan Keluarga';
-        } else if (row.rawDate === '2026-10-15') {
-          category = 'WFH';
-          hasCheckmark = true;
-          clockIn = '08:00 WIB';
-          clockOut = '17:00 WIB';
-          statusText = 'WFH';
-          statusBadgeClass = 'bg-[#FEF3C7] text-[#B45309] hover:bg-[#FDE68A]';
-          locationMode = 'WFH (Remote)';
-          taskSummary = 'Penyusunan Dokumentasi Sistem & Monitoring Server';
-        } else if (row.rawDate === '2026-10-13' || row.rawDate === '2026-10-14') {
-          category = 'BUSINESS_TRIP';
-          hasCheckmark = true;
-          clockIn = '08:30 WIB';
-          clockOut = '17:30 WIB';
-          statusText = 'Dinas Luar';
-          statusBadgeClass = 'bg-[#E0E7FF] text-[#4338CA] hover:bg-[#C7D2FE]';
-          locationMode = 'Kunjungan Luar Kota';
-          taskSummary = 'Penugasan Lapangan & Koordinasi Proyek Mitra';
-        } else if (row.rawDate === '2026-10-08') {
-          category = 'SICK';
-          statusText = 'Sakit';
-          statusBadgeClass = 'bg-[#FFEDD5] text-[#C2410C] hover:bg-[#FED7AA]';
-          locationMode = 'Surat Dokter';
-          taskSummary = 'Pemeriksaan Kesehatan dan Rawat Jalan';
-        } else {
-          const demoHadir = row.statuses['Alis'] === 'Hadir' || row.statuses['Ella'] === 'Hadir';
-          if (demoHadir) {
-            hasCheckmark = true;
-            clockIn = '08:15 WIB';
-            clockOut = '17:30 WIB';
-            statusText = 'Hadir';
-            statusBadgeClass = 'bg-[#E0F2FE] text-[#0369A1] hover:bg-[#BAE6FD]';
-            locationMode = 'WFO Kantor';
-            taskSummary = 'Penyelesaian aktivitas operasional harian';
-          } else {
-            statusText = 'Tidak Hadir';
-            statusBadgeClass = 'bg-[#FFE4E6] text-[#E11D48] hover:bg-[#FECDD3]';
-            locationMode = '—';
-            taskSummary = 'Tidak ada presensi tercatat';
-          }
-        }
       }
+
+      let taskSummary = '-';
+      if (ds.isOff) {
+        taskSummary = ds.leave?.reason || 'Pengajuan Perizinan Disetujui';
+      } else if (myTaskLog?.tasks && myTaskLog.tasks.length > 0) {
+        taskSummary = myTaskLog.tasks.join(', ');
+      } else if (myRecord?.tasksDoneSummary && myRecord.tasksDoneSummary.length > 0) {
+        taskSummary = myRecord.tasksDoneSummary.join(', ');
+      } else if (myRecord?.notes && myRecord.notes.trim()) {
+        taskSummary = myRecord.notes.trim();
+      } else {
+        taskSummary = '-';
+      }
+
+      let category: 'LEAVE' | 'WFH' | 'SICK' | 'BUSINESS_TRIP' | undefined = undefined;
+      if (ds.key === 'LEAVE') category = 'LEAVE';
+      else if (ds.key === 'SICK') category = 'SICK';
+      else if (ds.key === 'WFH') category = 'WFH';
+      else if (ds.key === 'BUSINESS_TRIP') category = 'BUSINESS_TRIP';
 
       return {
         ...row,
         statusText,
         statusBadgeClass,
         clockIn,
-        clockOut,
         locationMode,
         taskSummary,
         hasCheckmark,
         category,
       };
     });
-  }, [displayedRows, attendanceRecords, leaves, dailyTasks, currentUser.id]);
+  }, [displayedRows, attendanceRecords, leaves, dailyTasks, currentUser.id, currentUser.name]);
 
   // Hitung total angka riwayat absensi pribadi per kategori
   const personalCategoryCounts = useMemo(() => {
@@ -1058,8 +968,13 @@ export function AttendanceHistory({
         return false;
       });
     }
+    // Pastikan histori terbaru selalu muncul di baris paling atas
+    result.sort((a, b) => {
+      const cmp = b.rawDate.localeCompare(a.rawDate);
+      return sortOrder === 'DESC' ? cmp : -cmp;
+    });
     return result;
-  }, [personalRows, personalCategoryFilter, searchQuery]);
+  }, [personalRows, personalCategoryFilter, searchQuery, sortOrder]);
 
   // Reset pagination saat filter berubah
   React.useEffect(() => {
@@ -1113,7 +1028,7 @@ export function AttendanceHistory({
     <div className={`space-y-4 font-sans antialiased ${isFullscreen ? 'fixed inset-0 z-50 bg-[#F8FAFC] p-4 sm:p-8 overflow-y-auto' : ''}`}>
       
       {/* TOOLBAR FILTERS */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs relative z-20 p-2.5 sm:p-3.5">
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs relative z-10 p-2.5 sm:p-3.5">
         {/* TAMPILAN DESKTOP & TABLET (1 Baris Horisontal sesuai Referensi) */}
         <div className="hidden md:flex md:items-center md:gap-3 w-full">
           {/* 1. Fullscreen / Zoom Toggle */}
@@ -1372,6 +1287,20 @@ export function AttendanceHistory({
                 <FileSpreadsheet className="w-4 h-4" />
               </button>
             </Tooltip>
+
+            {isAdmin && (
+              <Tooltip content="Hapus seluruh riwayat presensi karyawan" position="bottom">
+                <button
+                  type="button"
+                  onClick={() => setShowClearAllModal(true)}
+                  aria-label="Hapus Semua Riwayat Presensi"
+                  className="h-9.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl transition-all shadow-2xs cursor-pointer shrink-0 flex items-center justify-center gap-1.5 active:scale-95 border border-rose-200 text-xs font-semibold"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span className="hidden sm:inline">Hapus Semua</span>
+                </button>
+              </Tooltip>
+            )}
           </div>
 
           {/* BARIS 2 (BAWAH MOBILE) */}
@@ -1552,40 +1481,51 @@ export function AttendanceHistory({
       {viewMode === 'matrix' ? (
         <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden select-none">
           <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full border-collapse text-left text-xs min-w-[760px]">
+            <table className="w-full border-collapse text-left text-xs min-w-max">
               {/* TABLE HEADER */}
               <thead>
                 <tr className="border-b border-slate-200/80 bg-white text-slate-600 font-semibold text-xs">
                   {/* Kolom Tanggal (Bahasa Indonesia) */}
-                  <th className="py-3 px-4 font-semibold text-slate-600 w-28">Tanggal</th>
+                  <th className="py-3.5 px-4 font-semibold text-slate-600 whitespace-nowrap min-w-[130px]">Tanggal</th>
 
                   {/* Kolom Presensi Masuk (Summary pill) */}
-                  <th className="py-3 px-4 font-semibold text-slate-600 w-36">Presensi Masuk</th>
+                  <th className="py-3.5 px-4 font-semibold text-slate-600 whitespace-nowrap min-w-[160px]">Presensi Masuk</th>
 
                   {/* Kolom Keterangan Lokasi */}
-                  <th className="py-3 px-4 font-semibold text-slate-600 w-36">Keterangan Lokasi</th>
+                  <th className="py-3.5 px-4 font-semibold text-slate-600 whitespace-nowrap min-w-[170px]">Keterangan Lokasi</th>
 
-                  {/* Kolom Cuti/Izin */}
-                  <th className="py-3 px-4 font-semibold text-slate-600 w-24">Cuti/Izin</th>
+                  {/* Kolom Cuti / Sakit / Izin */}
+                  <th className="py-3.5 px-4 font-semibold text-slate-600 whitespace-nowrap min-w-[180px]">Cuti / Sakit / Izin</th>
 
-                  {/* Kolom Tiap Karyawan */}
-                  {employeeColumns.map((colName) => (
-                    <th
-                      key={colName}
-                      onClick={() => {
-                        const fullName = employeeNamesMap[colName] || colName;
-                        const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
-                        setSimpleProfilePopup({
-                          name: fullName,
-                          avatar: avatar,
-                        });
-                      }}
-                      className="py-3 px-4 font-semibold text-slate-700 hover:text-[#1E3A8A] hover:bg-blue-50/60 min-w-[100px] text-center cursor-pointer transition-colors"
-                      title="Klik untuk melihat profil"
-                    >
-                      {colName}
+                  {/* Kolom Tiap Karyawan (Dinamis dari Karyawan Terdaftar) */}
+                  {employeeColumns.length === 0 ? (
+                    <th className="py-3.5 px-4 font-medium text-slate-400 italic text-center min-w-[200px] whitespace-nowrap">
+                      Belum Ada Karyawan Terdaftar
                     </th>
-                  ))}
+                  ) : (
+                    employeeColumns.map((colName) => (
+                      <th
+                        key={colName}
+                        onClick={() => {
+                          const matchedUser = users.find(
+                            (u) =>
+                              u.name.toLowerCase().includes(colName.toLowerCase()) ||
+                              (colName === 'Alis' && (u.name.toLowerCase().includes('nasywa') || u.name.toLowerCase().includes('alis')))
+                          );
+                          const fullName = matchedUser?.name || employeeNamesMap[colName] || colName;
+                          const avatar = matchedUser?.avatar || employeeAvatarMap[colName] || sampleAvatars[0];
+                          setSimpleProfilePopup({
+                            name: fullName,
+                            avatar: avatar,
+                          });
+                        }}
+                        className="py-3.5 px-4 font-semibold text-slate-700 hover:text-[#1E3A8A] hover:bg-blue-50/60 min-w-[130px] text-center cursor-pointer transition-colors whitespace-nowrap"
+                        title="Klik untuk melihat profil"
+                      >
+                        {colName}
+                      </th>
+                    ))
+                  )}
                 </tr>
               </thead>
 
@@ -1593,8 +1533,10 @@ export function AttendanceHistory({
               <tbody className="divide-y divide-slate-100">
                 {displayedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={4 + employeeColumns.length} className="py-16 text-center text-slate-400">
-                      Tidak ada data riwayat presensi yang cocok dengan kata kunci pencarian.
+                    <td colSpan={employeeColumns.length === 0 ? 5 : 4 + employeeColumns.length} className="py-16 text-center text-slate-400 font-medium">
+                      {allMatrixRows.length === 0
+                        ? 'Belum ada catatan riwayat presensi karyawan.'
+                        : 'Tidak ada data riwayat presensi yang cocok dengan filter pencarian.'}
                     </td>
                   </tr>
                 ) : (
@@ -1662,114 +1604,212 @@ export function AttendanceHistory({
                           )}
                         </td>
 
-                        {/* 3b. Keterangan Lokasi Column */}
+                        {/* 3b. Keterangan Lokasi Column (Muncul semua status unik pada hari tersebut, masing-masing maksimal 1) */}
                         <td className="py-3 px-4 whitespace-nowrap">
-                          {isWeekendHoliday ? (
+                          {row.locationTags && row.locationTags.length > 0 ? (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {row.locationTags.map((tag) => {
+                                const cfg = LOCATION_TAG_CONFIG[tag];
+                                if (!cfg) return null;
+                                const TagIcon = cfg.icon;
+                                return (
+                                  <span
+                                    key={tag}
+                                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold ${cfg.bg} ${cfg.text} border ${cfg.border} shadow-2xs`}
+                                  >
+                                    <TagIcon className={`w-3 h-3 ${cfg.iconColor} shrink-0`} />
+                                    <span>{cfg.label}</span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : isWeekendHoliday ? (
                             <span className="text-slate-400 font-bold text-xs pl-2">-</span>
                           ) : (
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                <Building2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                                <span>Di Kantor</span>
-                              </span>
-                              {(row.rawDate === '2026-10-15' || row.rawDate === '2026-10-20') && (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                                  <MapPin className="w-3 h-3 text-amber-600 shrink-0" />
-                                  <span>Di Luar Kantor</span>
-                                </span>
-                              )}
-                            </div>
+                            <span className="text-slate-300 font-bold text-xs pl-2">—</span>
                           )}
                         </td>
 
-                        {/* 4. Cuti/Izin Column (Avatar Karyawan Cuti) */}
+                        {/* 4. Cuti / Sakit / Izin Column (Avatar Karyawan Cuti / Sakit / Izin) */}
                         <td className="py-3 px-4 whitespace-nowrap">
                           {row.cutiAvatars.length > 0 ? (
                             <div
                               onClick={() => handleOpenCutiMembersModal(row)}
-                              className="inline-flex items-center -space-x-1 shrink-0 cursor-pointer p-1 rounded-xl hover:bg-amber-50/70 transition-all hover:scale-105 active:scale-95"
-                              title="Klik untuk melihat semua foto & nama karyawan cuti / izin"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50/80 border border-amber-200/80 text-amber-800 shadow-2xs transition-all shrink-0 cursor-pointer hover:bg-amber-100/80 hover:scale-105 active:scale-95"
+                              title="Klik untuk melihat semua foto & nama karyawan (Cuti / Sakit / Izin)"
                             >
-                              {row.cutiAvatars.map((cav, cIdx) => (
-                                <img
-                                  key={cIdx}
-                                  src={cav}
-                                  alt="cuti avatar"
-                                  className="w-6 h-6 min-w-[24px] min-h-[24px] aspect-square rounded-full object-cover border-1.5 border-white shrink-0 shadow-2xs"
-                                />
-                              ))}
+                              <div className="flex -space-x-1.5 items-center shrink-0">
+                                {row.cutiAvatars.slice(0, 3).map((cav, cIdx) => (
+                                  <img
+                                    key={cIdx}
+                                    src={cav}
+                                    alt="cuti avatar"
+                                    className="w-5 h-5 min-w-[20px] min-h-[20px] aspect-square rounded-full object-cover ring-2 ring-white shrink-0 shadow-2xs"
+                                  />
+                                ))}
+                              </div>
+                              {row.cutiAvatars.length > 3 && (
+                                <span className="text-[11px] font-bold text-amber-900 pl-0.5 whitespace-nowrap">
+                                  +{row.cutiAvatars.length - 3}
+                                </span>
+                              )}
                             </div>
+                          ) : isWeekendHoliday ? (
+                            <span className="text-slate-400 font-bold text-xs pl-2">-</span>
                           ) : (
-                            <span className="text-slate-300 font-bold text-xs">—</span>
+                            <span className="text-slate-300 font-bold text-xs pl-2">—</span>
                           )}
                         </td>
 
-                        {/* 5. Employee Status Columns (Alis, Awang, Ella, Fanny, Fida, Fikar) */}
-                        {employeeColumns.map((colName) => {
-                          const status = row.statuses[colName] || 'Hadir';
+                        {/* 5. Employee Status Columns (Dinamis dari Akun Karyawan Terdaftar) */}
+                        {employeeColumns.length === 0 ? (
+                          <td className="py-2.5 px-4 text-center text-slate-300 italic text-xs">
+                            —
+                          </td>
+                        ) : (
+                          employeeColumns.map((colName) => {
+                            const status = row.statuses[colName] || 'Hadir';
 
-                          return (
-                            <td key={colName} className="py-2.5 px-4 text-center whitespace-nowrap">
-                              {isWeekendHoliday ? (
-                                // Teks 'Libur' merah tanpa pill di hari libur (persis gambar)
-                                <span className="text-xs font-bold text-[#E11D48] tracking-tight">
-                                  Libur
-                                </span>
-                              ) : status === 'Hadir' ? (
-                                // Pill Biru Muda untuk 'Hadir'
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const fullName = employeeNamesMap[colName] || colName;
-                                    const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
-                                    setSimpleProfilePopup({
-                                      name: fullName,
-                                      avatar: avatar,
-                                    });
-                                  }}
-                                  className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#E0F2FE] text-[#0369A1] hover:bg-[#BAE6FD] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
-                                  title={`Klik untuk melihat profil ${colName} (Hadir)`}
-                                >
-                                  Hadir
-                                </button>
-                              ) : status === 'Cuti/Izin' ? (
-                                // Pill Hijau Muda untuk 'Cuti/Izin'
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const fullName = employeeNamesMap[colName] || colName;
-                                    const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
-                                    setSimpleProfilePopup({
-                                      name: fullName,
-                                      avatar: avatar,
-                                    });
-                                  }}
-                                  className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#DCFCE7] text-[#15803D] hover:bg-[#BBF7D0] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
-                                  title={`Klik untuk melihat profil ${colName} (Cuti/Izin)`}
-                                >
-                                  Cuti/Izin
-                                </button>
-                              ) : (
-                                // Pill Merah Muda untuk 'Tidak Hadir'
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const fullName = employeeNamesMap[colName] || colName;
-                                    const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
-                                    setSimpleProfilePopup({
-                                      name: fullName,
-                                      avatar: avatar,
-                                    });
-                                  }}
-                                  className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#FFE4E6] text-[#E11D48] hover:bg-[#FECDD3] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
-                                  title={`Klik untuk melihat profil ${colName} (Tidak Hadir)`}
-                                >
-                                  Tidak Hadir
-                                </button>
-                              )}
-                            </td>
-                          );
-                        })}
+                            return (
+                              <td key={colName} className="py-2.5 px-4 text-center whitespace-nowrap">
+                                {isWeekendHoliday ? (
+                                  // Teks 'Libur' merah tanpa pill di hari libur (persis gambar)
+                                  <span className="text-xs font-bold text-[#E11D48] tracking-tight">
+                                    Libur
+                                  </span>
+                                ) : status === 'Hadir' ? (
+                                  // Pill Biru Muda untuk 'Hadir'
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const fullName = employeeNamesMap[colName] || colName;
+                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
+                                      setSimpleProfilePopup({
+                                        name: fullName,
+                                        avatar: avatar,
+                                      });
+                                    }}
+                                    className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#DCFCE7] text-[#15803D] hover:bg-[#BBF7D0] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
+                                    title={`Klik untuk melihat profil ${colName} (Hadir)`}
+                                  >
+                                    Hadir
+                                  </button>
+                                ) : status === 'Terlambat' ? (
+                                  // Pill Kuning/Oranye untuk 'Terlambat'
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const fullName = employeeNamesMap[colName] || colName;
+                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
+                                      setSimpleProfilePopup({
+                                        name: fullName,
+                                        avatar: avatar,
+                                      });
+                                    }}
+                                    className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#FEF3C7] text-[#B45309] hover:bg-[#FDE68A] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
+                                    title={`Klik untuk melihat profil ${colName} (Terlambat)`}
+                                  >
+                                    Terlambat
+                                  </button>
+                                ) : status === 'Cuti/Izin' ? (
+                                  // Pill Hijau Muda untuk 'Cuti/Izin'
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const fullName = employeeNamesMap[colName] || colName;
+                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
+                                      setSimpleProfilePopup({
+                                        name: fullName,
+                                        avatar: avatar,
+                                      });
+                                    }}
+                                    className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#DCFCE7] text-[#15803D] hover:bg-[#BBF7D0] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
+                                    title={`Klik untuk melihat profil ${colName} (Cuti/Izin)`}
+                                  >
+                                    Cuti/Izin
+                                  </button>
+                                ) : status === 'WFH' ? (
+                                  // Pill Indigo / Split Badge untuk 'WFH'
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const fullName = employeeNamesMap[colName] || colName;
+                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
+                                      setSimpleProfilePopup({
+                                        name: fullName,
+                                        avatar: avatar,
+                                      });
+                                    }}
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer shadow-2xs inline-flex items-center gap-1 active:scale-95 ${
+                                      row.lateWfhMap?.[colName]
+                                        ? 'bg-[#FEF3C7] text-[#B45309] border border-amber-300 hover:bg-[#FDE68A]'
+                                        : 'bg-[#E0E7FF] text-[#4338CA] hover:bg-[#C7D2FE]'
+                                    }`}
+                                    title={row.lateWfhMap?.[colName] ? `Klik untuk melihat profil ${colName} (WFH Terlambat ${row.lateWfhMap[colName]} mnt)` : `Klik untuk melihat profil ${colName} (WFH)`}
+                                  >
+                                    <span>WFH</span>
+                                    {row.lateWfhMap?.[colName] ? (
+                                      <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded-md">
+                                        • Terlambat ({row.lateWfhMap[colName]}m)
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                ) : status === 'Sakit' ? (
+                                  // Pill Oranye untuk 'Sakit'
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const fullName = employeeNamesMap[colName] || colName;
+                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
+                                      setSimpleProfilePopup({
+                                        name: fullName,
+                                        avatar: avatar,
+                                      });
+                                    }}
+                                    className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#FFEDD5] text-[#C2410C] hover:bg-[#FED7AA] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
+                                    title={`Klik untuk melihat profil ${colName} (Sakit)`}
+                                  >
+                                    Sakit
+                                  </button>
+                                ) : status === 'Dinas Luar' ? (
+                                  // Pill Ungu untuk 'Dinas Luar'
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const fullName = employeeNamesMap[colName] || colName;
+                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
+                                      setSimpleProfilePopup({
+                                        name: fullName,
+                                        avatar: avatar,
+                                      });
+                                    }}
+                                    className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#F3E8FF] text-[#7E22CE] hover:bg-[#E9D5FF] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
+                                    title={`Klik untuk melihat profil ${colName} (Dinas Luar)`}
+                                  >
+                                    Dinas Luar
+                                  </button>
+                                ) : (
+                                  // Pill Merah Muda untuk 'Tidak Hadir'
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const fullName = employeeNamesMap[colName] || colName;
+                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
+                                      setSimpleProfilePopup({
+                                        name: fullName,
+                                        avatar: avatar,
+                                      });
+                                    }}
+                                    className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#FFE4E6] text-[#E11D48] hover:bg-[#FECDD3] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
+                                    title={`Klik untuk melihat profil ${colName} (Tidak Hadir)`}
+                                  >
+                                    Tidak Hadir
+                                  </button>
+                                )}
+                              </td>
+                            );
+                          })
+                        )}
                       </tr>
                     );
                   })
@@ -1834,25 +1874,12 @@ export function AttendanceHistory({
                 title="Lihat Foto Profil"
               />
               <div>
-                <div className="flex items-center gap-2.5">
-                  <h3
-                    onClick={() => setSimpleProfilePopup({ name: currentUser.name, avatar: currentUser.avatar })}
-                    className="font-extrabold text-slate-900 hover:text-[#1E3A8A] transition-colors text-sm sm:text-base leading-snug cursor-pointer"
-                  >
-                    {currentUser.name}
-                  </h3>
-                  {/* Button ringkas logo spreadsheet di sebelah nama */}
-                  <Tooltip content="Unduh riwayat presensi pribadi ke dalam dokumen spreadsheet (.CSV)" position="bottom">
-                    <button
-                      type="button"
-                      onClick={handleExportPersonal}
-                      aria-label="Ekspor Spreadsheet"
-                      className="h-7.5 w-7.5 bg-[#1E3A8A] hover:bg-[#172554] text-white font-bold rounded-lg transition-all shadow-xs cursor-pointer shrink-0 flex items-center justify-center hover:shadow-md active:scale-95 border border-[#1E3A8A]"
-                    >
-                      <FileSpreadsheet className="w-3.5 h-3.5" />
-                    </button>
-                  </Tooltip>
-                </div>
+                <h3
+                  onClick={() => setSimpleProfilePopup({ name: currentUser.name, avatar: currentUser.avatar })}
+                  className="font-extrabold text-slate-900 hover:text-[#1E3A8A] transition-colors text-sm sm:text-base leading-snug cursor-pointer"
+                >
+                  {currentUser.name}
+                </h3>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
                   {currentUser.department || 'Teknologi Informasi'}
                 </p>
@@ -1982,7 +2009,7 @@ export function AttendanceHistory({
                           {/* 1. Date Column */}
                           <td
                             className={`py-3 px-4 font-semibold text-xs whitespace-nowrap ${
-                              isWeekendHoliday ? 'text-rose-600 font-bold' : 'text-slate-800'
+                              isWeekendHoliday && !row.hasCheckmark ? 'text-rose-600 font-bold' : 'text-slate-800'
                             }`}
                           >
                             {row.dateStr}
@@ -1990,9 +2017,7 @@ export function AttendanceHistory({
 
                           {/* 2. Check-in Column (Pill Container Persis Kehadiran Tim - Tanpa Pop Up untuk Presensi Pribadi) */}
                           <td className="py-3 px-4 whitespace-nowrap">
-                            {isWeekendHoliday ? (
-                              <span className="text-slate-400 font-bold text-xs pl-2">-</span>
-                            ) : row.hasCheckmark ? (
+                            {row.hasCheckmark ? (
                               <div
                                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-slate-200/90 shadow-2xs shrink-0 text-slate-700"
                               >
@@ -2006,43 +2031,86 @@ export function AttendanceHistory({
                                 />
                                 <span className="text-[10px] font-bold text-slate-600">{row.clockIn}</span>
                               </div>
-                            ) : (
-                              <span className="text-slate-300 font-bold text-xs pl-2">—</span>
-                            )}
-                          </td>
-
-                          {/* 2b. Keterangan Lokasi Column */}
-                          <td className="py-3 px-4 whitespace-nowrap">
-                            {isWeekendHoliday ? (
+                            ) : isWeekendHoliday ? (
                               <span className="text-slate-400 font-bold text-xs pl-2">-</span>
-                            ) : row.locationMode && row.locationMode !== '—' ? (
-                              row.locationMode.includes('WFH') || row.locationMode.includes('Luar') || row.locationMode.includes('Dinas') ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                                  <MapPin className="w-3 h-3 text-amber-600 shrink-0" />
-                                  <span>Di Luar Kantor</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                  <Building2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                                  <span>Di Kantor</span>
-                                </span>
-                              )
                             ) : (
                               <span className="text-slate-300 font-bold text-xs pl-2">—</span>
                             )}
                           </td>
 
-                          {/* 3. Status Kehadiran (Tanpa Pop Up untuk Presensi Pribadi) */}
+                          {/* 2b. Keterangan Lokasi Column (Warna Khas Lokasi Seragam) */}
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            {row.hasCheckmark || (row.locationMode && row.locationMode !== '—' && !isWeekendHoliday) ? (
+                              (() => {
+                                const mode = row.locationMode;
+                                const isWfh = mode.includes('WFH') || mode.includes('Rumah');
+                                const isDinas = mode.includes('Dinas');
+                                const isLuar = mode.includes('Luar') || mode.includes('Radius');
+
+                                if (isWfh) {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
+                                      <Laptop className="w-3 h-3 text-sky-600 shrink-0" />
+                                      <span>{mode}</span>
+                                    </span>
+                                  );
+                                }
+                                if (isDinas) {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                      <MapPin className="w-3 h-3 text-amber-600 shrink-0" />
+                                      <span>{mode}</span>
+                                    </span>
+                                  );
+                                }
+                                if (isLuar) {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+                                      <MapPin className="w-3 h-3 text-rose-600 shrink-0" />
+                                      <span>{mode}</span>
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                                    <Building2 className="w-3 h-3 text-teal-600 shrink-0" />
+                                    <span>{mode}</span>
+                                  </span>
+                                );
+                              })()
+                            ) : isWeekendHoliday ? (
+                              <span className="text-slate-400 font-bold text-xs pl-2">-</span>
+                            ) : (
+                              <span className="text-slate-300 font-bold text-xs pl-2">—</span>
+                            )}
+                          </td>
+
+                          {/* 3. Status Kehadiran (Pill Status Terpadu, Menit Menyatu dengan Terlambat) */}
                           <td className="py-2.5 px-4 text-center whitespace-nowrap">
-                            {isWeekendHoliday ? (
+                            {isWeekendHoliday && !row.hasCheckmark && !row.category ? (
                               <span className="text-xs font-bold text-[#E11D48] tracking-tight">
                                 Libur
                               </span>
-                            ) : (
+                            ) : row.category === 'WFH' || row.statusText.includes('WFH') ? (
                               <span
-                                className={`px-3.5 py-1 rounded-full text-xs font-semibold shadow-2xs inline-block ${row.statusBadgeClass}`}
+                                className={`px-3 py-1 rounded-full text-xs font-semibold shadow-2xs inline-flex items-center gap-1 ${
+                                  row.statusText.includes('Terlambat')
+                                    ? 'bg-[#FEF3C7] text-[#B45309] border border-amber-300'
+                                    : 'bg-[#E0E7FF] text-[#4338CA]'
+                                }`}
                               >
-                                {row.statusText}
+                                <span>WFH</span>
+                                {row.statusText.includes('Terlambat') && (
+                                  <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded-md">
+                                    • Terlambat {row.statusText.match(/\(.*\)/)?.[0]?.replace(' mnt', 'm') || ''}
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className={`px-3.5 py-1 rounded-full text-xs font-semibold shadow-2xs inline-flex items-center justify-center ${row.statusBadgeClass}`}>
+                                {row.statusText.includes('Terlambat')
+                                  ? row.statusText.replace(' mnt', 'm')
+                                  : row.statusText}
                               </span>
                             )}
                           </td>
@@ -2163,54 +2231,73 @@ export function AttendanceHistory({
                 <span className="font-bold text-indigo-700">{selectedCellInfo.status}</span>
               </div>
 
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const matchedUser = users.find(
+              {(() => {
+                if (!isAdmin) return null;
+
+                const isSelf =
+                  selectedCellInfo.name.toLowerCase() === currentUser.name.toLowerCase() ||
+                  Boolean(
+                    users.find(
                       (u) =>
-                        u.name.toLowerCase().includes(selectedCellInfo.name.toLowerCase()) ||
-                        selectedCellInfo.name.toLowerCase().includes(u.name.toLowerCase())
-                    );
-                    const rawDate =
-                      allMatrixRows.find((r) => r.dateStr === selectedCellInfo.date)?.rawDate ||
-                      getCurrentDateString();
-                    const existingRec = attendanceRecords.find(
-                      (r) =>
-                        (r.userId === matchedUser?.id || r.userName === selectedCellInfo.name) &&
-                        r.date === rawDate
-                    );
+                        u.id === currentUser.id &&
+                        (u.name.toLowerCase().includes(selectedCellInfo.name.toLowerCase()) ||
+                          selectedCellInfo.name.toLowerCase().includes(u.name.toLowerCase()))
+                    )
+                  );
 
-                    const recordToEdit: AttendanceRecord = existingRec || {
-                      id: `att_edit_${Date.now()}`,
-                      userId: matchedUser?.id || 'usr_unknown',
-                      userName: selectedCellInfo.name,
-                      userAvatar:
-                        matchedUser?.avatar ||
-                        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&q=80',
-                      department: matchedUser?.department || 'Divisi Operasional',
-                      employmentType: matchedUser?.employmentType || 'CONTRACT',
-                      date: rawDate,
-                      clockInTime: '08:00',
-                      clockInLat: -6.2088,
-                      clockInLng: 106.8456,
-                      clockInStatus: selectedCellInfo.status === 'Terlambat' ? 'LATE' : 'ON_TIME',
-                      clockInLocationStatus: 'IN_OFFICE',
-                      clockInLateMinutes: selectedCellInfo.status === 'Terlambat' ? 15 : 0,
-                      clockInDistanceMeter: 15,
-                      workMode: 'WFO',
-                      syncStatus: 'SYNCED',
-                    };
+                if (isSelf) {
+                  return null;
+                }
 
-                    setEditingRecord(recordToEdit);
-                    setSelectedCellInfo(null);
-                  }}
-                  className="w-full py-2.5 bg-[#1E3A8A] hover:bg-[#172554] text-white font-bold rounded-xl text-xs transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer mt-3"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>Edit Status Presensi (Admin)</span>
-                </button>
-              )}
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const matchedUser = users.find(
+                        (u) =>
+                          u.name.toLowerCase().includes(selectedCellInfo.name.toLowerCase()) ||
+                          selectedCellInfo.name.toLowerCase().includes(u.name.toLowerCase())
+                      );
+                      const rawDate =
+                        allMatrixRows.find((r) => r.dateStr === selectedCellInfo.date)?.rawDate ||
+                        getCurrentDateString();
+                      const existingRec = attendanceRecords.find(
+                        (r) =>
+                          (r.userId === matchedUser?.id || r.userName === selectedCellInfo.name) &&
+                          r.date === rawDate
+                      );
+
+                      const recordToEdit: AttendanceRecord = existingRec || {
+                        id: `att_edit_${Date.now()}`,
+                        userId: matchedUser?.id || 'usr_unknown',
+                        userName: selectedCellInfo.name,
+                        userAvatar:
+                          matchedUser?.avatar ||
+                          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&q=80',
+                        department: matchedUser?.department || 'Divisi Operasional',
+                        employmentType: matchedUser?.employmentType || 'CONTRACT',
+                        date: rawDate,
+                        clockInTime: '08:00',
+                        clockInLat: -6.2088,
+                        clockInLng: 106.8456,
+                        clockInStatus: selectedCellInfo.status === 'Terlambat' ? 'LATE' : 'ON_TIME',
+                        clockInLocationStatus: 'IN_OFFICE',
+                        clockInLateMinutes: selectedCellInfo.status === 'Terlambat' ? 15 : 0,
+                        clockInDistanceMeter: 15,
+                        workMode: 'WFO',
+                        syncStatus: 'SYNCED',
+                      };
+
+                      setEditingRecord(recordToEdit);
+                      setSelectedCellInfo(null);
+                    }}
+                    className="w-full py-2.5 bg-[#1E3A8A] hover:bg-[#172554] text-white font-bold rounded-xl text-xs transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer mt-3"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Edit Status Presensi (Admin)</span>
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -2225,7 +2312,14 @@ export function AttendanceHistory({
         subtitle={teamMembersModalData.subtitle}
         members={teamMembersModalData.members}
         isAdmin={isAdmin}
+        currentUserId={currentUser.id}
+        currentUserName={currentUser.name}
         onEditMember={(member) => {
+          const isSelf =
+            member.id === currentUser.id ||
+            member.name.toLowerCase() === currentUser.name.toLowerCase();
+          if (isSelf) return;
+
           const matchedUser = users.find(
             (u) =>
               u.name.toLowerCase().includes(member.name.toLowerCase()) ||
@@ -2277,6 +2371,8 @@ export function AttendanceHistory({
         <EditAttendanceModal
           isOpen={!!editingRecord}
           record={editingRecord}
+          currentUserId={currentUser.id}
+          currentUserName={currentUser.name}
           onClose={() => {
             setEditingRecord(null);
             if (returnToTeamModalOnClose) {
@@ -2284,12 +2380,12 @@ export function AttendanceHistory({
               setReturnToTeamModalOnClose(false);
             }
           }}
-          onSave={(updated) => {
+          onSave={(updated, leaveCategory) => {
+            AppStorage.saveAttendanceRecord(updated);
             if (onUpdateRecord) {
               onUpdateRecord(updated);
-            } else {
-              AppStorage.saveAttendanceRecord(updated);
             }
+            setDataVersion((v) => v + 1);
             setEditingRecord(null);
             if (returnToTeamModalOnClose) {
               setTeamMembersModalData((prev) => ({
@@ -2300,15 +2396,42 @@ export function AttendanceHistory({
                     ? {
                         ...m,
                         statusBadge:
-                          updated.clockInStatus === 'LATE'
-                            ? `Terlambat (${updated.clockInTime || ''})`
-                            : `Hadir (${updated.clockInTime || ''})`,
-                        statusColor: updated.clockInStatus === 'LATE' ? 'amber' : 'emerald',
+                          leaveCategory === 'SICK'
+                            ? 'Sakit'
+                            : leaveCategory === 'BUSINESS_TRIP'
+                            ? updated.clockInStatus === 'LATE'
+                              ? `Dinas Luar • Terlambat (${updated.clockInLateMinutes || 0}m)`
+                              : 'Dinas Luar'
+                            : leaveCategory === 'LEAVE'
+                            ? 'Cuti / Izin'
+                            : leaveCategory === 'WFH'
+                            ? updated.clockInStatus === 'LATE'
+                              ? `WFH • Terlambat (${updated.clockInLateMinutes || 0}m)`
+                              : 'WFH'
+                            : updated.clockInStatus === 'LATE'
+                            ? `Terlambat (${updated.clockInLateMinutes || 0}m)`
+                            : 'Hadir',
+                        statusColor:
+                          leaveCategory === 'SICK'
+                            ? 'rose'
+                            : leaveCategory === 'BUSINESS_TRIP'
+                            ? updated.clockInStatus === 'LATE'
+                              ? 'amber'
+                              : 'purple'
+                            : leaveCategory === 'LEAVE'
+                            ? 'emerald'
+                            : (leaveCategory === 'WFH' && updated.clockInStatus === 'LATE')
+                            ? 'amber'
+                            : leaveCategory === 'WFH'
+                            ? 'indigo'
+                            : updated.clockInStatus === 'LATE'
+                            ? 'amber'
+                            : 'emerald',
                         locationBadge:
-                          updated.clockInLocationStatus === 'IN_OFFICE'
-                            ? 'Sesuai Radius'
-                            : updated.clockInLocationStatus === 'WFH_APPROVED'
+                          leaveCategory === 'WFH' || updated.clockInLocationStatus === 'WFH_APPROVED'
                             ? 'WFH'
+                            : updated.clockInLocationStatus === 'IN_OFFICE'
+                            ? 'Sesuai Radius'
                             : 'Luar Radius',
                       }
                     : m
@@ -2319,6 +2442,25 @@ export function AttendanceHistory({
           }}
         />
       )}
+
+      {/* MODAL KONFIRMASI HAPUS RIWAYAT PRESENSI & UJI */}
+      <ModernConfirmDialog
+        isOpen={showClearAllModal}
+        title="Bersihkan Riwayat Presensi Uji Lampau?"
+        message="Semua catatan riwayat presensi dan pengajuan izin dummy lampau (sebelum hari ini) akan dibersihkan. Presensi hari ini tetap dipertahankan untuk pengujian."
+        confirmText="Bersihkan Data Uji"
+        cancelText="Batal"
+        variant="danger"
+        onConfirm={() => {
+          AppStorage.clearPastTestHistory();
+          if (onClearAllAttendance) {
+            onClearAllAttendance();
+          }
+          setShowClearAllModal(false);
+          window.location.reload();
+        }}
+        onCancel={() => setShowClearAllModal(false)}
+      />
 
     </div>
   );

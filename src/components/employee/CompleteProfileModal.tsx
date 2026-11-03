@@ -198,39 +198,61 @@ export function CompleteProfileModal({ currentUser, onComplete, onLogout }: Comp
     .toUpperCase() || 'KR';
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-between items-center py-6 sm:py-10 px-4 sm:px-6 font-sans antialiased text-slate-900">
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans antialiased text-slate-900">
       
-      {/* Top Logout Button */}
-      {onLogout && (
-        <div className="w-full max-w-3xl flex items-center justify-end pb-4">
-          <button
-            type="button"
-            onClick={onLogout}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 text-xs font-bold text-slate-600 transition-all cursor-pointer shadow-2xs"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Keluar</span>
-          </button>
-        </div>
-      )}
-
-      {/* Main Full-Page Form Container Card */}
-      <div className="w-full max-w-3xl space-y-6 my-auto">
-
-        {/* Error Alert */}
-        {errorMsg && (
-          <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs flex items-center gap-2.5 animate-in fade-in">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-            <span className="font-semibold text-xs sm:text-sm">{errorMsg}</span>
+      {/* Top Navbar Header */}
+      <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-slate-200/90 shadow-2xs">
+        <div className="max-w-7xl xl:max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          {/* Logo & Brand */}
+          <div className="flex items-center gap-3">
+            <span className="font-extrabold text-[#1E3A8A] text-2xl tracking-tight select-none">
+              absenku
+            </span>
           </div>
-        )}
 
-        <form id="completeProfileForm" onSubmit={handleSubmit} className="space-y-6">
+          {/* Right Action: User Info & Logout Button */}
+          <div className="flex items-center gap-3">
+            {currentUser?.email && (
+              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600">
+                <span className="text-slate-400 font-medium">Akun:</span>
+                <span className="font-bold text-slate-800">{currentUser.email}</span>
+              </div>
+            )}
+            {onLogout && (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 text-xs font-bold text-slate-600 transition-all cursor-pointer shadow-2xs active:scale-95"
+                title="Keluar dari akun"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Keluar</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Main Centered Content Area */}
+      <main className="flex-1 w-full flex flex-col items-center justify-start pt-4 sm:pt-6 pb-12 px-4 sm:px-6 lg:px-8">
+        <div className="w-full max-w-7xl xl:max-w-[1400px] mx-auto space-y-6">
+
+          {/* Error Alert */}
+          {errorMsg && (
+            <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs flex items-center gap-2.5 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+              <span className="font-semibold text-xs sm:text-sm">{errorMsg}</span>
+            </div>
+          )}
+
+          <form id="completeProfileForm" onSubmit={handleSubmit} className="space-y-6">
           
           {/* ======================================================== */}
-          {/* 1. INFORMASI UMUM                                        */}
+          {/* BARIS 1: INFORMASI UMUM & INFORMASI PEKERJAAN            */}
           {/* ======================================================== */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 sm:p-7 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-stretch">
+            {/* 1. INFORMASI UMUM */}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6 flex flex-col justify-between">
             <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
               <div className="w-8 h-8 rounded-2xl bg-blue-50 text-[#1E3A8A] flex items-center justify-center font-bold">
                 <UserIcon className="w-4 h-4" />
@@ -422,84 +444,87 @@ export function CompleteProfileModal({ currentUser, onComplete, onLogout }: Comp
             </div>
           </div>
 
-          {/* ======================================================== */}
-          {/* 2. INFORMASI PEKERJAAN                                   */}
-          {/* ======================================================== */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 sm:p-7 space-y-6">
-            <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-              <div className="w-8 h-8 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
-                <Briefcase className="w-4 h-4" />
-              </div>
+            {/* 2. INFORMASI PEKERJAAN */}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6 flex flex-col justify-between">
               <div>
-                <h2 className="text-base sm:text-lg font-bold text-slate-900">
-                  Informasi Pekerjaan
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Posisi divisi dan status kontrak kepegawaian
-                </p>
-              </div>
-            </div>
+                <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                  <div className="w-8 h-8 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
+                    <Briefcase className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                      Informasi Pekerjaan
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Posisi divisi dan status kontrak kepegawaian
+                    </p>
+                  </div>
+                </div>
 
-            <div className="space-y-5">
-              {/* 2.1 Divisi */}
-              <div className="space-y-1.5">
-                <label className="block text-sm font-semibold text-slate-800">
-                  Divisi / Departemen <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  placeholder="Contoh: Operasional / Teknologi & Engineering / Marketing"
-                  className="w-full h-11 px-4 bg-white border border-slate-200 focus:border-[#1E3A8A] focus:ring-2 focus:ring-blue-100 rounded-2xl text-sm font-medium text-slate-900 outline-none transition-all"
-                />
-              </div>
+                <div className="space-y-5 pt-4">
+                  {/* 2.1 Divisi */}
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-semibold text-slate-800">
+                      Divisi / Departemen <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={department}
+                      onChange={(e) => setDepartment(e.target.value)}
+                      placeholder="Contoh: Operasional / Teknologi & Engineering / Marketing"
+                      className="w-full h-11 px-4 bg-white border border-slate-200 focus:border-[#1E3A8A] focus:ring-2 focus:ring-blue-100 rounded-2xl text-sm font-medium text-slate-900 outline-none transition-all"
+                    />
+                  </div>
 
-              {/* 2.2 Tipe Kepegawaian */}
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-800">
-                  Tipe Kepegawaian <span className="text-rose-500">*</span>
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {employmentOptions.map((opt) => {
-                    const isSelected = employmentType === opt.id;
-                    return (
-                      <div
-                        key={opt.id}
-                        onClick={() => setEmploymentType(opt.id)}
-                        className={`flex items-center gap-3 px-3.5 py-3 rounded-2xl border transition-all cursor-pointer select-none ${
-                          isSelected
-                            ? 'border-[#1E3A8A] bg-blue-50/60 text-[#1E3A8A] ring-1 ring-[#1E3A8A]/30 shadow-2xs font-bold'
-                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50/60'
-                        }`}
-                      >
-                        <div
-                          className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-all ${
-                            isSelected
-                              ? 'border-[#1E3A8A] bg-white ring-2 ring-blue-100'
-                              : 'border-slate-300 bg-white'
-                          }`}
-                        >
-                          {isSelected && (
-                            <div className="w-2.5 h-2.5 rounded-full bg-[#1E3A8A]" />
-                          )}
-                        </div>
-                        <span className="text-sm font-semibold truncate">
-                          {opt.label}
-                        </span>
-                      </div>
-                    );
-                  })}
+                  {/* 2.2 Tipe Kepegawaian */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-slate-800">
+                      Tipe Kepegawaian <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {employmentOptions.map((opt) => {
+                        const isSelected = employmentType === opt.id;
+                        return (
+                          <div
+                            key={opt.id}
+                            onClick={() => setEmploymentType(opt.id)}
+                            className={`flex items-center gap-3 px-3.5 py-3 rounded-2xl border transition-all cursor-pointer select-none ${
+                              isSelected
+                                ? 'border-[#1E3A8A] bg-blue-50/60 text-[#1E3A8A] ring-1 ring-[#1E3A8A]/30 shadow-2xs font-bold'
+                                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50/60'
+                            }`}
+                          >
+                            <div
+                              className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-all ${
+                                isSelected
+                                  ? 'border-[#1E3A8A] bg-white ring-2 ring-blue-100'
+                                  : 'border-slate-300 bg-white'
+                              }`}
+                            >
+                              {isSelected && (
+                                <div className="w-2.5 h-2.5 rounded-full bg-[#1E3A8A]" />
+                              )}
+                            </div>
+                            <span className="text-sm font-semibold truncate">
+                              {opt.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
           {/* ======================================================== */}
-          {/* 3. KONTAK & ALAMAT                                       */}
+          {/* BARIS 2: KONTAK & ALAMAT & INFORMASI REKENING            */}
           {/* ======================================================== */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 sm:p-7 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-stretch">
+            {/* 3. KONTAK & ALAMAT */}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6 flex flex-col justify-between">
             <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
               <div className="w-8 h-8 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
                 <Phone className="w-4 h-4" />
@@ -550,7 +575,7 @@ export function CompleteProfileModal({ currentUser, onComplete, onLogout }: Comp
           {/* ======================================================== */}
           {/* 4. INFORMASI REKENING                                    */}
           {/* ======================================================== */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 sm:p-7 space-y-6">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6 flex flex-col justify-between">
             <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
               <div className="w-8 h-8 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
                 <CreditCard className="w-4 h-4" />
@@ -699,8 +724,9 @@ export function CompleteProfileModal({ currentUser, onComplete, onLogout }: Comp
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Submit Button */}
+        {/* Submit Button */}
           <div className="pt-2">
             <button
               type="submit"
@@ -720,7 +746,8 @@ export function CompleteProfileModal({ currentUser, onComplete, onLogout }: Comp
 
         </form>
 
-      </div>
+        </div>
+      </main>
 
     </div>
   );

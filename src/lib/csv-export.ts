@@ -153,9 +153,7 @@ export function generateStyledSpreadsheetHTML(
               <th style="background-color: #ffffff; color: #0f172a; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1; width: 90px; text-align: center;">Masuk</th>
               <th style="background-color: #ffffff; color: #0f172a; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1; width: 110px; text-align: center;">Status</th>
               <th style="background-color: #ffffff; color: #0f172a; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1; width: 90px; text-align: center;">Terlambat</th>
-              <th style="background-color: #ffffff; color: #0f172a; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1; width: 90px; text-align: center;">Pulang</th>
-              <th style="background-color: #ffffff; color: #0f172a; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1; width: 100px; text-align: center;">Durasi</th>
-              <th style="background-color: #ffffff; color: #0f172a; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1; text-align: left; width: 160px;">Catatan</th>
+              <th style="background-color: #ffffff; color: #0f172a; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1; text-align: left; width: 220px;">Catatan</th>
             </tr>
           </thead>
           <tbody>
@@ -174,10 +172,6 @@ export function generateStyledSpreadsheetHTML(
                   <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">
                     ${r.clockInLateMinutes > 0 ? formatMinutesFriendly(r.clockInLateMinutes) : '-'}
                   </td>
-                  <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">${r.clockOutTime ? `${r.clockOutTime} WIB` : '-'}</td>
-                  <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">
-                    ${r.workDurationMinutes ? formatMinutesFriendly(r.workDurationMinutes) : '-'}
-                  </td>
                   <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1;">${r.notes || '-'}</td>
                 </tr>`;
               })
@@ -187,10 +181,7 @@ export function generateStyledSpreadsheetHTML(
               <td colspan="4" style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: right; padding: 9px 10px; border: 1px solid #cbd5e1;">Total Karyawan:</td>
               <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">${totalRecords} Orang</td>
               <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">${onTimeCount} Tepat / ${lateCount} Telat</td>
-              <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">-</td>
-              <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: right; padding: 9px 10px; border: 1px solid #cbd5e1;">Total Jam:</td>
-              <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; color: #0F172A; border: 1px solid #cbd5e1;">${totalWorkFormatted}</td>
-              <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1;"></td>
+              <td colspan="2" style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1;"></td>
             </tr>
           </tbody>
         </table>
@@ -227,7 +218,7 @@ export interface PersonalAttendanceExportItem {
   dateStr: string;
   hasCheckmark?: boolean;
   clockIn: string;
-  clockOut: string;
+  clockOut?: string;
   statusText: string;
   locationMode: string;
   taskSummary: string;
@@ -337,7 +328,6 @@ export function generatePersonalSpreadsheetHTML(
               <th style="width: 110px; text-align: center;">Tanggal</th>
               <th style="width: 80px; text-align: center;">Presensi</th>
               <th style="width: 95px; text-align: center;">Jam Masuk</th>
-              <th style="width: 95px; text-align: center;">Jam Pulang</th>
               <th style="width: 120px; text-align: center;">Status Kehadiran</th>
               <th style="width: 130px; text-align: center;">Lokasi / Mode</th>
               <th style="text-align: left; width: 220px;">Catatan / Ringkasan Tugas</th>
@@ -352,7 +342,6 @@ export function generatePersonalSpreadsheetHTML(
                   <td style="text-align: center; font-weight: 500;">${r.dateStr}</td>
                   <td style="text-align: center;">${r.hasCheckmark ? 'Hadir' : '-'}</td>
                   <td style="text-align: center;">${r.clockIn}</td>
-                  <td style="text-align: center;">${r.clockOut}</td>
                   <td style="text-align: center; font-weight: 600;">${r.statusText}</td>
                   <td style="text-align: center;">${r.locationMode}</td>
                   <td>${r.taskSummary}</td>

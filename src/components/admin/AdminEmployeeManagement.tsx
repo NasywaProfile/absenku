@@ -23,6 +23,7 @@ import {
   X,
   Check,
   Eye,
+  Trash2,
 } from 'lucide-react';
 import { User, EmploymentType, UserRole } from '../../types/index.ts';
 import { EMPLOYMENT_TYPE_LABELS } from '../../lib/whatsapp-recap.ts';
@@ -44,6 +45,7 @@ interface AdminEmployeeManagementProps {
   onToggleStatus?: (userId: string) => void;
   onApproveRegistration?: (userId: string, role?: UserRole) => void;
   onRejectRegistration?: (userId: string) => void;
+  onPurgeAllExceptSuperAdmin?: () => void;
 }
 
 export function AdminEmployeeManagement({
@@ -59,6 +61,7 @@ export function AdminEmployeeManagement({
   onToggleStatus = (userId) => AppStorage.toggleUserActiveStatus(userId),
   onApproveRegistration,
   onRejectRegistration,
+  onPurgeAllExceptSuperAdmin,
 }: AdminEmployeeManagementProps) {
   const currentUser = propCurrentUser || AppStorage.getCurrentUser() || users[0];
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,6 +73,7 @@ export function AdminEmployeeManagement({
   const [showAddModal, setShowAddModal] = useState(false);
   const [isAddModalFullScreen, setIsAddModalFullScreen] = useState(false);
   const [dialogMessage, setDialogMessage] = useState<{ title: string; message: string; variant: 'warning' | 'danger' | 'info' | 'success' } | null>(null);
+  const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
 
   // Form Tambah Karyawan Baru
   const [newName, setNewName] = useState('');
@@ -223,6 +227,37 @@ export function AdminEmployeeManagement({
     <div className="space-y-5 font-sans antialiased">
       {activeSubTab === 'EMPLOYEES' && (
         <div className="space-y-5">
+          {/* Header Action Bar */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm sm:text-base font-extrabold text-slate-800 flex items-center gap-2">
+                <Users className="w-4 h-4 sm:w-5 sm:h-5 text-[#1E3A8A]" />
+                <span>Daftar Karyawan</span>
+              </h2>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setShowPurgeConfirm(true)}
+                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95"
+                  title="Hapus semua akun karyawan dan seluruh riwayat presensi & pengajuan kecuali Super Admin"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus Semua Karyawan &amp; Riwayat</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowAddModal(true)}
+                className="px-3.5 py-2 bg-[#1E3A8A] hover:bg-[#152a65] text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tambah Karyawan</span>
+              </button>
+            </div>
+          </div>
+
           {/* Filter & Search Toolbar */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-3 sm:p-3.5 space-y-2.5 md:space-y-0 md:flex md:items-center md:justify-between md:gap-3">
             {/* Search Input Bar (Di Mobile berada di atas dengan panah arrow toggle filter; di Desktop berada di sisi kanan) */}
@@ -500,13 +535,6 @@ export function AdminEmployeeManagement({
                               <option value="ADMIN">Admin</option>
                               <option value="SUPER_ADMIN">Superadmin</option>
                             </select>
-                            <span className="text-[10px] text-slate-400 font-medium">
-                              {currentChosenRole === 'SUPER_ADMIN'
-                                ? 'Halaman Super Admin'
-                                : currentChosenRole === 'ADMIN'
-                                ? 'Halaman Admin'
-                                : 'Halaman Karyawan'}
-                            </span>
                           </div>
                         </td>
 
@@ -557,6 +585,14 @@ export function AdminEmployeeManagement({
         onUpdateRole={handleUpdateRole}
         onUpdateType={handleUpdateType}
         onToggleStatus={handleToggleStatus}
+        onDeleteUser={(userId) => {
+          setSelectedUser(null);
+          if (onDeleteUser) {
+            onDeleteUser(userId);
+          } else {
+            AppStorage.deleteUser(userId);
+          }
+        }}
       />
 
       {/* Modal Tambah Karyawan Baru */}
@@ -796,6 +832,28 @@ export function AdminEmployeeManagement({
         onConfirm={() => setDialogMessage(null)}
         onCancel={() => setDialogMessage(null)}
       />
+
+      {/* Dialog Konfirmasi Hapus Semua Karyawan & Riwayat (Kecuali Super Admin) */}
+      {showPurgeConfirm && (
+        <ModernConfirmDialog
+          isOpen={showPurgeConfirm}
+          onCancel={() => setShowPurgeConfirm(false)}
+          onConfirm={() => {
+            setShowPurgeConfirm(false);
+            if (onPurgeAllExceptSuperAdmin) {
+              onPurgeAllExceptSuperAdmin();
+            } else {
+              AppStorage.purgeAllExceptSuperAdmin();
+              window.location.reload();
+            }
+          }}
+          title="Hapus Semua Karyawan & Seluruh Riwayat?"
+          message="Tindakan ini akan menghapus SEMUA data akun karyawan, seluruh catatan presensi, pengajuan cuti/izin/sakit/dinas, tugas harian, dan notifikasi KECUALI akun Super Admin. Anda akan dialihkan ke sesi Super Admin yang bersih."
+          confirmText="Ya, Hapus Semua Data"
+          cancelText="Batal"
+          variant="danger"
+        />
+      )}
     </div>
   );
 }
