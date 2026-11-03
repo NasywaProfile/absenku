@@ -30,6 +30,7 @@ import {
   INITIAL_IDEAS,
   INITIAL_OFFICE_CONFIG,
   INITIAL_CHAT_TOPICS,
+  INITIAL_TASKS,
 } from './mock-data.ts';
 import {
   findConflictingLeave,
@@ -44,17 +45,17 @@ import { hashPassword, verifyPassword, isPasswordEncrypted } from './crypto-util
 import { ApiClient } from './api-client.ts';
 
 const STORAGE_KEYS = {
-  USERS: 'absenku_users_v9',
-  CURRENT_USER_ID: 'absenku_current_user_id_v9',
-  ATTENDANCE: 'absenku_attendance_v9',
-  DAILY_TASKS: 'absenku_daily_tasks_v9',
-  TASKS: 'absenku_kanban_tasks_v9',
-  LEAVES: 'absenku_leaves_v9',
-  EMAILS: 'absenku_emails_v9',
-  MESSAGES: 'absenku_discussion_v9',
-  IDEAS: 'absenku_ideas_v9',
-  OFFICE_CONFIG: 'absenku_office_config_v9',
-  CHAT_TOPICS: 'absenku_chat_topics_v9',
+  USERS: 'absenku_users_v10',
+  CURRENT_USER_ID: 'absenku_current_user_id_v10',
+  ATTENDANCE: 'absenku_attendance_v10',
+  DAILY_TASKS: 'absenku_daily_tasks_v10',
+  TASKS: 'absenku_kanban_tasks_v10',
+  LEAVES: 'absenku_leaves_v10',
+  EMAILS: 'absenku_emails_v10',
+  MESSAGES: 'absenku_discussion_v10',
+  IDEAS: 'absenku_ideas_v10',
+  OFFICE_CONFIG: 'absenku_office_config_v10',
+  CHAT_TOPICS: 'absenku_chat_topics_v10',
 };
 
 /**
@@ -150,15 +151,15 @@ try {
   } catch (_) {}
 }
 
-// Bersihkan semua data pengguna lama dan seluruh histori kecuali akun Super Admin
-const PURGE_FLAG = 'absenku_purged_except_superadmin_v9';
+// Bersihkan semua data pengguna lama dan seluruh histori jika versi penyimpanan diperbarui
+const PURGE_FLAG = 'absenku_purged_dummy_seed_v10';
 try {
   const isPurged = localStorage.getItem(PURGE_FLAG);
   if (!isPurged) {
     const oldKeys = Object.keys(localStorage);
     oldKeys.forEach((key) => {
-      if (key.startsWith('absenku_') && !key.endsWith('_v9')) {
-        // Pertahankan konfigurasi kantor (koordinat jam kerja) jika sebelumnya sudah diatur
+      if (key.startsWith('absenku_') && !key.endsWith('_v10')) {
+        // Pertahankan konfigurasi kantor jika sudah ada
         if (key.includes('office_config') && !localStorage.getItem(STORAGE_KEYS.OFFICE_CONFIG)) {
           const existingConfig = localStorage.getItem(key);
           if (existingConfig) {
@@ -169,21 +170,20 @@ try {
       }
     });
 
-    // Simpan HANYA Super Admin
-    const superAdminOnly = INITIAL_USERS.filter((u) => u.role === 'SUPER_ADMIN');
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(superAdminOnly));
-    // Sesi tidak boleh dibuat otomatis: pengguna WAJIB login terlebih dahulu
+    // Inisialisasi data fungsional lengkap (Super Admin & Karyawan Lengkap)
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+    // Sesi tidak dibuat otomatis: pengguna login terlebih dahulu
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID);
 
-    // Kosongkan semua histori presensi, tugas, cuti/izin, notifikasi, dan pesan
-    localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.DAILY_TASKS, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.EMAILS, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.IDEAS, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.CHAT_TOPICS, JSON.stringify([]));
+    // Inisialisasi seluruh histori dummy fungsional
+    localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(INITIAL_ATTENDANCE));
+    localStorage.setItem(STORAGE_KEYS.DAILY_TASKS, JSON.stringify(INITIAL_DAILY_TASKS));
+    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
+    localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify(INITIAL_LEAVES));
+    localStorage.setItem(STORAGE_KEYS.EMAILS, JSON.stringify(INITIAL_EMAIL_NOTIFICATIONS));
+    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(INITIAL_DISCUSSION_MESSAGES));
+    localStorage.setItem(STORAGE_KEYS.IDEAS, JSON.stringify(INITIAL_IDEAS));
+    localStorage.setItem(STORAGE_KEYS.CHAT_TOPICS, JSON.stringify(INITIAL_CHAT_TOPICS));
     localStorage.removeItem('absenku_offline_queue');
 
     if (!localStorage.getItem(STORAGE_KEYS.OFFICE_CONFIG)) {
@@ -834,7 +834,7 @@ export const AppStorage = {
   getTasks(): TaskItem[] {
     const raw = localStorage.getItem(STORAGE_KEYS.TASKS);
     if (!raw) {
-      const defaultTasks: TaskItem[] = [];
+      const defaultTasks: TaskItem[] = INITIAL_TASKS;
       localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(defaultTasks));
       return defaultTasks;
     }
