@@ -60,7 +60,15 @@ const BLOB_EYES = [
   { id: 'red_r', cx: 720, cy: 575, r: 6.5, maxOffset: 6.5 },
 ];
 
-export function InteractiveDoodleScene({ className = "w-full h-full" }: { className?: string }) {
+export function InteractiveDoodleScene({
+  className = "w-full h-full",
+  viewBox = "0 0 800 750",
+  preserveAspectRatio = "xMidYBottom slice"
+}: {
+  className?: string;
+  viewBox?: string;
+  preserveAspectRatio?: string;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [mousePos, setMousePos] = useState({ x: 400, y: 400 });
@@ -105,9 +113,9 @@ export function InteractiveDoodleScene({ className = "w-full h-full" }: { classN
       <div className="relative w-full h-full flex items-end justify-center">
         <svg
           ref={svgRef}
-          viewBox="0 0 800 750"
+          viewBox={viewBox}
           className="w-full h-full object-cover object-bottom relative z-10"
-          preserveAspectRatio="xMidYBottom slice"
+          preserveAspectRatio={preserveAspectRatio}
         >
           {/* ======================================================== */}
           {/* LAYER 1: KARAKTER BLOB PALING BELAKANG (BESAR & SEIMBANG) */}

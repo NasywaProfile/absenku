@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { X, Maximize2, Minimize2, MapPin, Clock, Save, Image as ImageIcon, Upload, Trash2 } from 'lucide-react';
+import { X, Maximize2, Minimize2, MapPin, Clock, Save } from 'lucide-react';
 import { OfficeConfig } from '../../types/index.ts';
-import { compressImageFile } from '../../lib/image-compression.ts';
-import { uploadToCloudinary } from '../../lib/cloudinary.ts';
 
 interface OfficeSettingsModalProps {
   currentConfig: OfficeConfig;
@@ -13,30 +11,10 @@ interface OfficeSettingsModalProps {
 export function OfficeSettingsModal({ currentConfig, onSave, onClose }: OfficeSettingsModalProps) {
   const [config, setConfig] = useState<OfficeConfig>({ ...currentConfig });
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(config);
-  };
-
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    const file = files[0];
-    setIsUploadingPhoto(true);
-    try {
-      const compressed = await compressImageFile(file);
-      const res = await uploadToCloudinary(compressed, { folder: 'absenku/office' });
-      setConfig((prev) => ({ ...prev, photo: res.url }));
-    } catch (err) {
-      console.warn('Cloudinary upload fallback to compressed base64:', err);
-      const compressed = await compressImageFile(file);
-      setConfig((prev) => ({ ...prev, photo: compressed }));
-    } finally {
-      setIsUploadingPhoto(false);
-      e.target.value = '';
-    }
   };
 
   return (
@@ -131,49 +109,6 @@ export function OfficeSettingsModal({ currentConfig, onSave, onClose }: OfficeSe
               />
             </div>
 
-            {/* Unggah Foto Kantor (Card Maps) */}
-            <div className="pt-2 border-t border-slate-100 space-y-2">
-              <label className="block font-semibold text-slate-700">
-                Unggah Foto Kantor (Card Maps)
-              </label>
-              <div className="bg-slate-50/80 border border-slate-200/90 rounded-2xl p-3 flex items-center gap-3.5">
-                {/* Round Avatar Preview */}
-                <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border border-slate-200 shadow-xs shrink-0 bg-white flex items-center justify-center">
-                  {config.photo ? (
-                    <img src={config.photo} alt="Foto Kantor" className="w-full h-full object-cover" />
-                  ) : (
-                    <ImageIcon className="w-5 h-5 text-slate-400" />
-                  )}
-                </div>
-
-                {/* Upload Action */}
-                <div className="flex-1 min-w-0 flex items-center gap-2">
-                  <label className="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-xs">
-                    <Upload className="w-4 h-4 text-white" />
-                    <span>{isUploadingPhoto ? 'Mengunggah...' : 'Unggah Foto'}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handlePhotoUpload}
-                      disabled={isUploadingPhoto}
-                    />
-                  </label>
-                  {config.photo && (
-                    <button
-                      type="button"
-                      onClick={() => setConfig((prev) => ({ ...prev, photo: '' }))}
-                      className="px-3 py-2.5 text-rose-600 hover:bg-rose-50 rounded-xl font-semibold text-xs border border-rose-200/70 transition-colors cursor-pointer shrink-0 flex items-center gap-1"
-                      title="Hapus Foto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Hapus</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
             {/* Lokasi (Latitude, Longitude, Geofence) */}
             <div className="pt-2 border-t border-slate-100 space-y-3">
               <p className="font-bold text-xs text-slate-800 uppercase tracking-wider">
@@ -191,7 +126,7 @@ export function OfficeSettingsModal({ currentConfig, onSave, onClose }: OfficeSe
                     required
                     value={config.latitude}
                     onChange={(e) => setConfig({ ...config, latitude: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-900"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
                   />
                 </div>
                 <div>
@@ -205,7 +140,7 @@ export function OfficeSettingsModal({ currentConfig, onSave, onClose }: OfficeSe
                     required
                     value={config.longitude}
                     onChange={(e) => setConfig({ ...config, longitude: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-900"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
                   />
                 </div>
               </div>
@@ -224,7 +159,7 @@ export function OfficeSettingsModal({ currentConfig, onSave, onClose }: OfficeSe
                     onChange={(e) => setConfig({ ...config, geofenceRadiusMeter: parseInt(e.target.value, 10) || 50 })}
                     className="flex-1 accent-indigo-600"
                   />
-                  <span className="font-mono font-bold text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-200/60 min-w-[70px] text-center">
+                  <span className="font-bold text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-200/60 min-w-[70px] text-center">
                     {config.geofenceRadiusMeter} m
                   </span>
                 </div>

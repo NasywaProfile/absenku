@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Users,
-  Plus,
   Maximize2,
   Minimize2,
   Search,
@@ -86,9 +84,11 @@ export function AdminEmployeeManagement({
   const [newEmergencyPhone, setNewEmergencyPhone] = useState('');
 
   const isSuperAdmin = currentUser.role === 'SUPER_ADMIN';
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   const handleUpdateRole = (userId: string, newRole: UserRole) => {
     AppStorage.updateUserRole(userId, newRole);
+    if (onUpdateRole) onUpdateRole(userId, newRole);
     const updated = AppStorage.getUserById(userId);
     if (updated) {
       if (onUpdateUser) onUpdateUser(updated);
@@ -115,9 +115,6 @@ export function AdminEmployeeManagement({
   };
 
   const filteredUsers = users.filter((u) => {
-    // Super Admin tidak masuk ke dalam Data Karyawan
-    if (u.role === 'SUPER_ADMIN') return false;
-
     // Permintaan akun baru (PENDING_APPROVAL) belum di-ACC, jadi BELUM masuk ke Data Karyawan
     if (u.status === 'PENDING_APPROVAL') return false;
 
@@ -191,6 +188,10 @@ export function AdminEmployeeManagement({
 
   const handleApprovalRoleChange = (userId: string, role: UserRole) => {
     setSelectedApprovalRoles((prev) => ({ ...prev, [userId]: role }));
+    AppStorage.updateUserRole(userId, role);
+    if (onUpdateRole) onUpdateRole(userId, role);
+    const updated = AppStorage.getUserById(userId);
+    if (updated && onUpdateUser) onUpdateUser(updated);
   };
 
   React.useEffect(() => {
@@ -202,6 +203,9 @@ export function AdminEmployeeManagement({
   const handleApprove = (userId: string) => {
     const chosenRole = selectedApprovalRoles[userId] || 'EMPLOYEE';
     AppStorage.approveRegistration(userId, currentUser.name, chosenRole);
+    if (onUpdateRole) {
+      onUpdateRole(userId, chosenRole);
+    }
     if (onApproveRegistration) {
       onApproveRegistration(userId, chosenRole);
     }
@@ -224,27 +228,7 @@ export function AdminEmployeeManagement({
   return (
     <div className="space-y-5 font-sans antialiased">
       {activeSubTab === 'EMPLOYEES' && (
-        <div className="space-y-5">
-          {/* Header Action Bar */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm sm:text-base font-extrabold text-slate-800 flex items-center gap-2">
-                <Users className="w-4 h-4 sm:w-5 sm:h-5 text-[#1E3A8A]" />
-                <span>Daftar Karyawan</span>
-              </h2>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowAddModal(true)}
-                className="px-3.5 py-2 bg-[#1E3A8A] hover:bg-[#152a65] text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Tambah Karyawan</span>
-              </button>
-            </div>
-          </div>
-
+        <div className="space-y-4">
           {/* Filter & Search Toolbar */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-3 sm:p-3.5 space-y-2.5 md:space-y-0 md:flex md:items-center md:justify-between md:gap-3">
             {/* Search Input Bar (Di Mobile berada di atas dengan panah arrow toggle filter; di Desktop berada di sisi kanan) */}
@@ -298,11 +282,19 @@ export function AdminEmployeeManagement({
               } md:flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full md:w-auto text-xs animate-in fade-in slide-in-from-top-1 duration-150`}
             >
               {/* Filter Type */}
-              <div className="relative inline-flex items-center w-full sm:w-auto min-w-[170px]">
+              <div
+                className={`relative inline-flex items-center w-full sm:w-auto min-w-[170px] h-12 md:h-10 rounded-xl border transition-all shadow-2xs ${
+                  filterType !== 'ALL'
+                    ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] font-bold ring-1 ring-blue-300/40'
+                    : 'bg-slate-50 hover:bg-white border-slate-200 text-slate-800'
+                }`}
+              >
                 <select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value)}
-                  className="appearance-none w-full h-12 md:h-10 px-4 pr-9 bg-slate-50 hover:bg-white border border-slate-200 rounded-xl text-xs text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#1E3A8A] cursor-pointer shadow-2xs transition-colors"
+                  className={`appearance-none w-full h-full px-4 pr-9 bg-transparent rounded-xl text-xs font-semibold focus:outline-hidden cursor-pointer ${
+                    filterType !== 'ALL' ? 'text-[#1E3A8A] font-bold' : 'text-slate-800'
+                  }`}
                 >
                   <option value="ALL">Semua Tipe Karyawan</option>
                   <option value="INTERN">Magang (Intern)</option>
@@ -310,22 +302,54 @@ export function AdminEmployeeManagement({
                   <option value="CONTRACT">Karyawan Sementara (Kontrak)</option>
                   <option value="PERMANENT">Karyawan Tetap</option>
                 </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 pointer-events-none" />
+                <ChevronDown
+                  className={`w-4 h-4 absolute right-3 pointer-events-none ${
+                    filterType !== 'ALL' ? 'text-[#1E3A8A]' : 'text-slate-400'
+                  }`}
+                />
               </div>
 
               {/* Filter Status */}
-              <div className="relative inline-flex items-center w-full sm:w-auto min-w-[150px]">
+              <div
+                className={`relative inline-flex items-center w-full sm:w-auto min-w-[150px] h-12 md:h-10 rounded-xl border transition-all shadow-2xs ${
+                  filterStatus !== 'ALL'
+                    ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] font-bold ring-1 ring-blue-300/40'
+                    : 'bg-slate-50 hover:bg-white border-slate-200 text-slate-800'
+                }`}
+              >
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
-                  className="appearance-none w-full h-12 md:h-10 px-4 pr-9 bg-slate-50 hover:bg-white border border-slate-200 rounded-xl text-xs text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#1E3A8A] cursor-pointer shadow-2xs transition-colors"
+                  className={`appearance-none w-full h-full px-4 pr-9 bg-transparent rounded-xl text-xs font-semibold focus:outline-hidden cursor-pointer ${
+                    filterStatus !== 'ALL' ? 'text-[#1E3A8A] font-bold' : 'text-slate-800'
+                  }`}
                 >
                   <option value="ALL">Semua Status</option>
                   <option value="ACTIVE">Aktif</option>
                   <option value="INACTIVE">Tidak Aktif</option>
                 </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 pointer-events-none" />
+                <ChevronDown
+                  className={`w-4 h-4 absolute right-3 pointer-events-none ${
+                    filterStatus !== 'ALL' ? 'text-[#1E3A8A]' : 'text-slate-400'
+                  }`}
+                />
               </div>
+
+              {/* Tombol Reset Filter */}
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterType('ALL');
+                    setFilterStatus('ALL');
+                  }}
+                  className="h-12 md:h-10 px-3.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-2xs shrink-0 whitespace-nowrap"
+                  title="Hapus Semua Filter"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Reset Filter</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -377,8 +401,25 @@ export function AdminEmployeeManagement({
                         {(user.department || user.position || 'Staf')} - {EMPLOYMENT_TYPE_LABELS[user.employmentType] || user.employmentType}
                       </p>
 
-                      {/* Status Badge (Klik untuk Ubah Status Aktif / Tidak Aktif) */}
-                      <div className="flex items-center justify-center pt-0.5">
+                      {/* Peran & Status Badge */}
+                      <div className="flex items-center justify-center gap-1.5 pt-0.5 flex-wrap">
+                        {/* Dropdown Ubah Peran / Role Langsung */}
+                        <select
+                          value={user.role}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleUpdateRole(user.id, e.target.value as UserRole);
+                          }}
+                          className="text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-blue-200 bg-blue-50 text-[#1E3A8A] cursor-pointer hover:bg-blue-100 transition-colors shadow-2xs focus:outline-hidden"
+                          title="Ubah peran akun staf (Karyawan / Admin / Superadmin)"
+                        >
+                          <option value="EMPLOYEE">Karyawan</option>
+                          <option value="ADMIN">Admin</option>
+                          <option value="SUPER_ADMIN">Superadmin</option>
+                        </select>
+
+                        {/* Status Badge (Klik untuk Ubah Status Aktif / Tidak Aktif) */}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -405,6 +446,23 @@ export function AdminEmployeeManagement({
                               : 'Tidak Aktif'}
                           </span>
                         </button>
+
+                        {/* Tombol Hapus Akun Khusus Super Admin */}
+                        {isSuperAdmin && user.id !== currentUser.id && (
+                          <Tooltip content={`Hapus Akun ${user.name}`} position="top">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setUserToDelete(user);
+                              }}
+                              className="p-1.5 text-rose-500 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/90 rounded-full cursor-pointer transition-all shadow-2xs hover:scale-105 active:scale-95"
+                              title={`Hapus Akun ${user.name}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            </button>
+                          </Tooltip>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -442,21 +500,20 @@ export function AdminEmployeeManagement({
 
           {/* Table Container (Sesuai Data Biodata Diri User) */}
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs min-w-[880px]">
+            <table className="w-full text-left text-xs min-w-[760px]">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="py-3.5 px-5 w-[24%]">Foto Profile &amp; Nama</th>
-                  <th className="py-3.5 px-5 w-[18%]">Divisi</th>
-                  <th className="py-3.5 px-5 w-[15%]">Tipe Kepegawaian</th>
-                  <th className="py-3.5 px-5 w-[14%]">Kontak WA</th>
-                  <th className="py-3.5 px-5 w-[17%]">Pilih Halaman / Peran</th>
-                  <th className="py-3.5 px-5 w-[12%] text-center">Aksi</th>
+                  <th className="py-3.5 px-5 w-[34%]">Foto Profile &amp; Nama</th>
+                  <th className="py-3.5 px-5 w-[20%]">Divisi</th>
+                  <th className="py-3.5 px-5 w-[18%]">Tipe Kepegawaian</th>
+                  <th className="py-3.5 px-5 w-[18%]">Pilih Halaman / Peran</th>
+                  <th className="py-3.5 px-5 w-[10%] text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {pendingUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-slate-400">
+                    <td colSpan={5} className="py-12 text-center text-slate-400">
                       <UserCheck className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
                       <p className="font-semibold text-xs text-slate-600">Tidak Ada Antrean Persetujuan Akun Baru</p>
                       <p className="text-[11px] text-slate-400 pt-0.5">
@@ -484,9 +541,9 @@ export function AdminEmployeeManagement({
                               }}
                               className="w-10 h-10 rounded-full object-cover border-2 border-[#1E3A8A] shrink-0 shadow-2xs"
                             />
-                            <div>
+                            <div className="min-w-0">
                               <p className="font-bold text-slate-900 text-xs sm:text-sm whitespace-normal break-words">{user.name}</p>
-                              <p className="text-[11px] text-slate-500 font-mono whitespace-normal break-all">{user.email}</p>
+                              <p className="text-xs text-slate-500 whitespace-nowrap leading-relaxed">{user.email}</p>
                             </div>
                           </div>
                         </td>
@@ -497,20 +554,13 @@ export function AdminEmployeeManagement({
                         </td>
 
                         {/* 3. Tipe Kepegawaian */}
-                        <td className="py-4 px-5">
+                        <td className="py-4 px-4">
                           <span className="inline-block px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap">
                             {EMPLOYMENT_TYPE_LABELS[user.employmentType] || user.employmentType}
                           </span>
                         </td>
 
-                        {/* 4. Kontak WA */}
-                        <td className="py-4 px-5">
-                          <p className="font-bold text-slate-800 text-xs sm:text-sm font-mono whitespace-nowrap">
-                            {user.phone || '-'}
-                          </p>
-                        </td>
-
-                        {/* 5. Pilih Halaman / Peran */}
+                        {/* 4. Pilih Halaman / Peran */}
                         <td className="py-4 px-5" onClick={(e) => e.stopPropagation()}>
                           <div className="flex flex-col gap-1 max-w-[200px]">
                             <select
@@ -525,7 +575,7 @@ export function AdminEmployeeManagement({
                           </div>
                         </td>
 
-                        {/* 6. Aksi */}
+                        {/* 5. Aksi */}
                         <td className="py-4 px-5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1.5">
                             <Tooltip content={`Setujui akun sebagai ${currentChosenRole === 'SUPER_ADMIN' ? 'Superadmin' : currentChosenRole === 'ADMIN' ? 'Admin' : 'Karyawan'}`} position="top">
@@ -662,7 +712,7 @@ export function AdminEmployeeManagement({
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
                     placeholder="nama@kantor.id"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 font-mono"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900"
                   />
                 </div>
               </div>
@@ -678,7 +728,7 @@ export function AdminEmployeeManagement({
                     value={newPhone}
                     onChange={(e) => setNewPhone(e.target.value)}
                     placeholder="081234567890"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 font-mono"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900"
                   />
                 </div>
                 <div>
@@ -752,7 +802,7 @@ export function AdminEmployeeManagement({
                       value={newBankAccount}
                       onChange={(e) => setNewBankAccount(e.target.value)}
                       placeholder="Contoh: 5220819234"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                     />
                   </div>
                 </div>
@@ -781,7 +831,7 @@ export function AdminEmployeeManagement({
                       value={newEmergencyPhone}
                       onChange={(e) => setNewEmergencyPhone(e.target.value)}
                       placeholder="081299887766"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                     />
                   </div>
                 </div>
@@ -789,14 +839,7 @@ export function AdminEmployeeManagement({
 
               </div>
 
-              <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs cursor-pointer transition-colors"
-                >
-                  Batal
-                </button>
+              <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-end gap-3 shrink-0">
                 <button
                   type="submit"
                   className="px-6 py-2.5 bg-[#1E3A8A] hover:bg-[#172554] text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer transition-all active:scale-95"
@@ -808,6 +851,28 @@ export function AdminEmployeeManagement({
           </div>
         </div>
       )}
+      {/* Dialog Konfirmasi Hapus Akun oleh Super Admin */}
+      {userToDelete && (
+        <ModernConfirmDialog
+          isOpen={!!userToDelete}
+          title="Hapus Akun Pengguna?"
+          message={`Apakah Anda yakin ingin menghapus akun "${userToDelete.name}"? Seluruh data riwayat presensi, perizinan, dan tugas akun ini akan dihapus secara permanen.`}
+          variant="danger"
+          confirmText="Ya, Hapus Akun"
+          cancelText="Batal"
+          onConfirm={() => {
+            const id = userToDelete.id;
+            setUserToDelete(null);
+            if (onDeleteUser) {
+              onDeleteUser(id);
+            } else {
+              AppStorage.deleteUser(id);
+            }
+          }}
+          onCancel={() => setUserToDelete(null)}
+        />
+      )}
+
       {/* Pop Up Dialog Pesan Simpel */}
       <ModernConfirmDialog
         isOpen={!!dialogMessage}

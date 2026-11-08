@@ -91,15 +91,6 @@ export const ModernConfirmDialog: React.FC<ModernConfirmDialogProps> = ({
         </div>
 
         <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
-          {!hideCancel && (
-            <button
-              type="button"
-              onClick={handleClose}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition-all duration-200 cursor-pointer"
-            >
-              {cancelText}
-            </button>
-          )}
           <button
             type="button"
             onClick={onConfirm}

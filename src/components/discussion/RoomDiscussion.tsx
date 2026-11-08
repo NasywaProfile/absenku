@@ -97,7 +97,7 @@ export function RoomDiscussion({ currentUser }: RoomDiscussionProps) {
             <span className="px-2.5 py-0.5 rounded-md bg-blue-50 text-[#1E3A8A] text-xs font-bold uppercase tracking-wider border border-blue-200/60">
               Kolaborasi Tim
             </span>
-            <span className="text-xs text-slate-400 font-mono">Realtime Hub</span>
+            <span className="text-xs text-slate-400">Realtime Hub</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             Room Discussion Internal
@@ -179,7 +179,7 @@ export function RoomDiscussion({ currentUser }: RoomDiscussionProps) {
                 {currentChannelObj.description}
               </span>
             </div>
-            <span className="text-xs font-mono text-slate-400 font-medium">
+            <span className="text-xs text-slate-400 font-medium">
               {filteredMessages.length} Pesan
             </span>
           </div>
@@ -207,7 +207,7 @@ export function RoomDiscussion({ currentUser }: RoomDiscussionProps) {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-xs text-slate-900">{msg.userName}</span>
                         {getRoleBadge(msg.userRole, msg.employmentType)}
-                        <span className="text-[11px] text-slate-400 font-mono">
+                        <span className="text-[11px] text-slate-400">
                           {msg.timestamp.substring(11, 16)} WIB
                         </span>
                       </div>

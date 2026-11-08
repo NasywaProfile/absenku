@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { User, EmploymentType, UserRole, AttendanceRecord, DailyTaskLog } from '../../types/index.ts';
 import { EMPLOYMENT_TYPE_LABELS, copyTextToClipboard } from '../../lib/whatsapp-recap.ts';
+import { formatIndonesianDateShort } from '../../lib/time-utils.ts';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 
 interface EmployeeDetailDrawerProps {
@@ -38,6 +39,7 @@ export function EmployeeDetailDrawer({
   isOpen,
   onClose,
   employee,
+  currentUser,
   onUpdateRole,
   onUpdateType,
   onToggleStatus,
@@ -48,6 +50,9 @@ export function EmployeeDetailDrawer({
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [copiedBank, setCopiedBank] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
+  const canDelete = Boolean(isSuperAdmin && employee && employee.id !== currentUser?.id);
 
   useEffect(() => {
     if (!isOpen) {
@@ -82,6 +87,27 @@ export function EmployeeDetailDrawer({
     employee.name
   )}&background=1E3A8A&color=ffffff&size=256&bold=true`;
   const avatarSrc = employee.avatar && employee.avatar.trim() !== '' ? employee.avatar : fallbackAvatar;
+
+  // Tanggal bergabung selalu akurat mengikuti tanggal pembuatan akun
+  const getDisplayJoinDate = () => {
+    let dateStr = employee.joinDate;
+    if (!dateStr || dateStr === '-' || (dateStr === '2024-01-01' && employee.id !== 'usr_super_admin')) {
+      if (employee.registeredAt && employee.registeredAt.trim().length >= 10) {
+        dateStr = employee.registeredAt.trim().substring(0, 10);
+      } else if (employee.id && employee.id.startsWith('usr_')) {
+        const ts = parseInt(employee.id.replace('usr_', ''), 10);
+        if (!isNaN(ts) && ts > 1000000000000) {
+          const d = new Date(ts);
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          dateStr = `${y}-${m}-${day}`;
+        }
+      }
+    }
+    if (!dateStr || dateStr === '-') return '-';
+    return formatIndonesianDateShort(dateStr) || dateStr;
+  };
 
   return (
     <div
@@ -136,32 +162,11 @@ export function EmployeeDetailDrawer({
               />
             </div>
 
-            {/* Nama, Status, & Divisi - Tipe Kepegawaian */}
+            {/* Nama & Divisi - Tipe Kepegawaian */}
             <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-extrabold text-base text-slate-900 truncate leading-snug">
-                  {employee.name}
-                </h3>
-
-                {/* Status Button (Tanpa teks Ubah, tetap bisa diklik untuk toggle status) */}
-                <button
-                  type="button"
-                  onClick={() => onToggleStatus && onToggleStatus(employee.id)}
-                  title="Klik untuk mengubah status aktif karyawan"
-                  className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border shrink-0 flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-2xs ${
-                    employee.status === 'ACTIVE'
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                      : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
-                  }`}
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      employee.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-rose-500'
-                    }`}
-                  />
-                  <span>{employee.status === 'ACTIVE' ? 'Aktif' : 'Tidak Aktif'}</span>
-                </button>
-              </div>
+              <h3 className="font-extrabold text-base text-slate-900 truncate leading-snug">
+                {employee.name}
+              </h3>
 
               {/* Posisi Subtitle: Departemen / Divisi - Tipe Kepegawaian */}
               <p className="text-xs text-slate-500 font-semibold truncate mt-0.5">
@@ -170,8 +175,18 @@ export function EmployeeDetailDrawer({
             </div>
           </div>
 
-          {/* Sisi Kanan: Close (Silang) Button */}
-          <div className="w-10 shrink-0 flex items-center justify-end">
+          {/* Sisi Kanan: Action Buttons (Hapus jika Super Admin & Close Silang) */}
+          <div className="shrink-0 flex items-center justify-end gap-1.5">
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-full border border-rose-200 transition-colors cursor-pointer shrink-0 shadow-2xs"
+                title="Hapus Akun Karyawan"
+              >
+                <Trash2 className="w-4 h-4 text-rose-600" />
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -256,7 +271,7 @@ export function EmployeeDetailDrawer({
                   </div>
                   <div className="flex items-center justify-between py-1 border-b border-slate-200/50">
                     <span className="text-slate-500 font-medium">Tanggal Bergabung</span>
-                    <span className="font-bold text-slate-900 font-mono">{employee.joinDate || '-'}</span>
+                    <span className="font-bold text-slate-900">{getDisplayJoinDate()}</span>
                   </div>
                   <div className="flex items-center justify-between py-1.5">
                     <span className="text-slate-500 font-medium">Status Akun Karyawan</span>
@@ -290,11 +305,11 @@ export function EmployeeDetailDrawer({
                 <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 space-y-2.5">
                   <div className="flex items-center justify-between py-1 border-b border-slate-200/50">
                     <span className="text-slate-500 font-medium">Email Kantor</span>
-                    <span className="font-bold text-slate-900 font-mono">{employee.email}</span>
+                    <span className="font-bold text-slate-900">{employee.email}</span>
                   </div>
                   <div className="flex items-center justify-between py-1 border-b border-slate-200/50">
                     <span className="text-slate-500 font-medium">Nomor WhatsApp / Telepon</span>
-                    <span className="font-bold text-slate-900 font-mono">{employee.phone || '-'}</span>
+                    <span className="font-bold text-slate-900">{employee.phone || '-'}</span>
                   </div>
                   <div className="flex items-start justify-between py-1">
                     <span className="text-slate-500 font-medium shrink-0 mr-4">Alamat Domisili</span>
@@ -335,7 +350,7 @@ export function EmployeeDetailDrawer({
                     Nomor Rekening
                   </span>
                   <div className="flex items-center justify-between gap-3">
-                    <p className="font-mono text-xl sm:text-2xl font-extrabold tracking-wider text-white">
+                    <p className="text-xl sm:text-2xl font-extrabold tracking-wider text-white">
                       {employee.bankAccountNumber || 'Belum diisi'}
                     </p>
                     {employee.bankAccountNumber && (
@@ -376,6 +391,21 @@ export function EmployeeDetailDrawer({
             </div>
           )}
         </div>
+
+        {/* Footer Actions jika Super Admin: Tombol Hapus Akun */}
+        {canDelete && (
+          <div className="p-4 border-t border-slate-100 bg-slate-50/70 flex justify-between items-center shrink-0">
+            <span className="text-[11px] text-slate-400 font-medium">Otoritas Super Admin</span>
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200/90 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs active:scale-95"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>Hapus Akun</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {showDeleteConfirm && (
@@ -389,9 +419,9 @@ export function EmployeeDetailDrawer({
               onDeleteUser(employee.id);
             }
           }}
-          title="Hapus Karyawan?"
-          message={`Apakah Anda yakin ingin menghapus karyawan "${employee.name}"? Seluruh riwayat presensi, perizinan, dan tugas karyawan ini akan dihapus.`}
-          confirmText="Ya, Hapus"
+          title="Hapus Akun?"
+          message={`Apakah Anda yakin ingin menghapus akun "${employee.name}"? Seluruh riwayat presensi, perizinan, dan tugas akun ini akan dihapus secara permanen.`}
+          confirmText="Ya, Hapus Akun"
           cancelText="Batal"
           variant="danger"
         />

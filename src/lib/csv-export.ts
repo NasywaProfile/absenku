@@ -1,5 +1,5 @@
 /**
- * Simple & Clean Spreadsheet Export Utility for Absenku
+ * Simple & Clean Spreadsheet Export Utility for in-Time
  * Format:
  * - Font: Poppins (Google Fonts link disertakan + fallback sans-serif)
  * - Background judul: Biru Navy (#0F172A / #1E293B) dengan teks putih tebal.
@@ -196,7 +196,7 @@ export function generateStyledSpreadsheetHTML(
  */
 export function downloadAttendanceSpreadsheet(
   records: AttendanceRecord[],
-  filenamePrefix = 'Laporan_Presensi_Absenku',
+  filenamePrefix = 'Laporan_Presensi_in-Time',
   options?: ExportSpreadsheetOptions
 ): void {
   const htmlContent = generateStyledSpreadsheetHTML(records, options);

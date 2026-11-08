@@ -111,7 +111,7 @@ export function validateFile(file: File): FileValidationResult {
     if (file.size > FILE_SIZE_LIMITS.DOCUMENT) {
       return {
         isValid: false,
-        error: `Ukuran dokumen terlalu besar. Maksimal ukuran dokumen adalah 15 MB.`,
+        error: `Maksimal ukuran dokumen adalah 15 MB.`,
         category,
         extension: ext,
       };

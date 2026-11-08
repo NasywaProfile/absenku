@@ -53,6 +53,7 @@ import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 import { MediaPreviewModal, MediaPreviewData } from '../common/MediaPreviewModal.tsx';
 import { openExternalLink, openAttachmentDirectly, isImageFile } from '../../lib/open-media.ts';
 import { TeamMembersModal, TeamMemberItem } from '../common/TeamMembersModal.tsx';
+import { ChatTopicModal } from './ChatTopicModal.tsx';
 
 
 
@@ -191,6 +192,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
         });
       } catch (err: any) {
         setChatUploadError(err.message || 'Gagal mengunggah berkas.');
+        setTimeout(() => setChatUploadError(null), 4000);
       }
     }
 
@@ -265,6 +267,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
         setCommentAttachments((prev) => [...prev, newAtt]);
       } catch (err: any) {
         setChatUploadError(err.message || 'Gagal mengunggah berkas.');
+        setTimeout(() => setChatUploadError(null), 4000);
       }
     }
     e.target.value = '';
@@ -305,42 +308,32 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
     commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeTopic?.comments]);
 
-  // Filtered Topics list (Strict privacy: if not Admin, only shows if created by user, tagged, or mentioned)
+  // Filtered Topics list: topik hanya tampil jika akun terdaftar di Assignees (taggedTeammateIds) atau pembuat
   const filteredTopics = useMemo(() => {
-    const currentNameLower = currentUser.name.toLowerCase();
-    const currentFirstName = currentUser.name.split(' ')[0].toLowerCase();
+    const currentNameLower = currentUser?.name ? currentUser.name.toLowerCase() : '';
+    if (!Array.isArray(topics)) return [];
 
     return topics.filter((t) => {
-      // Access Control: Non-admin only sees topics where they are creator, tagged, or mentioned
-      if (!isAdminOrSuperAdmin) {
-        const isCreator = t.createdBy === currentUser.id;
-        const isTagged = Boolean(t.taggedTeammateIds?.includes(currentUser.id));
-        const isMentioned = Boolean(
-          t.comments?.some((c) => {
-            const notesLower = (c.notes || '').toLowerCase();
-            const mentionsMatch = c.mentions?.some((m) => {
-              const mLower = m.toLowerCase();
-              return (
-                mLower === currentUser.id.toLowerCase() ||
-                mLower === currentNameLower ||
-                mLower === currentFirstName ||
-                currentNameLower.includes(mLower)
-              );
-            });
-            const textMention =
-              notesLower.includes(`@${currentNameLower}`) ||
-              notesLower.includes(`@${currentFirstName}`);
-            return mentionsMatch || textMention;
-          })
-        );
-        if (!isCreator && !isTagged && !isMentioned) {
-          return false;
-        }
+      const tagged = Array.isArray(t.taggedTeammateIds) ? t.taggedTeammateIds : [];
+      // Access Control: Topik HANYA masuk ke akun jika pengguna terdaftar di Assignees (taggedTeammateIds) atau pembuat
+      const isAssignee = Boolean(
+        (currentUser?.id && tagged.includes(currentUser.id)) ||
+        (currentUser?.id && t.createdBy === currentUser.id) ||
+        (currentNameLower &&
+          tagged.some(
+            (idOrName) =>
+              (currentUser?.id && idOrName === currentUser.id) ||
+              (typeof idOrName === 'string' && idOrName.toLowerCase() === currentNameLower)
+          ))
+      );
+
+      if (!isAssignee) {
+        return false;
       }
 
       const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
       const matchesTeammate =
-        teammateFilter === 'ALL' || t.taggedTeammateIds.includes(teammateFilter);
+        teammateFilter === 'ALL' || tagged.includes(teammateFilter);
       const matchesCreatedBy =
         createdByFilter === 'ALL' || t.createdBy === createdByFilter;
       const matchesCreatedDate =
@@ -351,17 +344,17 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
         (t.shortNotes && t.shortNotes.toLowerCase().includes(searchTerm.toLowerCase()));
       return matchesStatus && matchesTeammate && matchesCreatedBy && matchesCreatedDate && matchesSearch;
     });
-  }, [topics, statusFilter, teammateFilter, createdByFilter, createdDateCustom, searchTerm, isAdminOrSuperAdmin, currentUser]);
+  }, [topics, statusFilter, teammateFilter, createdByFilter, createdDateCustom, searchTerm, currentUser]);
 
-  // Ensure active topic is closed if user has no access to it
+  // Pastikan topik aktif ditutup jika pengguna tidak memiliki akses ke topik tersebut
   useEffect(() => {
-    if (activeTopic && !isAdminOrSuperAdmin) {
+    if (activeTopic) {
       const hasAccess = filteredTopics.some((t) => t.id === activeTopic.id);
       if (!hasAccess) {
         setActiveTopic(null);
       }
     }
-  }, [filteredTopics, activeTopic, isAdminOrSuperAdmin]);
+  }, [filteredTopics, activeTopic]);
 
   // Pagination Ruang Obrolan (10 item teratas)
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -848,25 +841,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
             </button>
           )}
         </div>
-
-          {/* Reset Filter Banner (Jika Ada Filter Aktif) */}
-          {hasActiveFilters && (
-            <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
-              <span className="text-[11px] font-semibold text-[#1E3A8A]">
-                Filter sedang aktif &bull; Menampilkan {filteredTopics.length} dari {topics.length} topik
-              </span>
-              <button
-                type="button"
-                onClick={handleResetFilters}
-                className="h-7 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 text-[11px] flex items-center gap-1 cursor-pointer transition-all active:scale-95"
-                title="Hapus Semua Filter"
-              >
-                <X className="w-3 h-3" />
-                <span>Reset Filter</span>
-              </button>
-            </div>
-          )}
-        </div>
+      </div>
 
       {/* 2. TOPICS TABLE LIST VIEW (Matching image_ec656e6c.png) */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
@@ -997,760 +972,17 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
       </div>
 
       {/* 3. DETAIL TOPIK & CHAT DRAWER / MODAL */}
-      {activeTopic && (
-        <div
-          className={`fixed inset-0 z-50 flex animate-in fade-in duration-200 ${
-            isTopicFullScreen
-              ? 'items-center justify-center p-0'
-              : 'justify-end items-center p-2.5 sm:p-4 md:p-5'
-          }`}
-        >
-          {/* Backdrop Blur */}
-          <div
-            className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity cursor-pointer"
-            onClick={() => setActiveTopic(null)}
-          />
-          {/* Dialog Card */}
-          <div
-            className={`relative z-10 bg-white shadow-2xl flex flex-col min-h-0 overflow-hidden transition-all duration-300 font-sans ${
-              isTopicFullScreen
-                ? 'w-full h-full max-w-none max-h-none rounded-none border-0'
-                : 'w-full max-w-md sm:max-w-lg md:max-w-xl h-full max-h-[calc(100vh-1.25rem)] sm:max-h-[calc(100vh-2rem)] rounded-3xl border border-slate-200/80 animate-in slide-in-from-right duration-300 ease-out'
-            }`}
-          >
-            {/* Modal Body Container */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar bg-slate-50/30">
-              {/* TOP METADATA CARD (Clean, Minimalis & Elegan) */}
-              <div className="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
-                {/* 1. Bagian Judul, Subjudul, Tanggal (Center di antara Zoom & Close) */}
-                <div className="flex items-start justify-between gap-3 pb-1">
-                  {/* Container Tombol Zoom di pojok kiri atas */}
-                  <div className="w-9 shrink-0 flex items-start">
-                    <button
-                      type="button"
-                      onClick={() => setIsTopicFullScreen(!isTopicFullScreen)}
-                      className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer"
-                      title={isTopicFullScreen ? "Perkecil Tampilan" : "Perbesar Layar Penuh"}
-                    >
-                      {isTopicFullScreen ? (
-                        <Minimize2 className="w-4 h-4 text-slate-600" />
-                      ) : (
-                        <Maximize2 className="w-4 h-4 text-slate-600" />
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Judul, Subjudul & Tanggal dibuat CENTER di antara button zoom dan exit */}
-                  <div className="flex-1 min-w-0 text-center px-1 sm:px-3 space-y-1.5 flex flex-col items-center justify-center">
-                    <h2 className="text-sm sm:text-[15px] font-bold text-gray-900 tracking-tight leading-snug max-w-2xl">
-                      {activeTopic.title}
-                    </h2>
-                    <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[11px] sm:text-xs text-gray-500 pt-0.5">
-                      <p className="flex items-center gap-1.5">
-                        <span>Dibuat oleh</span>
-                        <span className="font-semibold text-gray-800">{activeTopic.createdByName}</span>
-                      </p>
-                      <span className="text-gray-300">•</span>
-                      <p className="flex items-center gap-1 text-gray-500">
-                        <Clock className="w-3.5 h-3.5 text-gray-400" />
-                        <span>{activeTopic.createdAt}</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Container Tombol Close (✕) di Sudut Kanan Atas */}
-                  <div className="w-9 shrink-0 flex items-start justify-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTopic(null);
-                        setIsAttachmentsExpanded(false);
-                      }}
-                      title="Tutup Obrolan"
-                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors cursor-pointer -mr-1"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Garis Pemisah Tipis (Divider Line) */}
-                <div className="border-t border-gray-100 pt-3" />
-
-                {/* 2. Tata Letak Dua Kolom (Split Grid) untuk Bagian Bawah: Tim & Lampiran */}
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
-                  {/* Kolom Kiri (md:col-span-5): Informasi Tim/Anggota + Status Dropdown di bawahnya */}
-                  <div className="md:col-span-5 space-y-3.5">
-                    {/* Profil Tim */}
-                    <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">
-                        TIM
-                      </span>
-                      <div
-                        onClick={(e) => handleOpenTaggedMembersModal(activeTopic, e)}
-                        className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 transition-all cursor-pointer shadow-2xs group"
-                        title="Klik untuk melihat semua foto & nama rekan tim yang ditag"
-                      >
-                        <div className="flex -space-x-1.5 overflow-hidden items-center py-0.5">
-                          {renderTeammateAvatars(activeTopic.taggedTeammateIds)}
-                        </div>
-                        <span className="text-xs font-bold text-slate-700 group-hover:text-[#1E3A8A] transition-colors">
-                          {activeTopic.taggedTeammateIds?.length || 0} Rekan Ditag
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Status atau Need Comments Ditaruh Tepat di Bawah Profil Tim */}
-                    <div className="space-y-1.5 pt-1">
-                      <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
-                        STATUS
-                      </span>
-                      <div className="relative inline-flex items-center">
-                        <select
-                          value={activeTopic.status}
-                          onChange={(e) =>
-                            handleUpdateTopicStatus(activeTopic.id, e.target.value as ChatTopicStatus)
-                          }
-                          className={`appearance-none pl-6 pr-7 py-1.5 rounded-full text-xs font-semibold outline-none cursor-pointer transition-all shadow-2xs ${
-                            activeTopic.status === 'CLOSED'
-                              ? 'bg-amber-50 text-amber-800 border border-amber-200/80 hover:bg-amber-100/80'
-                              : activeTopic.status === 'NEED_COMMENTS'
-                              ? 'bg-purple-50 text-purple-800 border border-purple-200/80 hover:bg-purple-100/80'
-                              : 'bg-sky-50 text-sky-800 border border-sky-200/80 hover:bg-sky-100/80'
-                          }`}
-                        >
-                          <option value="NEED_COMMENTS">Perlu Tanggapan</option>
-                          <option value="IN_PROGRESS">Sedang Berjalan</option>
-                          <option value="CLOSED">Selesai</option>
-                        </select>
-                        <span
-                          className={`w-2 h-2 rounded-full absolute left-2.5 pointer-events-none ${
-                            activeTopic.status === 'CLOSED'
-                              ? 'bg-amber-500'
-                              : activeTopic.status === 'NEED_COMMENTS'
-                              ? 'bg-purple-500'
-                              : 'bg-sky-500'
-                          }`}
-                        />
-                        <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 pointer-events-none" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Kolom Kanan (md:col-span-7): Khusus Menampung Daftar File Lampiran & Tautan Eksternal */}
-                  <div className="md:col-span-7 md:border-l md:border-gray-100 md:pl-5 space-y-2.5">
-                    {/* Header Lampiran dengan Tombol "+ Up File" berdampingan di atas daftar */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                        LAMPIRAN ({((activeTopic.files?.length || 0) + (activeTopic.links?.length || 0))})
-                      </span>
-                      {/* Tombol Upload File Tambahan */}
-                      <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition cursor-pointer shrink-0">
-                        <Paperclip className="w-3.5 h-3.5 text-purple-600" />
-                        <span>+ Up File</span>
-                        <input
-                          type="file"
-                          multiple
-                          className="hidden"
-                          onChange={handleUploadToActiveTopic}
-                        />
-                      </label>
-                    </div>
-
-                    {/* Daftar File Lampiran: Tampilkan 2 file teratas saja, jika ada lebih bisa di-expand dengan scroll halus */}
-                    {(() => {
-                      const allAttachments = [
-                        ...(activeTopic.files || []).map((f) => ({ kind: 'file' as const, file: f })),
-                        ...(activeTopic.links || []).map((l, idx) => ({ kind: 'link' as const, link: l, id: `link-${idx}` })),
-                      ];
-
-                      if (allAttachments.length === 0) {
-                        return (
-                          <p className="text-xs text-gray-400 italic py-1">Belum ada file lampiran</p>
-                        );
-                      }
-
-                      const displayedItems = isAttachmentsExpanded
-                        ? allAttachments
-                        : allAttachments.slice(0, 2);
-
-                      return (
-                        <div className="space-y-2">
-                          <div className={`flex flex-col space-y-2 ${isAttachmentsExpanded && allAttachments.length > 2 ? 'max-h-48 overflow-y-auto custom-scrollbar pr-1' : ''}`}>
-                            {displayedItems.map((item) =>
-                              item.kind === 'file' ? (
-                                <div
-                                  key={item.file.id}
-                                  onClick={() => setPreviewModalData({
-                                    url: item.file.url,
-                                    name: item.file.name,
-                                    type: 'FILE',
-                                    fileType: item.file.fileType,
-                                  })}
-                                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-medium text-gray-700 bg-gray-50 hover:bg-blue-50 hover:text-[#1E3A8A] border border-gray-200 hover:border-blue-200 transition group cursor-pointer"
-                                  title={`Buka ${item.file.name}`}
-                                >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <Paperclip className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#1E3A8A] shrink-0" />
-                                    <span className="truncate">{item.file.name}</span>
-                                  </div>
-                                  <Download className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#1E3A8A] shrink-0 opacity-70 group-hover:opacity-100" />
-                                </div>
-                              ) : (
-                                <div
-                                  key={item.id}
-                                  onClick={() => openExternalLink(item.link.url)}
-                                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-medium text-blue-700 bg-blue-50/70 hover:bg-blue-100/70 border border-blue-200/80 hover:border-blue-300 transition group cursor-pointer"
-                                  title={`Buka tautan: ${item.link.url}`}
-                                >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <Globe className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                                    <span className="truncate">{item.link.title}</span>
-                                  </div>
-                                  <ExternalLink className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                                </div>
-                              )
-                            )}
-                          </div>
-
-                          {/* Tautan Teks Lihat Lampiran Lainnya jika > 2 file (Plain Text Link tanpa Button Box) */}
-                          {allAttachments.length > 2 && (
-                            <div className="pt-0.5">
-                              <button
-                                type="button"
-                                onClick={() => setIsAttachmentsExpanded(!isAttachmentsExpanded)}
-                                className="inline-flex items-center gap-1 text-xs font-semibold text-purple-600 hover:text-purple-800 hover:underline transition-colors cursor-pointer"
-                              >
-                                {isAttachmentsExpanded ? (
-                                  <>
-                                    <span>Tampilkan 2 file saja</span>
-                                    <ChevronUp className="w-3.5 h-3.5" />
-                                  </>
-                                ) : (
-                                  <>
-                                    <span>+ Lihat {allAttachments.length - 2} lampiran lainnya</span>
-                                    <ChevronDown className="w-3.5 h-3.5" />
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-
-              {/* COMMENTS & ACTIVITY SECTION (Chat Messages & Input) */}
-              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden flex flex-col">
-                {/* Chat Messages List (iOS iMessage Style) */}
-                <div className="p-4 space-y-4 max-h-[420px] overflow-y-auto custom-scrollbar bg-white/60 font-sans">
-                  {/* iOS Date Divider */}
-                  <DateDivider>Kemarin 14:12</DateDivider>
-
-                  {activeTopic.comments.length === 0 ? (
-                    <div className="py-8 text-center text-slate-400 text-xs font-medium">
-                      Belum ada obrolan. Tulis pesan di bawah untuk memulai tanggapan.
-                    </div>
-                  ) : (
-                    <BubbleGroup>
-                      {activeTopic.comments.map((comm) => {
-                        const isMe = comm.userId === currentUser.id;
-                        return isMe ? (
-                          /* 2. Pesan dari Diri Sendiri (Kanan) */
-                          <div
-                            key={comm.id}
-                            className="flex flex-col items-end self-end max-w-[75%] ml-auto animate-in fade-in duration-150"
-                          >
-                            {/* Bubble Chat Biru Khas iOS */}
-                            <div className="bg-[#007AFF] text-white px-4 py-2.5 rounded-2xl rounded-br-xs text-xs sm:text-sm leading-relaxed shadow-2xs">
-                              <div className="whitespace-pre-wrap">
-                                {comm.notes.split(' ').map((word, idx) => {
-                                  if (word.startsWith('@')) {
-                                    return (
-                                      <span
-                                        key={idx}
-                                        className="text-yellow-200 font-semibold bg-white/20 px-1 py-0.5 rounded-md mr-0.5"
-                                      >
-                                        {word}{' '}
-                                      </span>
-                                    );
-                                  }
-                                  return word + ' ';
-                                })}
-                              </div>
-
-                              {comm.attachments && comm.attachments.length > 0 && (
-                                <div className="pt-2 flex flex-wrap gap-2">
-                                  {comm.attachments.map((att) => {
-                                    const isImg = isImageFile(att.url, att.fileType) || isImageFile(att.name, att.fileType);
-                                    if (isImg && att.url && att.url !== '#') {
-                                      return (
-                                        <div
-                                          key={att.id}
-                                          onClick={() => setPreviewModalData({
-                                            url: att.url,
-                                            name: att.name,
-                                            type: 'FILE',
-                                            fileType: att.fileType,
-                                            fileSize: att.fileSize,
-                                          })}
-                                          className="relative group overflow-hidden rounded-xl border border-white/40 max-w-[180px] cursor-pointer shadow-2xs hover:shadow-md transition-all"
-                                          title={`Buka gambar ${att.name}`}
-                                        >
-                                          <img
-                                            src={att.url}
-                                            alt={att.name}
-                                            className="w-full h-24 object-cover rounded-xl transition-transform duration-200 group-hover:scale-105"
-                                          />
-                                          <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-[10px] gap-1">
-                                            <Maximize2 className="w-3.5 h-3.5 text-white" />
-                                            <span>Buka</span>
-                                          </div>
-                                        </div>
-                                      );
-                                    }
-                                    return (
-                                      <button
-                                        key={att.id}
-                                        type="button"
-                                        onClick={() => {
-                                          if (att.type === 'LINK') {
-                                            openExternalLink(att.url);
-                                          } else {
-                                            setPreviewModalData({
-                                              url: att.url,
-                                              name: att.name,
-                                              type: att.type,
-                                              fileType: att.fileType,
-                                              fileSize: att.fileSize,
-                                            });
-                                          }
-                                        }}
-                                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/25 hover:bg-white/35 active:scale-95 border border-white/30 rounded-xl text-[11px] font-semibold text-white transition-all cursor-pointer shadow-2xs"
-                                        title={`Buka ${att.name}`}
-                                      >
-                                        {att.type === 'LINK' ? <Globe className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
-                                        <span className="truncate max-w-[130px]">{att.name}</span>
-                                        <ExternalLink className="w-3 h-3 opacity-70 ml-0.5" />
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Status / Timestamp */}
-                            <div className="flex items-center gap-1.5 mr-2 mt-1">
-                              <span className="text-[10px] text-gray-400">
-                                {comm.timestamp} · Terkirim
-                              </span>
-                              {(comm.userId === currentUser.id || isAdminOrSuperAdmin) && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteComment(comm.id)}
-                                  className="text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 p-0.5 rounded transition-all cursor-pointer"
-                                  title="Hapus pesan"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          /* 1. Pesan dari Rekan / Orang Lain (Kiri) */
-                          <div
-                            key={comm.id}
-                            className="flex items-end gap-2 max-w-[75%] animate-in fade-in duration-150"
-                          >
-                            {/* Avatar */}
-                            <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 border border-slate-300 shrink-0 mb-1">
-                              {comm.userAvatar ? (
-                                <img
-                                  src={comm.userAvatar}
-                                  alt={comm.userName}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center font-bold text-xs text-slate-700 bg-purple-100">
-                                  {comm.userName.charAt(0)}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="flex flex-col items-start">
-                              {/* Nama Pengirim (Kecil di atas bubble) */}
-                              <span className="text-[11px] font-semibold text-gray-500 ml-3 mb-1">
-                                {comm.userName}
-                              </span>
-
-                              {/* Bubble Chat Abu-abu Khas iOS */}
-                              <div className="bg-[#E9E9EB] text-gray-900 px-4 py-2.5 rounded-2xl rounded-bl-xs text-xs sm:text-sm leading-relaxed shadow-2xs">
-                                <div className="whitespace-pre-wrap">
-                                  {comm.notes.split(' ').map((word, idx) => {
-                                    if (word.startsWith('@')) {
-                                      return (
-                                        <span
-                                          key={idx}
-                                          className="text-[#007AFF] font-bold bg-blue-50/80 px-1 py-0.5 rounded-md border border-blue-200/60 mr-0.5"
-                                        >
-                                          {word}{' '}
-                                        </span>
-                                      );
-                                    }
-                                    return word + ' ';
-                                  })}
-                                </div>
-
-                                {comm.attachments && comm.attachments.length > 0 && (
-                                  <div className="pt-2 flex flex-wrap gap-2">
-                                    {comm.attachments.map((att) => {
-                                      const isImg = isImageFile(att.url, att.fileType) || isImageFile(att.name, att.fileType);
-                                      if (isImg && att.url && att.url !== '#') {
-                                        return (
-                                          <div
-                                            key={att.id}
-                                            onClick={() => setPreviewModalData({
-                                              url: att.url,
-                                              name: att.name,
-                                              type: 'FILE',
-                                              fileType: att.fileType,
-                                              fileSize: att.fileSize,
-                                            })}
-                                            className="relative group overflow-hidden rounded-xl border border-slate-300 max-w-[180px] cursor-pointer shadow-2xs hover:shadow-md transition-all"
-                                            title={`Buka gambar ${att.name}`}
-                                          >
-                                            <img
-                                              src={att.url}
-                                              alt={att.name}
-                                              className="w-full h-24 object-cover rounded-xl transition-transform duration-200 group-hover:scale-105"
-                                            />
-                                            <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-[10px] gap-1">
-                                              <Maximize2 className="w-3.5 h-3.5 text-white" />
-                                              <span>Buka</span>
-                                            </div>
-                                          </div>
-                                        );
-                                      }
-                                      return (
-                                        <button
-                                          key={att.id}
-                                          type="button"
-                                          onClick={() => {
-                                            if (att.type === 'LINK') {
-                                              openExternalLink(att.url);
-                                            } else {
-                                              setPreviewModalData({
-                                                url: att.url,
-                                                name: att.name,
-                                                type: att.type,
-                                                fileType: att.fileType,
-                                                fileSize: att.fileSize,
-                                              });
-                                            }
-                                          }}
-                                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 rounded-xl text-[11px] font-semibold text-[#1E3A8A] transition-all cursor-pointer shadow-2xs"
-                                          title={`Buka ${att.name}`}
-                                        >
-                                          {att.type === 'LINK' ? <Globe className="w-3.5 h-3.5 text-[#1E3A8A]" /> : <Paperclip className="w-3.5 h-3.5 text-[#1E3A8A]" />}
-                                          <span className="truncate max-w-[130px]">{att.name}</span>
-                                          <ExternalLink className="w-3 h-3 text-slate-400 ml-0.5" />
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Timestamp halus di bawah */}
-                              <div className="flex items-center gap-1.5 ml-3 mt-1">
-                                <span className="text-[10px] text-gray-400">
-                                  {comm.timestamp}
-                                </span>
-                                {(comm.userId === currentUser.id || isAdminOrSuperAdmin) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteComment(comm.id)}
-                                    className="text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 p-0.5 rounded transition-all cursor-pointer"
-                                    title="Hapus pesan"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </BubbleGroup>
-                  )}
-                  <div ref={commentsEndRef} />
-                </div>
-
-                {/* Input Bar ala iPhone di Bagian Bawah */}
-                <div className="p-3 border-t border-gray-100 bg-white/80 backdrop-blur-md shrink-0">
-                  {/* Form Input Pesan & Lampiran */}
-                  <div className="space-y-2">
-                    {showCommentAddLink && (
-                      <div className="p-2.5 bg-blue-50/80 rounded-2xl border border-blue-200 space-y-2 animate-in fade-in duration-150 text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-[#1E3A8A] text-[11px]">Sematkan Tautan Link</span>
-                          <button
-                            type="button"
-                            onClick={() => setShowCommentAddLink(false)}
-                            className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                        <input
-                          type="text"
-                          value={commentLinkTitle}
-                          onChange={(e) => setCommentLinkTitle(e.target.value)}
-                          placeholder="Judul Tautan (misal: Dokumen Google Drive / Figma)..."
-                          className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-[#1E3A8A]"
-                        />
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={commentLinkUrl}
-                            onChange={(e) => setCommentLinkUrl(e.target.value)}
-                            placeholder="URL (misal: https://...)"
-                            className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-[#1E3A8A]"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleAddCommentLink}
-                            disabled={!commentLinkUrl.trim()}
-                            className="px-3.5 py-1.5 bg-[#1E3A8A] hover:bg-[#172554] disabled:opacity-40 text-white font-bold rounded-xl text-xs cursor-pointer"
-                          >
-                            Tambah
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                      }}
-                      className="flex items-end gap-1.5 sm:gap-2"
-                    >
-                      {/* Tombol Unggah File / Gambar */}
-                      <label
-                        className="p-2 text-gray-500 hover:text-[#1E3A8A] rounded-full hover:bg-slate-100 transition cursor-pointer shrink-0 mb-0.5"
-                        title="Unggah Foto atau Berkas"
-                      >
-                        <Paperclip className="w-4 h-4" />
-                        <input
-                          type="file"
-                          multiple
-                          onChange={handleCommentFileUpload}
-                          className="hidden"
-                        />
-                      </label>
-
-                      {/* Tombol Tambah Link */}
-                      <button
-                        type="button"
-                        onClick={() => setShowCommentAddLink(!showCommentAddLink)}
-                        title="Sematkan Tautan Link"
-                        className={`p-2 rounded-full transition cursor-pointer shrink-0 mb-0.5 ${
-                          showCommentAddLink ? 'text-[#1E3A8A] bg-blue-100' : 'text-gray-500 hover:text-[#1E3A8A] hover:bg-slate-100'
-                        }`}
-                      >
-                        <Globe className="w-4 h-4" />
-                      </button>
-
-                      {/* Tombol Mention Rekan (@) */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMentionDropdown((prev) => !prev);
-                          setMentionQuery('');
-                          setMentionCursorIndex(commentText.length);
-                          setTimeout(() => commentInputRef.current?.focus(), 50);
-                        }}
-                        title="Mention Rekan Tim (@)"
-                        className={`w-8 h-8 rounded-full transition cursor-pointer shrink-0 flex items-center justify-center text-xs font-bold mb-0.5 ${
-                          showMentionDropdown
-                            ? 'text-white bg-[#1E3A8A] shadow-xs'
-                            : 'text-gray-500 hover:text-[#1E3A8A] hover:bg-slate-100'
-                        }`}
-                      >
-                        <span className="text-sm font-bold">@</span>
-                      </button>
-
-                      {/* Input Field Pill with Mention Autocomplete Menu (Textarea) */}
-                      <div className="relative flex-1">
-                        {showMentionDropdown && (
-                          <div className="absolute bottom-full left-0 mb-2 w-72 sm:w-80 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 duration-150 font-sans">
-                            <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                              <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                                <span className="w-4 h-4 rounded-full bg-blue-100 text-[#1E3A8A] flex items-center justify-center text-[10px] font-bold">@</span>
-                                Mention Rekan Tim
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => setShowMentionDropdown(false)}
-                                className="text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                            <div className="max-h-52 overflow-y-auto p-1 divide-y divide-slate-100">
-                              {mentionSuggestions.length === 0 ? (
-                                <div className="p-3 text-center text-xs text-slate-400">
-                                  Tidak ada rekan tim yang cocok
-                                </div>
-                              ) : (
-                                mentionSuggestions.map((u) => {
-                                  const isAlreadyTagged = activeTopic?.taggedTeammateIds?.includes(u.id);
-                                  return (
-                                    <button
-                                      key={u.id}
-                                      type="button"
-                                      onClick={() => handleSelectMentionUser(u)}
-                                      className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-blue-50 text-left transition rounded-xl group cursor-pointer"
-                                    >
-                                      <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 shrink-0 border border-slate-300">
-                                        {u.avatar ? (
-                                          <img src={u.avatar} alt={u.name} className="w-full h-full object-cover" />
-                                        ) : (
-                                          <div className="w-full h-full flex items-center justify-center font-bold text-xs text-slate-700 bg-blue-100">
-                                            {u.name.charAt(0)}
-                                          </div>
-                                        )}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="text-xs font-bold text-slate-800 group-hover:text-[#1E3A8A] truncate">
-                                          {u.name}
-                                        </div>
-                                        <div className="text-[10px] text-slate-400 truncate">
-                                          {u.department || (u.role === 'ADMIN' ? 'Administrator' : 'Karyawan')}
-                                        </div>
-                                      </div>
-                                      {isAlreadyTagged ? (
-                                        <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md shrink-0 border border-emerald-200">
-                                          Ditag
-                                        </span>
-                                      ) : (
-                                        <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md shrink-0 border border-amber-200">
-                                          + Auto-tag
-                                        </span>
-                                      )}
-                                    </button>
-                                  );
-                                })
-                              )}
-                            </div>
-                            <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-500 italic">
-                              Rekan yang di-mention otomatis ditag & menerima obrolan ini.
-                            </div>
-                          </div>
-                        )}
-
-                        <textarea
-                          ref={commentInputRef}
-                          rows={1}
-                          placeholder="Ketik pesan atau mention @teman..."
-                          value={commentText}
-                          onChange={(e) => {
-                            handleCommentChange(e);
-                            e.target.style.height = 'auto';
-                            e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              // Enter = new line (kebawah), jangan kirim!
-                              e.stopPropagation();
-                            }
-                          }}
-                          className="w-full bg-[#F2F2F7] border border-gray-200/80 rounded-2xl px-4 py-2 text-xs sm:text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30 focus:bg-white transition resize-none max-h-28 overflow-y-auto leading-relaxed"
-                        />
-                      </div>
-
-                      {/* Tombol Send */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          handleSendComment(e);
-                        }}
-                        disabled={!commentText.trim() && commentAttachments.length === 0}
-                        title="Kirim pesan"
-                        aria-label="Kirim pesan"
-                        className="w-8 h-8 rounded-full bg-[#1E3A8A] text-white flex items-center justify-center hover:bg-[#172554] active:scale-95 transition shrink-0 shadow-2xs disabled:opacity-40 cursor-pointer mb-1"
-                      >
-                        <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-                      </button>
-                    </form>
-
-                    {/* Inline Peringatan Validasi Upload Berkas */}
-                    {chatUploadError && (
-                      <div className="flex items-center justify-between gap-1.5 mt-2 px-3 py-1.5 text-xs text-rose-600 bg-rose-50 border border-rose-200/90 rounded-xl animate-in fade-in duration-200">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
-                          <span className="font-medium">{chatUploadError}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setChatUploadError(null)}
-                          className="text-rose-400 hover:text-rose-700 ml-1 shrink-0 cursor-pointer p-0.5"
-                          title="Tutup pesan"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Comment Attachments Preview Badges */}
-                    {commentAttachments.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-2 px-1">
-                        {commentAttachments.map((att) => (
-                          <div
-                            key={att.id}
-                            className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/80 border border-blue-200 text-[#1E3A8A] text-[11px] rounded-full font-medium"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => setPreviewModalData({
-                                url: att.url,
-                                name: att.name,
-                                type: att.type,
-                                fileType: att.fileType,
-                                fileSize: att.fileSize,
-                              })}
-                              className="flex items-center gap-1 hover:underline cursor-pointer"
-                              title="Buka pratinjau"
-                            >
-                              {att.type === 'LINK' ? <Globe className="w-3 h-3" /> : <Paperclip className="w-3 h-3 text-[#1E3A8A]" />}
-                              <span className="truncate max-w-[120px] font-semibold">{att.name}</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setCommentAttachments(
-                                  commentAttachments.filter((a) => a.id !== att.id)
-                                )
-                              }
-                              className="text-slate-400 hover:text-rose-600 ml-0.5 cursor-pointer"
-                              title="Hapus"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ChatTopicModal
+        topic={activeTopic}
+        isOpen={Boolean(activeTopic)}
+        onClose={() => setActiveTopic(null)}
+        currentUser={currentUser}
+        users={users}
+        onTopicUpdated={(updated) => {
+          setActiveTopic(updated);
+          setTopics((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        }}
+      />
 
       {/* 4. MODAL BUAT TOPIK OBROLAN BARU */}
       {showCreateModal && (
@@ -2054,13 +1286,17 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
                           key={f.id}
                           className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs"
                         >
-                          <div className="flex items-center gap-2.5 truncate">
+                          <div
+                            onClick={() => openAttachmentDirectly(f)}
+                            className="flex items-center gap-2.5 truncate cursor-pointer flex-1"
+                            title={`Buka ${f.name} di tab baru`}
+                          >
                             <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
                               <Paperclip className="w-3.5 h-3.5" />
                             </div>
                             <div className="truncate">
-                              <span className="font-semibold text-slate-800 block truncate">{f.name}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">Berkas Lampiran</span>
+                              <span className="font-semibold text-slate-800 block truncate hover:text-[#1E3A8A] transition-colors">{f.name}</span>
+                              <span className="text-[11px] text-slate-500 font-normal block leading-tight">Berkas Lampiran (Klik untuk buka di tab baru)</span>
                             </div>
                           </div>
                           <button
@@ -2085,7 +1321,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
                             </div>
                             <div className="truncate">
                               <span className="font-semibold text-blue-900 block truncate">{l.title}</span>
-                              <span className="text-[10px] text-blue-500 font-mono block truncate">{l.url}</span>
+                              <span className="text-[11px] text-blue-600 font-normal block truncate leading-tight">{l.url}</span>
                             </div>
                           </div>
                           <button
@@ -2104,14 +1340,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
               </div>
 
               {/* Sticky Footer */}
-              <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl cursor-pointer transition-colors"
-                >
-                  Batal
-                </button>
+              <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-end gap-3 shrink-0">
                 <button
                   type="submit"
                   className="px-6 py-2.5 bg-[#1E3A8A] hover:bg-[#172554] text-white font-bold text-xs rounded-xl cursor-pointer shadow-xs transition-all hover:-translate-y-0.5"

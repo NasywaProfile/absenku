@@ -3,7 +3,7 @@ import App from './App.tsx';
 import './index.css';
 
 // Pastikan browser memuat versi aplikasi paling mutakhir tanpa cache lawas
-const BUILD_VERSION = 'absenku_v20261029_rev3';
+const BUILD_VERSION = 'absenku_v20261108_rev4';
 
 if (typeof window !== 'undefined') {
   if ('serviceWorker' in navigator) {

@@ -38,6 +38,7 @@ import { uploadToCloudinary } from '../../lib/cloudinary.ts';
 import { uploadHybridFile } from '../../lib/file-uploader.ts';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 import { SimpleProfileModal, SimpleProfileData } from '../common/SimpleProfileModal.tsx';
+import { openAttachmentDirectly, downloadMediaFile } from '../../lib/open-media.ts';
 
 interface LeaveManagementProps {
   currentUser: User;
@@ -46,7 +47,6 @@ interface LeaveManagementProps {
   userRole?: UserRole;
   onLeaveUpdated?: () => void;
   onRefresh?: () => void;
-  onOpenEmailModal?: () => void;
 }
 
 export function LeaveManagement({
@@ -56,7 +56,6 @@ export function LeaveManagement({
   userRole,
   onLeaveUpdated,
   onRefresh,
-  onOpenEmailModal,
 }: LeaveManagementProps) {
   const leaves = propLeaves || propLeaveRequests || AppStorage.getLeaveRequests();
 
@@ -157,6 +156,7 @@ export function LeaveManagement({
         setAttachmentData(result.url);
       } catch (err: any) {
         setFileAlert(err.message || 'Gagal mengunggah berkas lampiran.');
+        setTimeout(() => setFileAlert(null), 4000);
       } finally {
         setIsUploadingAttachment(false);
       }
@@ -190,6 +190,7 @@ export function LeaveManagement({
       });
     } catch (err: any) {
       setFileAlert(err?.message || 'Pengajuan gagal dikirim.');
+      setTimeout(() => setFileAlert(null), 4000);
       return;
     }
 
@@ -403,11 +404,15 @@ export function LeaveManagement({
               <button
                 type="button"
                 onClick={() => setDateFilterOpen(!dateFilterOpen)}
-                className="w-full flex items-center justify-between gap-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 font-semibold text-xs sm:text-sm px-3 sm:px-3.5 h-11 sm:h-12 rounded-xl transition-all cursor-pointer border border-slate-200 shadow-2xs"
+                className={`w-full flex items-center justify-between gap-1.5 font-semibold text-xs sm:text-sm px-3 sm:px-3.5 h-11 sm:h-12 rounded-xl transition-all cursor-pointer shadow-2xs border ${
+                  specificDateFilter
+                    ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] font-bold ring-1 ring-blue-300/40'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border-slate-200'
+                }`}
                 title="Pilih tanggal perizinan"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 shrink-0" />
+                  <Calendar className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${specificDateFilter ? 'text-[#1E3A8A]' : 'text-slate-500'}`} />
                   <span className="truncate">
                     {specificDateFilter
                       ? `${specificDateFilter.split('-').reverse().join('/')}`
@@ -415,9 +420,9 @@ export function LeaveManagement({
                   </span>
                 </div>
                 <ChevronDown
-                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 transition-transform duration-200 shrink-0 ${
+                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform duration-200 shrink-0 ${
                     dateFilterOpen ? 'rotate-180' : ''
-                  }`}
+                  } ${specificDateFilter ? 'text-[#1E3A8A]' : 'text-slate-500'}`}
                 />
               </button>
 
@@ -492,12 +497,20 @@ export function LeaveManagement({
               )}
             </div>
 
-            {/* Filter Status dengan Background Putih di Sebelah Tanggal */}
-            <div className="relative w-full flex items-center">
+            {/* Filter Status dengan Highlight Biru jika Digunakan */}
+            <div
+              className={`relative w-full flex items-center h-11 sm:h-12 rounded-xl border transition-all shadow-2xs ${
+                filterStatus !== 'ALL'
+                  ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] font-bold ring-1 ring-blue-300/40'
+                  : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
+              }`}
+            >
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full h-11 sm:h-12 pl-3 sm:pl-3.5 pr-8 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-[#1E3A8A] outline-none cursor-pointer transition-all shadow-2xs appearance-none truncate"
+                className={`w-full h-full pl-3 sm:pl-3.5 pr-8 bg-transparent text-xs sm:text-sm font-semibold outline-none cursor-pointer appearance-none truncate ${
+                  filterStatus !== 'ALL' ? 'text-[#1E3A8A] font-bold' : 'text-slate-800'
+                }`}
                 title="Filter berdasarkan status"
               >
                 <option value="ALL">Semua Status</option>
@@ -505,7 +518,11 @@ export function LeaveManagement({
                 <option value="PENDING">Menunggu Persetujuan</option>
                 <option value="REJECTED">Ditolak</option>
               </select>
-              <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 absolute right-3 pointer-events-none shrink-0" />
+              <ChevronDown
+                className={`w-3.5 h-3.5 sm:w-4 sm:h-4 absolute right-3 pointer-events-none shrink-0 ${
+                  filterStatus !== 'ALL' ? 'text-[#1E3A8A]' : 'text-slate-500'
+                }`}
+              />
             </div>
           </div>
         </div>
@@ -691,17 +708,20 @@ export function LeaveManagement({
                             <div className="flex items-center gap-1.5 text-[11px] text-blue-600 font-semibold pt-0.5">
                               <Paperclip className="w-3 h-3 shrink-0 text-blue-600" />
                               {req.attachmentData ? (
-                                <a
-                                  href={req.attachmentData}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  download={req.attachmentData.startsWith('http') ? undefined : req.attachmentName}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="truncate hover:underline"
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openAttachmentDirectly({
+                                      url: req.attachmentData,
+                                      name: req.attachmentName,
+                                    });
+                                  }}
+                                  className="truncate hover:underline text-blue-600 font-semibold cursor-pointer text-left"
                                   title={`Buka ${req.attachmentName}`}
                                 >
                                   {req.attachmentName}
-                                </a>
+                                </button>
                               ) : (
                                 <span className="truncate">{req.attachmentName}</span>
                               )}
@@ -768,22 +788,25 @@ export function LeaveManagement({
             onClick={() => setCancelTargetId(null)}
           />
           <div className="relative w-full max-w-sm bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <div>
-              <h3 className="font-bold text-base text-slate-900">
-                Batalkan Pengajuan?
-              </h3>
-              <p className="text-xs text-slate-500 pt-1 leading-relaxed">
-                Pengajuan yang masih berstatus menunggu dapat dibatalkan dan akan dihapus dari sistem.
-              </p>
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-base text-slate-900">
+                  Batalkan Pengajuan?
+                </h3>
+                <p className="text-xs text-slate-500 pt-1 leading-relaxed">
+                  Pengajuan yang masih berstatus menunggu dapat dibatalkan dan akan dihapus dari sistem.
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setCancelTargetId(null)}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
+                title="Tutup"
               >
-                Kembali
+                <X className="w-4 h-4" />
               </button>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => executeCancelLeave(cancelTargetId)}
@@ -981,10 +1004,16 @@ export function LeaveManagement({
 
                     {!isUploadingAttachment && !attachmentName && (
                       <span className="text-xs text-slate-400">
-                        Belum ada berkas dipilih (Maks 10MB)
+                        Belum ada berkas dipilih (Maks 15MB)
                       </span>
                     )}
                   </div>
+                  {fileAlert && (
+                    <div className="flex items-center gap-2 mt-2 px-3 py-2 text-xs text-rose-700 bg-rose-50 border border-rose-200/90 rounded-xl animate-in fade-in duration-200 shadow-2xs">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                      <span className="font-medium">{fileAlert}</span>
+                    </div>
+                  )}
                   <p className="text-[11px] text-slate-400 mt-1">
                     Bisa berupa surat keterangan sakit dokter, surat tugas dinas luar, atau surat izin resmi.
                   </p>
@@ -1087,7 +1116,7 @@ export function LeaveManagement({
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                   Periode &amp; Durasi
                 </span>
-                <p className="font-mono font-bold text-slate-900">
+                <p className="font-bold text-slate-900">
                   {formatPeriodAndDuration(
                     selectedLeaveDetail.startDate,
                     selectedLeaveDetail.endDate,
@@ -1125,14 +1154,19 @@ export function LeaveManagement({
                       {selectedLeaveDetail.attachmentName}
                     </span>
                     {selectedLeaveDetail.attachmentData && (
-                      <a
-                        href={selectedLeaveDetail.attachmentData}
-                        download={selectedLeaveDetail.attachmentName}
-                        className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-lg text-xs"
+                      <button
+                        type="button"
+                        onClick={() =>
+                          downloadMediaFile(
+                            selectedLeaveDetail.attachmentData || '',
+                            selectedLeaveDetail.attachmentName || 'lampiran_izin'
+                          )
+                        }
+                        className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-lg text-xs cursor-pointer transition-all active:scale-95"
                       >
                         <Download className="w-3.5 h-3.5" />
                         <span>Unduh</span>
-                      </a>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1229,9 +1263,19 @@ export function LeaveManagement({
             onClick={() => setRejectDialog({ isOpen: false, leaveId: '', userName: '', reason: '' })}
           />
           <div className="relative w-full max-w-sm bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <h3 className="font-bold text-base text-slate-900">
-              Tolak Permohonan {rejectDialog.userName}
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-base text-slate-900">
+                Tolak Permohonan {rejectDialog.userName}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setRejectDialog({ isOpen: false, leaveId: '', userName: '', reason: '' })}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+                title="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             <p className="text-xs text-slate-500">
               Berikan alasan penolakan yang jelas agar staf mengetahuinya:
             </p>
@@ -1244,18 +1288,11 @@ export function LeaveManagement({
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-rose-500 focus:bg-white resize-none"
             />
 
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setRejectDialog({ isOpen: false, leaveId: '', userName: '', reason: '' })}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs cursor-pointer"
-              >
-                Batal
-              </button>
+            <div className="flex justify-end pt-2">
               <button
                 type="button"
                 onClick={handleReject}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer"
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs active:scale-95 transition-all"
               >
                 Tolak Permohonan
               </button>
@@ -1263,17 +1300,13 @@ export function LeaveManagement({
           </div>
         </div>
       )}
-      {/* Pop Up Dialog Notifikasi Berkas Simpel */}
-      <ModernConfirmDialog
-        isOpen={!!fileAlert}
-        variant="warning"
-        title="Berkas Terlalu Besar"
-        message={fileAlert || ''}
-        confirmText="Mengerti"
-        hideCancel={true}
-        onConfirm={() => setFileAlert(null)}
-        onCancel={() => setFileAlert(null)}
-      />
+      {/* Toast Notifikasi Berkas (Otomatis Hilang 4 Detik, Tanpa Icon Silang) */}
+      {fileAlert && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-4 py-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs sm:text-sm font-semibold animate-in fade-in slide-in-from-top-3 duration-200">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{fileAlert}</span>
+        </div>
+      )}
       {/* Pop Up Profil Singkat (Nama & Foto Orang) */}
       <SimpleProfileModal
         isOpen={!!simpleProfilePopup}

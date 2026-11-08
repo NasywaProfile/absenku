@@ -183,8 +183,13 @@ export function EmployeeDashboard({
                     </div>
                   ) : (
                     <div
-                      onClick={() => setSelectedTaskForDetail(topTask)}
-                      className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-sky-300 transition-all duration-200 cursor-pointer space-y-3"
+                      onClick={() => {
+                        if (topTask.status === 'TODO') return;
+                        setSelectedTaskForDetail(topTask);
+                      }}
+                      className={`bg-white rounded-2xl p-4 border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-sky-300 transition-all duration-200 ${
+                        topTask.status === 'TODO' ? 'cursor-default' : 'cursor-pointer'
+                      } space-y-3`}
                     >
                       <div className="flex items-center justify-between">
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
@@ -194,7 +199,7 @@ export function EmployeeDashboard({
                         }`}>
                           {getPriorityLabel(topTask.priority)}
                         </span>
-                        <span className="text-[11px] text-slate-400 font-mono">{topTask.dueDate}</span>
+                        <span className="text-[11px] text-slate-400">{topTask.dueDate}</span>
                       </div>
 
                       <h3 className="font-bold text-sm text-slate-900 leading-snug truncate">
@@ -220,7 +225,7 @@ export function EmployeeDashboard({
                       <div className="pt-1 flex flex-wrap items-center gap-1 text-xs">
                         {topTask.status === 'TODO' && (
                           <div className="w-full py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold rounded-xl text-center text-xs transition-all flex items-center justify-center gap-1">
-                            <span>Mulai Kerjakan</span>
+                            <span>Mulai Mengerjakan</span>
                             <ArrowRight className="w-3.5 h-3.5" />
                           </div>
                         )}

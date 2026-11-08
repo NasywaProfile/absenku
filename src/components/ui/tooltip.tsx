@@ -10,7 +10,7 @@ export interface TooltipProps {
 }
 
 /**
- * Modern floating Tooltip component for Absenku
+ * Modern floating Tooltip component for in-Time
  * Memberikan penjelasan ringkas fungsi tombol atau fitur saat kursor diarahkan (hover)
  */
 export function Tooltip({

@@ -4,7 +4,6 @@ import {
   Maximize2,
   Minimize2,
   AlertTriangle,
-  Clock,
   ShieldCheck,
   CheckCircle,
   MapPin,
@@ -98,8 +97,11 @@ export function ClockInOutModal({
       return;
     }
 
+    const isFreelance = currentUser.employmentType === 'FREELANCE';
+
     // Jika di luar radius dan tidak ada izin WFH/Dinas Luar yang disetujui, beri peringatan
-    if (!isWithinRadius && !hasRemoteApproval) {
+    // Pengecualian: Karyawan Freelance bersifat hybrid/fleksibel (tidak wajib ke kantor)
+    if (!isWithinRadius && !hasRemoteApproval && !isFreelance) {
       setShowLocationDialog(true);
       return;
     }
@@ -112,13 +114,25 @@ export function ClockInOutModal({
     setIsSubmitting(true);
 
     try {
+      const isFreelance = currentUser.employmentType === 'FREELANCE';
       const locationStatus = isBusinessTripApproved
         ? 'DINAS_APPROVED'
         : isWfhApproved
         ? 'WFH_APPROVED'
         : isWithinRadius
         ? 'IN_OFFICE'
+        : isFreelance
+        ? 'WFH_APPROVED'
         : 'OUT_OF_RANGE';
+
+      const effectiveWorkMode =
+        locationStatus === 'DINAS_APPROVED'
+          ? 'DINAS'
+          : locationStatus === 'WFH_APPROVED'
+          ? 'WFH'
+          : isFreelance
+          ? (isWithinRadius ? 'WFO' : 'WFH')
+          : 'WFO';
 
       // Ketepatan waktu presensi dihitung murni dari jam masuk kerja (bukan dipaksa terlambat karena radius)
       const isLateClockIn = punctuality.status === 'LATE';
@@ -132,7 +146,7 @@ export function ClockInOutModal({
         userAvatar: currentUser.avatar,
         department: currentUser.department,
         employmentType: currentUser.employmentType || 'CONTRACT',
-        workMode: locationStatus === 'DINAS_APPROVED' ? 'DINAS' : locationStatus === 'WFH_APPROVED' ? 'WFH' : 'WFO',
+        workMode: effectiveWorkMode,
         date: currentDate,
         clockInTime: currentTime,
         clockInLat: coords.latitude,
@@ -199,7 +213,7 @@ export function ClockInOutModal({
               Presensi Masuk Kerja
             </h3>
             <p className="text-xs text-slate-500 font-medium leading-normal truncate">
-              {currentUser.name} &bull; {currentUser.position || currentUser.department || 'UI UX'}
+              {currentUser.name}
             </p>
           </div>
 
@@ -230,9 +244,8 @@ export function ClockInOutModal({
           <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl flex flex-col items-center justify-center text-center sm:flex-row sm:items-center sm:justify-between sm:text-left gap-3">
             <div className="space-y-1 flex flex-col items-center sm:items-start text-center sm:text-left w-full sm:w-auto">
               <div className="flex items-center justify-center sm:justify-start gap-2">
-                <Clock className="w-4 h-4 text-indigo-600 shrink-0" />
                 <span className="text-slate-500">Waktu Presensi:</span>
-                <span className="font-mono font-bold text-slate-900 text-sm">{currentTime} WIB</span>
+                <span className="font-bold text-slate-900 text-sm">{currentTime} WIB</span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium text-center sm:text-left">
                 Jam Masuk Wajib: <strong className="text-slate-800">{officeConfig.workStartHour || '08:00'} WIB</strong>
@@ -258,7 +271,7 @@ export function ClockInOutModal({
           </div>
 
           {/* Snapshot Geofence Radar Widget (Mengisi card secara proporsional dan penuh) */}
-          <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs h-[380px] flex flex-col">
+          <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs h-[420px] sm:h-[450px] flex flex-col">
             <GeolocationWidget
               officeConfig={officeConfig}
               onLocationVerified={handleLocationVerified}
@@ -274,13 +287,15 @@ export function ClockInOutModal({
           <button
             type="button"
             onClick={handleActionSubmit}
-            disabled={isSubmitting || !coords}
-            className="w-full py-3 px-6 text-white font-bold rounded-2xl shadow-xs transition-all duration-200 active:scale-[0.99] cursor-pointer disabled:opacity-50 text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#1E3A8A] hover:bg-[#172554]"
+            disabled={isSubmitting || !coords || isOffToday}
+            className="w-full py-3 px-6 text-white font-bold rounded-2xl shadow-xs transition-all duration-200 active:scale-[0.99] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm flex items-center justify-center gap-2 bg-[#1E3A8A] hover:bg-[#172554]"
           >
             <ShieldCheck className="w-4.5 h-4.5 text-white shrink-0" />
             <span>
               {isSubmitting
                 ? 'Memproses Presensi...'
+                : isOffToday
+                ? `Tidak Aktif (Status OFF: ${todayApprovedLeave?.category === 'SICK' ? 'Sakit' : 'Cuti / Izin'})`
                 : isWfhApproved
                 ? 'Presensi Masuk (WFH) Sekarang'
                 : isBusinessTripApproved

@@ -59,9 +59,21 @@ export default function App() {
     setTasks(loadedTasks);
   }, []);
 
-  // Muat data awal saat pertama dibuka
+  // Muat data awal saat pertama dibuka & dengarkan perubahan perizinan/storage
   useEffect(() => {
     loadData();
+
+    const handleSync = () => {
+      loadData();
+    };
+
+    window.addEventListener('absenku:leaves_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      window.removeEventListener('absenku:leaves_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, [loadData]);
 
   // Handler reset presensi hari ini
@@ -80,6 +92,17 @@ export default function App() {
   const handleSwitchUser = (userId: string) => {
     AppStorage.setCurrentUserId(userId);
     setActiveTab('dashboard');
+    loadData();
+  };
+
+  const handleUpdateEmployeeRole = (userId: string, newRole: UserRole) => {
+    AppStorage.updateUserRole(userId, newRole);
+    if (currentUser && currentUser.id === userId) {
+      const updatedUser: User = { ...currentUser, role: newRole };
+      AppStorage.updateUser(updatedUser);
+      setCurrentUser(updatedUser);
+      setSessionUser(updatedUser);
+    }
     loadData();
   };
 
@@ -192,7 +215,7 @@ export default function App() {
   // Handler ACC Pendaftaran Akun Baru oleh Admin / Super Admin
   const handleApproveRegistration = (userId: string, targetRole?: UserRole) => {
     if (!currentUser) return;
-    AppStorage.approveRegistration(userId, currentUser.name);
+    AppStorage.approveRegistration(userId, currentUser.name, targetRole);
     if (targetRole) {
       AppStorage.updateUserRole(userId, targetRole);
     }
@@ -268,6 +291,7 @@ export default function App() {
 
       const isWfhApproved = todayApprovedLeave?.category === 'WFH';
       const isBusinessTripApproved = todayApprovedLeave?.category === 'BUSINESS_TRIP';
+      const isFreelance = currentUser.employmentType === 'FREELANCE';
 
       const locationStatus = isBusinessTripApproved
         ? 'DINAS_APPROVED'
@@ -275,7 +299,18 @@ export default function App() {
         ? 'WFH_APPROVED'
         : withinRadius
         ? 'IN_OFFICE'
+        : isFreelance
+        ? 'WFH_APPROVED'
         : 'OUT_OF_RANGE';
+
+      const effectiveWorkMode =
+        locationStatus === 'DINAS_APPROVED'
+          ? 'DINAS'
+          : locationStatus === 'WFH_APPROVED'
+          ? 'WFH'
+          : isFreelance
+          ? (withinRadius ? 'WFO' : 'WFH')
+          : 'WFO';
 
       const newRecord: AttendanceRecord = {
         id: `att-${Date.now()}`,
@@ -284,12 +319,7 @@ export default function App() {
         userAvatar: currentUser.avatar,
         department: currentUser.department,
         employmentType: currentUser.employmentType || 'CONTRACT',
-        workMode:
-          locationStatus === 'DINAS_APPROVED'
-            ? 'DINAS'
-            : locationStatus === 'WFH_APPROVED'
-            ? 'WFH'
-            : 'WFO',
+        workMode: effectiveWorkMode,
         date: currentDate,
         clockInTime: currentTime,
         clockInLat: lat,
@@ -332,9 +362,14 @@ export default function App() {
   if (!currentUser || !officeConfig) {
     return (
       <div className="min-h-screen bg-[#F3F4F4] flex items-center justify-center p-4 text-slate-800">
-        <div className="text-center space-y-3">
-          <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-xs font-semibold text-slate-600">Memuat Sesi <span className="font-extrabold text-[#1E3A8A] lowercase">absenku</span>...</p>
+        <div className="text-center space-y-4">
+          <img
+            src="/assets/in-time-logo.png"
+            alt="in-Time indekraf presence system"
+            className="h-10 w-auto mx-auto object-contain select-none"
+          />
+          <div className="w-7 h-7 border-2 border-[#1E3A8A] border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs font-semibold text-slate-500">Memuat Sesi Aplikasi...</p>
         </div>
       </div>
     );
@@ -446,6 +481,7 @@ export default function App() {
                 onOpenSettingsModal={() => setShowSettingsModal(true)}
                 onUpdateUser={handleUpdateEmployee}
                 onUpdateAttendanceRecord={handleUpdateAttendanceRecord}
+                onRefreshData={loadData}
               />
             )}
 
@@ -543,6 +579,7 @@ export default function App() {
                 initialSubTab={activeTab === 'employee_approvals' ? 'APPROVALS' : 'EMPLOYEES'}
                 onAddUser={handleAddEmployee}
                 onUpdateUser={handleUpdateEmployee}
+                onUpdateRole={handleUpdateEmployeeRole}
                 onDeleteUser={handleDeleteEmployee}
                 onApproveRegistration={handleApproveRegistration}
                 onRejectRegistration={handleRejectRegistration}
@@ -589,6 +626,7 @@ export default function App() {
                 onNavigateTab={(tab) => setActiveTab(tab)}
                 onSwitchUser={handleSwitchUser}
                 onResetTodayAttendance={handleResetTodayAttendance}
+                onRefreshData={loadData}
               />
             )}
 

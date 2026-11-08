@@ -1,5 +1,5 @@
 /**
- * Absenku API Client
+ * in-Time API Client
  * Berkomunikasi langsung dengan Laravel 11 Backend & MySQL Database
  */
 
@@ -33,22 +33,41 @@ export const ApiClient = {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers,
+      });
 
-    const data = await response.json().catch(() => null);
+      const data = await response.json().catch(() => null);
 
-    if (!response.ok) {
-      const errorMsg = data?.message || `Request failed with status ${response.status}`;
-      const error = new Error(errorMsg);
-      (error as any).status = response.status;
-      (error as any).data = data;
-      throw error;
+      if (!response.ok) {
+        let errorMsg = data?.message;
+        if (!errorMsg) {
+          if (response.status === 401) {
+            errorMsg = 'Email/username atau password tidak sesuai.';
+          } else if (response.status === 403) {
+            errorMsg = 'Akun tidak diizinkan masuk atau belum disetujui.';
+          } else {
+            errorMsg = `Permintaan gagal dengan status ${response.status}`;
+          }
+        }
+        const error = new Error(errorMsg);
+        (error as any).status = response.status;
+        (error as any).data = data;
+        throw error;
+      }
+
+      return data as T;
+    } catch (err: any) {
+      if (err?.status) {
+        throw err;
+      }
+      const friendlyErr = new Error('Gagal terhubung ke server backend.');
+      (friendlyErr as any).status = 0;
+      (friendlyErr as any).isNetworkError = true;
+      throw friendlyErr;
     }
-
-    return data as T;
   },
 
   // ================= Auth =================

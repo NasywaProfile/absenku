@@ -1,12 +1,16 @@
 /**
- * Cloudinary Direct Upload Service for Absenku
+ * Cloudinary Direct Upload Service for in-Time
  * Cloud Name: bztonxus
  * Upload Preset: absenku_preset
  */
 
 export const CLOUDINARY_CONFIG = {
-  cloudName: 'bztonxus',
-  uploadPreset: 'absenku_preset',
+  cloudName:
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME) ||
+    'bztonxus',
+  uploadPreset:
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_CLOUDINARY_PRESET) ||
+    'absenku_preset',
 };
 
 export interface CloudinaryUploadResult {

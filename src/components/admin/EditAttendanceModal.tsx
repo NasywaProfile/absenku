@@ -283,7 +283,7 @@ export function EditAttendanceModal({
                 <div className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-[11px] flex items-center gap-2 animate-fadeIn">
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                   <span>
-                    Hari ini akan tercatat <b>OFF ({leaveCategory === 'SICK' ? 'Sakit' : 'Cuti / Izin'})</b>, karyawan bebas presensi dan tidak dihitung hadir.
+                    <b>{leaveCategory === 'SICK' ? 'Sakit:' : 'Cuti/Izin:'}</b> Bebas presensi &amp; tidak dihitung hadir.
                   </span>
                 </div>
               )}
@@ -291,12 +291,12 @@ export function EditAttendanceModal({
                 <div className="p-2.5 rounded-xl bg-indigo-50/80 border border-indigo-200 text-indigo-900 text-[11px] flex items-center gap-2 animate-fadeIn">
                   <AlertTriangle className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                   <span>
-                    Karyawan <b>tetap wajib presensi</b>; lokasi dicatat sebagai <b>{leaveCategory === 'WFH' ? 'WFH' : 'Dinas Luar'}</b>.
+                    Karyawan <b>tetap wajib presensi</b>, lokasi dicatat sebagai <b>{leaveCategory === 'WFH' ? 'WFH' : 'Dinas Luar'}</b>.
                   </span>
                 </div>
               )}
               <p className="text-[10px] text-slate-400 leading-snug">
-                Perubahan hanya berlaku untuk tanggal {record.date}. Pengajuan multi-hari akan dipecah, hari lain tidak ikut berubah.
+                Perubahan hanya berlaku untuk tanggal {record.date}.
               </p>
             </div>
 
@@ -317,7 +317,7 @@ export function EditAttendanceModal({
                   }`}
                 >
                   <Building2 className="w-4 h-4 text-emerald-600" />
-                  <span>Sesuai Radius</span>
+                  <span>Area Kantor</span>
                 </button>
 
                 <button
@@ -389,7 +389,7 @@ export function EditAttendanceModal({
                   min={1}
                   value={lateMinutes}
                   onChange={(e) => setLateMinutes(parseInt(e.target.value) || 0)}
-                  className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-slate-900 font-mono font-bold focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-slate-900 font-bold focus:outline-hidden focus:ring-2 focus:ring-amber-500"
                 />
               </div>
             )}

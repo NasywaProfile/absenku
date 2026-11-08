@@ -23,6 +23,7 @@ import {
   Trash2,
   AlertTriangle,
   Lock,
+  Globe,
 } from 'lucide-react';
 import {
   AttendanceRecord,
@@ -74,28 +75,28 @@ const LOCATION_TAG_CONFIG: Record<
   { label: string; icon: React.ComponentType<{ className?: string }>; bg: string; text: string; border: string; iconColor: string }
 > = {
   OFFICE: {
-    label: 'Di Kantor',
+    label: 'Area Kantor',
     icon: Building2,
-    bg: 'bg-teal-50',
-    text: 'text-teal-800',
-    border: 'border-teal-200',
-    iconColor: 'text-teal-600',
+    bg: 'bg-emerald-50',
+    text: 'text-emerald-800',
+    border: 'border-emerald-200',
+    iconColor: 'text-emerald-600',
   },
   WFH: {
-    label: 'Rumah / WFH',
+    label: 'Dari Rumah',
     icon: Laptop,
-    bg: 'bg-sky-50',
-    text: 'text-sky-800',
-    border: 'border-sky-200',
-    iconColor: 'text-sky-600',
+    bg: 'bg-indigo-50',
+    text: 'text-indigo-800',
+    border: 'border-indigo-200',
+    iconColor: 'text-indigo-600',
   },
   BUSINESS_TRIP: {
-    label: 'Dinas Luar',
+    label: 'Di Luar Kantor',
     icon: MapPin,
-    bg: 'bg-amber-50',
-    text: 'text-amber-800',
-    border: 'border-amber-200',
-    iconColor: 'text-amber-600',
+    bg: 'bg-purple-50',
+    text: 'text-purple-800',
+    border: 'border-purple-200',
+    iconColor: 'text-purple-600',
   },
   OUT_OF_RANGE: {
     label: 'Di Luar Kantor',
@@ -106,7 +107,7 @@ const LOCATION_TAG_CONFIG: Record<
     iconColor: 'text-rose-600',
   },
   LEAVE: {
-    label: 'Cuti / Izin',
+    label: 'Bebas Absen',
     icon: CalendarDays,
     bg: 'bg-sky-50',
     text: 'text-sky-800',
@@ -114,7 +115,7 @@ const LOCATION_TAG_CONFIG: Record<
     iconColor: 'text-sky-600',
   },
   SICK: {
-    label: 'Sakit',
+    label: 'Bebas Absen',
     icon: AlertCircle,
     bg: 'bg-rose-50',
     text: 'text-rose-800',
@@ -277,10 +278,23 @@ export function AttendanceHistory({
             (empCol && row.lateWfhMap?.[empCol]) ||
             (ds.isLate ? ds.lateMinutes : (rec.clockInLateMinutes || 0));
 
-          let statusText = 'Hadir';
+          const isFreelance = rec.employmentType === 'FREELANCE';
+          const isWfh = ds.location === 'WFH' || tableStatus === 'WFH' || rec.clockInLocationStatus === 'WFH_APPROVED' || (isFreelance && rec.clockInLocationStatus !== 'IN_OFFICE');
+          const isBusinessTrip = ds.location === 'BUSINESS_TRIP' || tableStatus === 'Dinas Luar' || rec.clockInLocationStatus === 'DINAS_APPROVED';
+          const isOutOfRange =
+            !isWfh &&
+            !isBusinessTrip &&
+            !isFreelance &&
+            (rec.clockInLocationStatus === 'OUT_OF_RANGE' ||
+              (rec.clockInDistanceMeter !== undefined && rec.clockInDistanceMeter > 100));
+
+          let statusText = 'Hadir WFO';
           let statusColor: 'emerald' | 'amber' | 'indigo' | 'purple' | 'rose' | 'slate' = 'emerald';
 
-          if (ds.key === 'WFH' || tableStatus === 'WFH') {
+          if (isFreelance) {
+            statusText = 'Hadir Freelance';
+            statusColor = 'indigo';
+          } else if (ds.key === 'WFH' || tableStatus === 'WFH') {
             if (lateMin > 0 || ds.isLate) {
               statusText = `WFH • Terlambat (${lateMin}m)`;
               statusColor = 'amber';
@@ -302,32 +316,28 @@ export function AttendanceHistory({
           } else if (ds.key === 'SICK' || tableStatus === 'Sakit') {
             statusText = 'Sakit';
             statusColor = 'rose';
-          } else if (ds.key === 'LEAVE' || tableStatus === 'Cuti/Izin') {
-            statusText = 'Cuti/Izin';
+          } else if (ds.key === 'LEAVE' || tableStatus === 'Cuti/Izin' || (tableStatus as any) === 'Izin / Cuti') {
+            statusText = 'Izin / Cuti';
             statusColor = 'emerald';
-          } else if (ds.location === 'OUT_OF_RANGE' || rec.clockInLocationStatus === 'OUT_OF_RANGE') {
+          } else if (ds.location === 'OUT_OF_RANGE' || rec.clockInLocationStatus === 'OUT_OF_RANGE' || isOutOfRange) {
             statusText = 'Luar Radius';
             statusColor = 'rose';
           } else {
-            statusText = 'Hadir';
+            statusText = 'Hadir WFO';
             statusColor = 'emerald';
           }
 
-          const isWfh = ds.location === 'WFH' || tableStatus === 'WFH' || rec.clockInLocationStatus === 'WFH_APPROVED';
-          const isBusinessTrip = ds.location === 'BUSINESS_TRIP' || tableStatus === 'Dinas Luar' || rec.clockInLocationStatus === 'DINAS_APPROVED';
-          const isOutOfRange =
-            !isWfh &&
-            !isBusinessTrip &&
-            (rec.clockInLocationStatus === 'OUT_OF_RANGE' ||
-              (rec.clockInDistanceMeter !== undefined && rec.clockInDistanceMeter > 100));
-
-          const locationText = isWfh
-            ? 'Rumah / WFH'
+          const locationText = isFreelance
+            ? 'Otomatis (Kantor/Rumah)'
+            : isWfh
+            ? 'Dari Rumah'
             : isBusinessTrip
-            ? 'Dinas Luar'
+            ? 'Di Luar Kantor'
             : isOutOfRange
-            ? `Di Luar Kantor (${rec.clockInDistanceMeter ? `${Math.round(rec.clockInDistanceMeter)}m` : 'Luar Radius'})`
-            : 'Di Kantor';
+            ? 'Di Luar Kantor'
+            : (ds.key === 'LEAVE' || ds.key === 'SICK')
+            ? 'Bebas Absen'
+            : 'Area Kantor';
 
           const userDailyTask = dailyTasks?.find(
             (t) =>
@@ -754,6 +764,8 @@ export function AttendanceHistory({
       });
 
       const hasOutOfOffice = clockedInRecords.some((r) => {
+        const isFreelance = r.employmentType === 'FREELANCE';
+        if (isFreelance) return false;
         return (
           r.clockInLocationStatus === 'OUT_OF_RANGE' ||
           (r.clockInDistanceMeter !== undefined &&
@@ -767,13 +779,15 @@ export function AttendanceHistory({
       const locationTagSet = new Set<LocationBadgeType>();
 
       clockedInRecords.forEach((r) => {
+        const isFreelance = r.employmentType === 'FREELANCE';
         if (r.clockInLocationStatus === 'DINAS_APPROVED' || r.workMode === 'DINAS') {
           locationTagSet.add('BUSINESS_TRIP');
-        } else if (r.clockInLocationStatus === 'WFH_APPROVED' || r.workMode === 'WFH') {
+        } else if (r.clockInLocationStatus === 'WFH_APPROVED' || r.workMode === 'WFH' || (isFreelance && r.clockInLocationStatus !== 'IN_OFFICE')) {
           locationTagSet.add('WFH');
         } else if (
-          r.clockInLocationStatus === 'OUT_OF_RANGE' ||
-          (r.clockInDistanceMeter !== undefined && r.clockInDistanceMeter > 100)
+          !isFreelance &&
+          (r.clockInLocationStatus === 'OUT_OF_RANGE' ||
+            (r.clockInDistanceMeter !== undefined && r.clockInDistanceMeter > 100))
         ) {
           locationTagSet.add('OUT_OF_RANGE');
         } else {
@@ -814,8 +828,8 @@ export function AttendanceHistory({
     });
   }, [attendanceRecords, leaves, employeeColumns, users]);
 
-  // Filter & Urutan Data
-  const displayedRows = useMemo(() => {
+  // Filter Hari & Tanggal Spesifik (Basis data sebelum pencarian teks)
+  const baseMatrixRows = useMemo(() => {
     let result = [...allMatrixRows];
 
     // Filter Tipe Hari (Semua / Hari Kerja / Hari Libur)
@@ -833,17 +847,120 @@ export function AttendanceHistory({
       );
     }
 
-    // Filter Pencarian Teks
+    return result;
+  }, [allMatrixRows, filterType, specificDateFilter]);
+
+  // Filter & Urutan Data Kehadiran Tim (Mendukung pencarian nama, status, lokasi, dan tanggal)
+  const displayedRows = useMemo(() => {
+    let result = [...baseMatrixRows];
+
+    // Filter Pencarian Teks (Cari riwayat presensi: nama, status, lokasi, tanggal)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       result = result.filter((r) => {
-        if (r.dateStr.toLowerCase().includes(q)) return true;
-        if (r.rawDate.toLowerCase().includes(q)) return true;
-        // Cek nama kolom atau status
-        for (const [employee, status] of Object.entries(r.statuses)) {
-          if (employee.toLowerCase().includes(q) && status.toLowerCase() === 'hadir') return true;
-          if (status.toLowerCase().includes(q)) return true;
+        // 1. Pencarian Tanggal (format DD/MM/YYYY, YYYY-MM-DD, atau nama hari/bulan bahasa Indonesia)
+        if (r.dateStr.toLowerCase().includes(q) || r.rawDate.toLowerCase().includes(q)) return true;
+        try {
+          const dParts = r.rawDate.split('-');
+          if (dParts.length === 3) {
+            const dObj = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]));
+            const indoDate = dObj.toLocaleDateString('id-ID', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+            }).toLowerCase();
+            if (indoDate.includes(q)) return true;
+          }
+        } catch {
+          // Abaikan kesalahan parsing tanggal
         }
+
+        // 2. Pencarian Keterangan Lokasi
+        const locationLabels: string[] = [];
+        (r.locationTags || []).forEach((tag) => {
+          const cfg = LOCATION_TAG_CONFIG[tag];
+          if (cfg) locationLabels.push(cfg.label.toLowerCase());
+        });
+        if (r.locations?.hasOffice) {
+          locationLabels.push('kantor', 'di kantor', 'office', 'wfo');
+        }
+        if (r.locations?.hasOutOfOffice) {
+          locationLabels.push('di luar kantor', 'luar kantor', 'out of range');
+        }
+        if (locationLabels.some((lbl) => lbl.includes(q))) return true;
+
+        // Cek langsung kecocokan istilah lokasi umum
+        if (
+          (q === 'kantor' || q === 'office' || q === 'wfo') &&
+          (r.locations?.hasOffice || r.locationTags?.includes('OFFICE'))
+        ) return true;
+        if (
+          (q === 'wfh' || q === 'rumah' || q === 'work from home') &&
+          r.locationTags?.includes('WFH')
+        ) return true;
+        if (
+          (q === 'dinas' || q === 'dinas luar' || q === 'business trip') &&
+          r.locationTags?.includes('BUSINESS_TRIP')
+        ) return true;
+        if (
+          (q === 'luar' || q === 'luar kantor' || q === 'di luar kantor' || q === 'radius') &&
+          (r.locations?.hasOutOfOffice || r.locationTags?.includes('OUT_OF_RANGE'))
+        ) return true;
+
+        // 3. Pencarian Status Kehadiran
+        const statusSynonyms: Record<string, string[]> = {
+          hadir: ['hadir', 'masuk', 'present', 'tepat waktu', 'on time'],
+          terlambat: ['terlambat', 'telat', 'late'],
+          wfh: ['wfh', 'rumah', 'work from home'],
+          'dinas luar': ['dinas', 'dinas luar', 'business trip'],
+          sakit: ['sakit', 'sick'],
+          'cuti/izin': ['cuti', 'izin', 'cuti/izin', 'leave', 'permit'],
+          'tidak hadir': ['tidak hadir', 'alpa', 'absen', 'absent'],
+          libur: ['libur', 'holiday', 'weekend', 'akhir pekan'],
+        };
+
+        const matchesStatus = Object.values(r.statuses).some((st) => {
+          const sLower = st.toLowerCase();
+          if (sLower.includes(q)) return true;
+          const syns = statusSynonyms[sLower];
+          return syns && syns.some((syn) => syn.includes(q) || q.includes(syn));
+        });
+        if (matchesStatus) return true;
+
+        // 4. Pencarian Nama Karyawan (Cari baris di mana nama karyawan ada & memiliki status aktif/presensi)
+        for (const [employee, status] of Object.entries(r.statuses)) {
+          const empLower = employee.toLowerCase();
+          if (empLower.includes(q)) {
+            // Jika user mencari nama tertentu, cocokkan baris di mana karyawan hadir/berkegiatan (bukan default tidak hadir/libur)
+            if (status !== 'Tidak Hadir' && status !== 'Libur') return true;
+            // Atau ada catatan absensi/cuti pada tanggal tersebut
+            const hasRec = (attendanceRecords || []).some(
+              (rec) => rec.date === r.rawDate && (rec.userName.toLowerCase().includes(empLower) || empLower.includes(rec.userName.toLowerCase()))
+            );
+            if (hasRec) return true;
+            const hasLeave = (leaves || []).some(
+              (l) => r.rawDate >= l.startDate && r.rawDate <= l.endDate && (l.userName.toLowerCase().includes(empLower) || empLower.includes(l.userName.toLowerCase()))
+            );
+            if (hasLeave) return true;
+          }
+        }
+
+        // 5. Pencarian multi-kata (misal: "Nasywa Hadir", "Devi WFH", "Kantor Budi")
+        const tokens = q.split(/\s+/).filter(Boolean);
+        if (tokens.length > 1) {
+          const allTokensMatch = tokens.every((token) => {
+            if (r.dateStr.toLowerCase().includes(token) || r.rawDate.toLowerCase().includes(token)) return true;
+            if (locationLabels.some((lbl) => lbl.includes(token))) return true;
+            for (const [employee, status] of Object.entries(r.statuses)) {
+              if (employee.toLowerCase().includes(token)) return true;
+              if (status.toLowerCase().includes(token)) return true;
+            }
+            return false;
+          });
+          if (allTokensMatch) return true;
+        }
+
         return false;
       });
     }
@@ -855,12 +972,12 @@ export function AttendanceHistory({
     });
 
     return result;
-  }, [allMatrixRows, filterType, specificDateFilter, searchQuery, sortOrder]);
+  }, [baseMatrixRows, searchQuery, sortOrder, attendanceRecords, leaves]);
 
   // Data Baris untuk Tampilan Absensi Pribadi (Desain persis Kehadiran Tim cuman khusus perorangan)
   const personalRows = useMemo(() => {
     const todayDateStr = getCurrentDateString();
-    return displayedRows.map((row) => {
+    return baseMatrixRows.map((row) => {
       const myRecord = attendanceRecords.find(
         (r) => (r.userId === currentUser.id || r.userName.toLowerCase() === currentUser.name.toLowerCase()) && r.date === row.rawDate
       );
@@ -952,7 +1069,7 @@ export function AttendanceHistory({
     return { leave, wfh, sick, businessTrip };
   }, [personalRows]);
 
-  // Filter Absensi Pribadi berdasarkan Kategori (1. Izin / Cuti s/d 4. Dinas Luar)
+  // Filter Absensi Pribadi berdasarkan Kategori (1. Izin / Cuti s/d 4. Dinas Luar) & Pencarian
   const filteredPersonalRows = useMemo(() => {
     let result = personalRows;
     if (personalCategoryFilter !== 'ALL') {
@@ -961,10 +1078,42 @@ export function AttendanceHistory({
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       result = result.filter((r) => {
-        if (r.dateStr.toLowerCase().includes(q)) return true;
+        // 1. Tanggal (DD/MM/YYYY, YYYY-MM-DD, nama hari/bulan)
+        if (r.dateStr.toLowerCase().includes(q) || r.rawDate.toLowerCase().includes(q)) return true;
+        try {
+          const dParts = r.rawDate.split('-');
+          if (dParts.length === 3) {
+            const dObj = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]));
+            const indoDate = dObj.toLocaleDateString('id-ID', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+            }).toLowerCase();
+            if (indoDate.includes(q)) return true;
+          }
+        } catch {}
+
+        // 2. Status & Nama
         if (r.statusText.toLowerCase().includes(q)) return true;
-        if (r.taskSummary.toLowerCase().includes(q)) return true;
+        if (currentUser.name.toLowerCase().includes(q)) return true;
+
+        // 3. Lokasi
         if (r.locationMode.toLowerCase().includes(q)) return true;
+
+        // 4. Catatan / Rangkuman tugas
+        if (r.taskSummary.toLowerCase().includes(q)) return true;
+
+        // 5. Sinonim Status & Lokasi
+        if ((q === 'hadir' || q === 'masuk' || q === 'tepat waktu') && r.hasCheckmark) return true;
+        if ((q === 'telat' || q === 'terlambat') && r.statusText.toLowerCase().includes('terlambat')) return true;
+        if ((q === 'kantor' || q === 'office' || q === 'wfo') && r.locationMode.toLowerCase().includes('kantor')) return true;
+        if ((q === 'wfh' || q === 'rumah') && (r.locationMode.toLowerCase().includes('wfh') || r.locationMode.toLowerCase().includes('rumah'))) return true;
+        if ((q === 'dinas' || q === 'dinas luar') && r.locationMode.toLowerCase().includes('dinas')) return true;
+        if ((q === 'luar' || q === 'luar kantor' || q === 'di luar kantor' || q === 'radius') && r.locationMode.toLowerCase().includes('luar')) return true;
+        if ((q === 'cuti' || q === 'izin') && (r.statusText.toLowerCase().includes('izin') || r.statusText.toLowerCase().includes('cuti'))) return true;
+        if (q === 'sakit' && r.statusText.toLowerCase().includes('sakit')) return true;
+
         return false;
       });
     }
@@ -974,7 +1123,7 @@ export function AttendanceHistory({
       return sortOrder === 'DESC' ? cmp : -cmp;
     });
     return result;
-  }, [personalRows, personalCategoryFilter, searchQuery, sortOrder]);
+  }, [personalRows, personalCategoryFilter, searchQuery, sortOrder, currentUser.name]);
 
   // Reset pagination saat filter berubah
   React.useEffect(() => {
@@ -1049,7 +1198,11 @@ export function AttendanceHistory({
               <button
                 type="button"
                 onClick={() => setDateFilterOpen(!dateFilterOpen)}
-                className="h-9 px-3 flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-2xs border border-slate-200 whitespace-nowrap shrink-0"
+                className={`h-9 px-3 flex items-center justify-center gap-1.5 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-2xs whitespace-nowrap shrink-0 border ${
+                  specificDateFilter || filterType !== 'ALL'
+                    ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] ring-1 ring-blue-300/40'
+                    : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
+                }`}
               >
                 <Calendar className="w-3.5 h-3.5 text-[#1E3A8A] shrink-0" />
                 <span>
@@ -1175,14 +1328,14 @@ export function AttendanceHistory({
           </div>
 
           {/* 3. Search Bar (Tengah, Flex-1) */}
-          <Tooltip content="Ketik tanggal untuk menyaring riwayat presensi" position="bottom" className="flex-1">
+          <Tooltip content="Cari riwayat presensi berdasarkan nama, status, lokasi, atau tanggal" position="bottom" className="flex-1">
             <div className="relative flex items-center w-full">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Cari tanggal..."
+                placeholder="Cari riwayat presensi..."
                 className="h-10 pl-10 pr-8 w-full bg-[#F8FAFC] hover:bg-white focus:bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium"
               />
               {searchQuery && (
@@ -1254,14 +1407,14 @@ export function AttendanceHistory({
               </button>
             </Tooltip>
 
-            <Tooltip content="Ketik tanggal untuk menyaring riwayat presensi" position="bottom" className="flex-1 mx-2 max-w-2xl">
+            <Tooltip content="Cari riwayat presensi berdasarkan nama, status, lokasi, atau tanggal" position="bottom" className="flex-1 mx-2 max-w-2xl">
               <div className="relative flex items-center w-full">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Cari tanggal..."
+                  placeholder="Cari riwayat presensi..."
                   className="h-9.5 pl-10 pr-8 w-full bg-[#F8FAFC] hover:bg-white focus:bg-white border border-slate-200/90 rounded-xl text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium"
                 />
                 {searchQuery && (
@@ -1315,7 +1468,11 @@ export function AttendanceHistory({
                 <button
                   type="button"
                   onClick={() => setDateFilterOpen(!dateFilterOpen)}
-                  className={`flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-800 font-bold rounded-xl transition-all cursor-pointer shadow-2xs border border-slate-200/90 whitespace-nowrap ${
+                  className={`flex items-center gap-2 font-bold rounded-xl transition-all cursor-pointer shadow-2xs whitespace-nowrap border ${
+                    specificDateFilter || filterType !== 'ALL'
+                      ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] ring-1 ring-blue-300/40'
+                      : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200/90'
+                  } ${
                     currentUser.role === 'SUPER_ADMIN'
                       ? 'w-full h-10 px-3.5 justify-between text-xs'
                       : 'h-8 px-2.5 justify-center shrink-0 text-[11px]'
@@ -2038,50 +2195,95 @@ export function AttendanceHistory({
                             )}
                           </td>
 
-                          {/* 2b. Keterangan Lokasi Column (Warna Khas Lokasi Seragam) */}
+                          {/* 2b. Keterangan Lokasi Column (Sesuai Spesifikasi PDF) */}
                           <td className="py-3 px-4 whitespace-nowrap">
                             {row.hasCheckmark || (row.locationMode && row.locationMode !== '—' && !isWeekendHoliday) ? (
                               (() => {
                                 const mode = row.locationMode;
+                                const isLate = row.statusText.includes('Terlambat');
                                 const isWfh = mode.includes('WFH') || mode.includes('Rumah');
                                 const isDinas = mode.includes('Dinas');
                                 const isLuar = mode.includes('Luar') || mode.includes('Radius');
+                                const isOff = mode.includes('Bebas Absen');
+                                const isSick = row.statusText.includes('Sakit');
+                                const isFreelance = mode.includes('Otomatis') || mode.includes('Freelance');
+
+                                if (isOff) {
+                                  return (
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold ${
+                                      isSick
+                                        ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                                        : 'bg-sky-50 text-sky-800 border border-sky-200'
+                                    }`}>
+                                      <CalendarDays className="w-3 h-3 shrink-0" />
+                                      <span>Bebas Absen</span>
+                                    </span>
+                                  );
+                                }
+
+                                if (isFreelance) {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                                      <Globe className="w-3 h-3 text-indigo-600 shrink-0" />
+                                      <span>Otomatis (Kantor/Rumah)</span>
+                                    </span>
+                                  );
+                                }
 
                                 if (isWfh) {
                                   return (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
-                                      <Laptop className="w-3 h-3 text-sky-600 shrink-0" />
-                                      <span>{mode}</span>
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold ${
+                                      isLate
+                                        ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                        : 'bg-indigo-50 text-indigo-800 border border-indigo-200'
+                                    }`}>
+                                      <Laptop className="w-3 h-3 shrink-0" />
+                                      <span>Dari Rumah</span>
                                     </span>
                                   );
                                 }
+
                                 if (isDinas) {
                                   return (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                                      <MapPin className="w-3 h-3 text-amber-600 shrink-0" />
-                                      <span>{mode}</span>
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold ${
+                                      isLate
+                                        ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                        : 'bg-purple-50 text-purple-800 border border-purple-200'
+                                    }`}>
+                                      <MapPin className="w-3 h-3 shrink-0" />
+                                      <span>Di Luar Kantor</span>
                                     </span>
                                   );
                                 }
+
                                 if (isLuar) {
                                   return (
                                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
-                                      <MapPin className="w-3 h-3 text-rose-600 shrink-0" />
-                                      <span>{mode}</span>
+                                      <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
+                                      <span>Di Luar Kantor</span>
                                     </span>
                                   );
                                 }
+
                                 return (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
-                                    <Building2 className="w-3 h-3 text-teal-600 shrink-0" />
-                                    <span>{mode}</span>
+                                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold ${
+                                    isLate
+                                      ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                      : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                  }`}>
+                                    <Building2 className="w-3 h-3 shrink-0" />
+                                    <span>Area Kantor</span>
                                   </span>
                                 );
                               })()
                             ) : isWeekendHoliday ? (
-                              <span className="text-slate-400 font-bold text-xs pl-2">-</span>
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                —
+                              </span>
                             ) : (
-                              <span className="text-slate-300 font-bold text-xs pl-2">—</span>
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                —
+                              </span>
                             )}
                           </td>
 
@@ -2431,7 +2633,7 @@ export function AttendanceHistory({
                           leaveCategory === 'WFH' || updated.clockInLocationStatus === 'WFH_APPROVED'
                             ? 'WFH'
                             : updated.clockInLocationStatus === 'IN_OFFICE'
-                            ? 'Sesuai Radius'
+                            ? 'Area Kantor'
                             : 'Luar Radius',
                       }
                     : m

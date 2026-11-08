@@ -1,5 +1,5 @@
 /**
- * IndexedDB storage for Absenku attachments (Dokumen PDF, Surat Dokter, Foto Resolusi Tinggi).
+ * IndexedDB storage for in-Time attachments (Dokumen PDF, Surat Dokter, Foto Resolusi Tinggi).
  * IndexedDB memiliki kuota penyimpanan hingga ratusan MB sampai GB,
  * terpisah dari batas ketat 5 MB localStorage browser.
  */

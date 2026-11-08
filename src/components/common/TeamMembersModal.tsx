@@ -194,7 +194,7 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                     key={member.id || `${member.name}-${idx}`}
                     className="relative p-3.5 bg-white hover:bg-blue-50/40 rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all flex flex-col gap-2.5 group"
                   >
-                    {/* Icon edit pen di pojok kanan atas card (Hanya untuk anggota tim lain) */}
+                    {/* Icon edit pen di pojok kiri atas card (Hanya untuk anggota tim lain) */}
                     {isAdmin && onEditMember && !isSelf && (
                       <button
                         type="button"
@@ -202,7 +202,7 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                           e.stopPropagation();
                           onEditMember(member);
                         }}
-                        className="absolute top-2.5 right-3 p-1 text-slate-400 hover:text-[#1E3A8A] hover:bg-blue-50 rounded-lg transition-colors cursor-pointer z-10"
+                        className="absolute top-2 left-2 p-1 bg-white/95 hover:bg-blue-50 text-slate-500 hover:text-[#1E3A8A] border border-slate-200/90 rounded-lg shadow-2xs transition-all cursor-pointer z-20"
                         title={`Edit status kehadiran & lokasi ${member.name}`}
                       >
                         <Edit3 className="w-3.5 h-3.5" />
@@ -225,7 +225,7 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-bold text-xs sm:text-sm text-slate-900 group-hover:text-[#1E3A8A] transition-colors truncate pr-7">
+                          <h4 className="font-bold text-xs sm:text-sm text-slate-900 group-hover:text-[#1E3A8A] transition-colors truncate">
                             {member.name}
                           </h4>
                           <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
@@ -239,7 +239,7 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                       </div>
 
                       {/* Kanan: Badge Waktu Presensi Masuk (Atas) & Badge Lokasi (Bawah) */}
-                      <div className="flex flex-col items-end gap-1 shrink-0 pt-2">
+                      <div className="flex flex-col items-end gap-1 shrink-0">
                         {member.clockInTime ? (
                           (() => {
                             const isLate =

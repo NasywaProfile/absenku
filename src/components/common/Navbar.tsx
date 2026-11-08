@@ -55,7 +55,7 @@ export function Navbar({ currentUser, users, onSwitchUser, onResetData }: Navbar
         {/* Center: Live Real-Time Clock WIB */}
         <div className="hidden md:flex items-center gap-2 px-3.5 py-1.5 bg-slate-100 border border-slate-200 rounded-full text-slate-700 shadow-inner">
           <Clock className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
-          <span className="text-xs font-mono font-bold tracking-wider">{currentTime}</span>
+          <span className="text-xs font-bold tracking-wider">{currentTime}</span>
           <span className="text-[10px] font-semibold text-slate-400">WIB</span>
         </div>
 

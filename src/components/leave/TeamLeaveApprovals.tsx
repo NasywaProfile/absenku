@@ -36,7 +36,6 @@ interface TeamLeaveApprovalsProps {
   leaves?: LeaveRequest[];
   leaveRequests?: LeaveRequest[];
   onRefresh?: () => void;
-  onOpenEmailModal?: () => void;
 }
 
 export function TeamLeaveApprovals({
@@ -44,7 +43,6 @@ export function TeamLeaveApprovals({
   leaves: propLeaves,
   leaveRequests: propLeaveRequests,
   onRefresh,
-  onOpenEmailModal,
 }: TeamLeaveApprovalsProps) {
   const leaves = propLeaves || propLeaveRequests || AppStorage.getLeaveRequests();
 
@@ -55,15 +53,13 @@ export function TeamLeaveApprovals({
   // Filter & Search states
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
-  const [filterStatus, setFilterStatus] = useState<string>('PENDING'); // Default to PENDING for quick review
+  const [filterStatus, setFilterStatus] = useState<string>('ALL'); // Default to ALL (tanpa filter otomatis saat pertama kali dibuka)
   const [specificDateFilter, setSpecificDateFilter] = useState('');
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
 
-  const hasActiveFilters = filterCategory !== 'ALL' || filterStatus !== 'PENDING' || specificDateFilter !== '';
+  const hasActiveFilters = filterCategory !== 'ALL' || filterStatus !== 'ALL' || specificDateFilter !== '';
 
-  // Detail Modal & Reject Dialog
-  const [selectedLeaveDetail, setSelectedLeaveDetail] = useState<LeaveRequest | null>(null);
-  const [isDetailModalFullScreen, setIsDetailModalFullScreen] = useState(false);
+  // Reject Dialog
   const [isRejectModalFullScreen, setIsRejectModalFullScreen] = useState(false);
   const [rejectDialog, setRejectDialog] = useState<{
     isOpen: boolean;
@@ -111,9 +107,6 @@ export function TeamLeaveApprovals({
   const handleApprove = (id: string) => {
     AppStorage.approveLeave(id, currentUser.name);
     notifyUpdated();
-    if (selectedLeaveDetail && selectedLeaveDetail.id === id) {
-      setSelectedLeaveDetail({ ...selectedLeaveDetail, status: 'APPROVED', reviewedBy: currentUser.name });
-    }
   };
 
   const handleReject = () => {
@@ -123,13 +116,6 @@ export function TeamLeaveApprovals({
         rejectDialog.reason || 'Ditolak oleh Administrator',
         currentUser.name
       );
-      if (selectedLeaveDetail && selectedLeaveDetail.id === rejectDialog.leaveId) {
-        setSelectedLeaveDetail({
-          ...selectedLeaveDetail,
-          status: 'REJECTED',
-          rejectionReason: rejectDialog.reason || 'Ditolak oleh Administrator',
-        });
-      }
       setRejectDialog({ isOpen: false, leaveId: '', userName: '', reason: '' });
       notifyUpdated();
     }
@@ -282,7 +268,13 @@ export function TeamLeaveApprovals({
           <div className={`${isMobileFilterOpen ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-slate-50/90 p-3.5 sm:p-3 rounded-2xl border border-slate-200/80 text-xs w-full animate-in fade-in slide-in-from-top-1 duration-150`}>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-3 flex-1 min-w-0">
               {/* Filter 1: Kategori */}
-              <div className="flex items-center gap-2.5 h-12 sm:h-10 md:h-10 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs shadow-2xs font-semibold text-slate-700 flex-1 min-w-0">
+              <div
+                className={`flex items-center gap-2.5 h-12 sm:h-10 md:h-10 px-4 rounded-xl border transition-all text-xs shadow-2xs font-semibold flex-1 min-w-0 ${
+                  filterCategory !== 'ALL'
+                    ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] font-bold ring-1 ring-blue-300/40'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                }`}
+              >
                 <span className="text-xs font-semibold text-slate-500 whitespace-nowrap shrink-0">Kategori:</span>
                 <div className="relative flex items-center flex-1 min-w-0">
                   <select
@@ -301,7 +293,13 @@ export function TeamLeaveApprovals({
               </div>
 
               {/* Filter 2: Status */}
-              <div className="flex items-center gap-2.5 h-12 sm:h-10 md:h-10 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs shadow-2xs font-semibold text-slate-700 flex-1 min-w-0">
+              <div
+                className={`flex items-center gap-2.5 h-12 sm:h-10 md:h-10 px-4 rounded-xl border transition-all text-xs shadow-2xs font-semibold flex-1 min-w-0 ${
+                  filterStatus !== 'ALL'
+                    ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] font-bold ring-1 ring-blue-300/40'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                }`}
+              >
                 <span className="text-xs font-semibold text-slate-500 whitespace-nowrap shrink-0">Status:</span>
                 <div className="relative flex items-center flex-1 min-w-0">
                   <select
@@ -319,7 +317,13 @@ export function TeamLeaveApprovals({
               </div>
 
               {/* Filter 3: Tanggal */}
-              <div className="flex items-center gap-2.5 h-12 sm:h-10 md:h-10 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs shadow-2xs font-semibold text-slate-700 flex-1 min-w-0">
+              <div
+                className={`flex items-center gap-2.5 h-12 sm:h-10 md:h-10 px-4 rounded-xl border transition-all text-xs shadow-2xs font-semibold flex-1 min-w-0 ${
+                  specificDateFilter
+                    ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] font-bold ring-1 ring-blue-300/40'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                }`}
+              >
                 <span className="text-xs font-semibold text-slate-500 whitespace-nowrap shrink-0">Tanggal:</span>
                 <input
                   type="date"
@@ -339,6 +343,23 @@ export function TeamLeaveApprovals({
                 )}
               </div>
             </div>
+
+            {/* Tombol Reset Filter */}
+            {(filterCategory !== 'ALL' || filterStatus !== 'ALL' || !!specificDateFilter) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterCategory('ALL');
+                  setFilterStatus('ALL');
+                  setSpecificDateFilter('');
+                }}
+                className="h-12 sm:h-10 md:h-10 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-2xs shrink-0 whitespace-nowrap"
+                title="Hapus Semua Filter"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Reset Filter</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -370,8 +391,7 @@ export function TeamLeaveApprovals({
                   return (
                     <tr
                       key={req.id}
-                      onClick={() => setSelectedLeaveDetail(req)}
-                      className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                      className="hover:bg-slate-50/80 transition-colors"
                     >
                       <td className="py-3.5 px-3.5 whitespace-nowrap">
                         <div
@@ -556,14 +576,7 @@ export function TeamLeaveApprovals({
               </div>
             </div>
 
-            <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={() => setRejectDialog({ isOpen: false, leaveId: '', userName: '', reason: '' })}
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs cursor-pointer"
-              >
-                Batal
-              </button>
+            <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-end gap-3 shrink-0">
               <button
                 type="button"
                 onClick={handleReject}
@@ -576,152 +589,6 @@ export function TeamLeaveApprovals({
         </div>
       )}
 
-      {/* DETAIL MODAL */}
-      {selectedLeaveDetail && (
-        <div
-          className={`fixed inset-0 z-50 flex animate-in fade-in duration-200 ${
-            isDetailModalFullScreen
-              ? 'items-center justify-center p-0'
-              : 'justify-end items-center p-2.5 sm:p-4 md:p-5'
-          }`}
-        >
-          <div
-            className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity cursor-pointer"
-            onClick={() => setSelectedLeaveDetail(null)}
-          />
-          <div
-            className={`relative z-10 bg-white shadow-2xl flex flex-col min-h-0 overflow-hidden transition-all duration-300 font-sans ${
-              isDetailModalFullScreen
-                ? 'w-full h-full max-w-none max-h-none rounded-none border-0'
-                : 'w-full max-w-sm sm:max-w-md h-full max-h-[calc(100vh-1.25rem)] sm:max-h-[calc(100vh-2rem)] rounded-3xl border border-slate-200/80 animate-in slide-in-from-right duration-300 ease-out'
-            }`}
-          >
-            <div className="px-6 py-5 border-b border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
-                {/* Zoom Button di pojok kiri atas */}
-                <button
-                  type="button"
-                  onClick={() => setIsDetailModalFullScreen(!isDetailModalFullScreen)}
-                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer shrink-0"
-                  title={isDetailModalFullScreen ? "Perkecil Tampilan" : "Perbesar Layar Penuh"}
-                >
-                  {isDetailModalFullScreen ? (
-                    <Minimize2 className="w-4 h-4 text-slate-600" />
-                  ) : (
-                    <Maximize2 className="w-4 h-4 text-slate-600" />
-                  )}
-                </button>
-                <div>
-                  <h3 className="font-bold text-base text-slate-900">Rincian Pengajuan Izin Tim</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Evaluasi dan berikan persetujuan perizinan</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedLeaveDetail(null)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full border border-slate-200 transition-colors cursor-pointer shrink-0"
-                title="Tutup"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs sm:text-sm">
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
-                <div
-                  className="cursor-pointer group/prof"
-                  onClick={() => {
-                    const matched = allUsers.find((u) => u.id === selectedLeaveDetail.userId || u.name === selectedLeaveDetail.userName);
-                    setSimpleProfilePopup({
-                      name: selectedLeaveDetail.userName,
-                      avatar: matched?.avatar || selectedLeaveDetail.userAvatar,
-                    });
-                  }}
-                  title="Lihat Profil"
-                >
-                  <p className="font-bold text-slate-900 group-hover/prof:text-[#1E3A8A] transition-colors text-sm">{selectedLeaveDetail.userName}</p>
-                  <p className="text-xs text-slate-500">{selectedLeaveDetail.department || 'Staf Tim'}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${getCategoryBadgeClass(selectedLeaveDetail.category)}`}>
-                    {categoryLabels[selectedLeaveDetail.category]}
-                  </span>
-                  {selectedLeaveDetail.status === 'APPROVED' && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-[#DCFCE7] text-[#15803D] border border-[#86EFAC]/70">
-                      <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                      <span>Disetujui</span>
-                    </span>
-                  )}
-                  {selectedLeaveDetail.status === 'REJECTED' && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-[#FFE4E6] text-[#E11D48] border border-[#FDA4AF]/70">
-                      <X className="w-3.5 h-3.5 stroke-[2.5]" />
-                      <span>Ditolak</span>
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Periode &amp; Durasi</span>
-                <p className="font-bold text-slate-900">{formatPeriodAndDuration(selectedLeaveDetail.startDate, selectedLeaveDetail.endDate, selectedLeaveDetail.totalDays)}</p>
-              </div>
-
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Alasan Lengkap</span>
-                <p className="text-slate-800 font-medium">"{selectedLeaveDetail.reason}"</p>
-              </div>
-
-              {selectedLeaveDetail.attachmentName && (
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Lampiran Dokumen</span>
-                  <button
-                    type="button"
-                    onClick={(e) => handleOpenAttachment(e, selectedLeaveDetail)}
-                    className="inline-flex items-center gap-2 text-xs font-bold text-[#1E3A8A] hover:text-[#172554] hover:underline cursor-pointer group"
-                    title={`Buka ${selectedLeaveDetail.attachmentName}`}
-                  >
-                    <Paperclip className="w-3.5 h-3.5 text-[#1E3A8A] group-hover:scale-110 transition-transform" />
-                    <span>{selectedLeaveDetail.attachmentName}</span>
-                    <ExternalLink className="w-3.5 h-3.5 text-[#1E3A8A]/70 group-hover:text-[#1E3A8A]" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {selectedLeaveDetail.status === 'PENDING' && (
-              <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-end gap-3 shrink-0">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRejectDialog({
-                        isOpen: true,
-                        leaveId: selectedLeaveDetail.id,
-                        userName: selectedLeaveDetail.userName,
-                        reason: '',
-                      });
-                    }}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#FFE4E6] hover:bg-[#FECDD3] text-[#E11D48] border border-[#FDA4AF] font-bold rounded-xl text-xs cursor-pointer shadow-2xs active:scale-95 transition-all"
-                    title="Tolak Permohonan"
-                  >
-                    <X className="w-4 h-4 stroke-[2.5]" />
-                    <span>Tolak</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleApprove(selectedLeaveDetail.id)}
-                    className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-[#DCFCE7] hover:bg-[#BBF7D0] text-[#15803D] border border-[#86EFAC] font-bold rounded-xl text-xs cursor-pointer shadow-2xs active:scale-95 transition-all"
-                    title="Setujui Pengajuan"
-                  >
-                    <Check className="w-4 h-4 stroke-[2.5]" />
-                    <span>Setujui</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
       {/* Pop Up Profil Singkat (Nama & Foto Orang) */}
       <SimpleProfileModal
         isOpen={!!simpleProfilePopup}

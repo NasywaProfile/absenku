@@ -84,7 +84,7 @@ export function RegistrationApprovalList({
                   <p className="text-[11px] font-bold text-slate-700 truncate">
                     {user.department || 'Operasional'}
                   </p>
-                  <p className="text-[11px] text-slate-400 font-mono truncate max-w-full">
+                  <p className="text-[11px] text-slate-500 whitespace-nowrap truncate max-w-full">
                     {user.email} {user.phone ? `• ${user.phone}` : ''}
                   </p>
                 </div>

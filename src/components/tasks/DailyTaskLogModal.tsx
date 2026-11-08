@@ -222,7 +222,7 @@ export function DailyTaskLogModal({
             <div className="space-y-2">
               {tasks.map((task, idx) => (
                 <div key={idx} className="flex items-center gap-2">
-                  <span className="w-6 text-center font-mono font-bold text-xs text-slate-400 shrink-0">
+                  <span className="w-6 text-center font-bold text-xs text-slate-400 shrink-0">
                     {idx + 1}.
                   </span>
                   <input
@@ -268,7 +268,7 @@ export function DailyTaskLogModal({
           )}
 
           {lastSaved && (
-            <p className="text-[11px] text-slate-400 font-mono">
+            <p className="text-[11px] text-slate-400">
               Terakhir diperbarui: {lastSaved.updatedAt} WIB
             </p>
           )}
@@ -302,13 +302,6 @@ export function DailyTaskLogModal({
 
             {/* Simpan Log Task */}
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
-              >
-                Batal
-              </button>
               <button
                 type="submit"
                 className="flex-1 sm:flex-none px-5 py-2.5 bg-[#1E3A8A] hover:bg-[#172554] text-white font-bold rounded-xl text-xs shadow-xs transition-all cursor-pointer"

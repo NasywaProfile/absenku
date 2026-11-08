@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   X,
   Maximize2,
@@ -23,15 +23,21 @@ import {
   CheckCircle2,
   ArrowUp,
   AlertCircle,
+  Clock,
+  Sparkles,
+  Tag,
+  Users,
+  CheckSquare,
+  Upload,
+  FileText,
+  FolderArchive,
+  Eye,
 } from 'lucide-react';
 import { TaskItem, TaskStatus, TaskAttachment, TaskActivity, User as UserType } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
 import { formatIndonesianDateShort } from '../../lib/time-utils.ts';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
-import { compressImageFile } from '../../lib/image-compression.ts';
-import { uploadToCloudinary } from '../../lib/cloudinary.ts';
 import { uploadHybridFile } from '../../lib/file-uploader.ts';
-import { MediaPreviewModal, MediaPreviewData } from '../common/MediaPreviewModal.tsx';
 import { openExternalLink, openAttachmentDirectly, isImageFile } from '../../lib/open-media.ts';
 
 interface TaskDetailModalProps {
@@ -63,6 +69,33 @@ function formatChipName(fullName?: string): string {
   const parts = fullName.trim().split(/\s+/);
   if (parts.length <= 1) return parts[0];
   return `${parts[0]} ${parts[1][0]}.`;
+}
+
+function formatIndonesianDateFull(dateStr?: string): string {
+  if (!dateStr) return '-';
+  try {
+    const raw = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.includes(' ') ? dateStr.split(' ')[0] : dateStr;
+    const parts = raw.split('-');
+    let d: Date;
+    if (parts.length === 3) {
+      d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    } else {
+      d = new Date(dateStr);
+    }
+    if (isNaN(d.getTime())) return dateStr;
+    const formatted = new Intl.DateTimeFormat('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(d);
+    return formatted.replace(/[\u202f\u00a0\s]+/g, ' ').trim();
+  } catch {
+    return dateStr;
+  }
+}
+
+function formatDateTimeFull(dateStr?: string): string {
+  return formatIndonesianDateFull(dateStr);
 }
 
 function formatActivityDateDivider(ts?: string): string {
@@ -116,7 +149,7 @@ function getTaskActivities(task: TaskItem, users: UserType[]): TaskActivity[] {
   } else {
     const adminUser = users.find((u) => u.id === task.createdBy || u.role === 'ADMIN') || {
       id: task.createdBy,
-      name: 'Administrator (PIC)',
+      name: 'Administrator',
       role: 'ADMIN' as const,
       avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=256&q=80',
     };
@@ -197,6 +230,7 @@ export function TaskDetailModal({
 
   const [activeTask, setActiveTask] = useState<TaskItem>(task);
   const [isFullScreen, setIsFullScreen] = useState(false);
+
   useEffect(() => {
     setActiveTask(task);
     setIsFullScreen(false);
@@ -210,6 +244,7 @@ export function TaskDetailModal({
   const isAdmin = currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN';
   const userRole = currentUser.role;
 
+  // Discussion & attachment input state
   const [previewNote, setPreviewNote] = useState('');
   const [previewAttachments, setPreviewAttachments] = useState<TaskAttachment[]>([]);
   const [taskUploadError, setTaskUploadError] = useState<string | null>(null);
@@ -218,7 +253,11 @@ export function TaskDetailModal({
   const [previewLinkUrl, setPreviewLinkUrl] = useState('');
   const [picDecision, setPicDecision] = useState<'APPROVE' | 'REVISION' | 'NOTE'>('APPROVE');
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
-  const [mediaPreview, setMediaPreview] = useState<MediaPreviewData | null>(null);
+
+  // Direct Attachment Upload state
+  const [showDirectAddLink, setShowDirectAddLink] = useState(false);
+  const [directLinkTitle, setDirectLinkTitle] = useState('');
+  const [directLinkUrl, setDirectLinkUrl] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -236,6 +275,16 @@ export function TaskDetailModal({
     }
   };
 
+  // Hanya menampilkan lampiran awal penugasan dari PIC saat task dibuat (berkas chat stay di room chat)
+  const allAttachments: TaskAttachment[] = useMemo(() => {
+    if (Array.isArray(activeTask.attachments)) {
+      return activeTask.attachments.filter(
+        (att) => att.stage === 'TODO' || !att.stage || att.uploadedBy === activeTask.createdBy
+      );
+    }
+    return [];
+  }, [activeTask.attachments, activeTask.createdBy]);
+
   const handleUpdateStatus = (
     targetStatus: TaskStatus,
     notes?: { submissionNotes?: string; reviewNotes?: string; newAttachments?: TaskAttachment[] }
@@ -245,6 +294,7 @@ export function TaskDetailModal({
       activityUser: {
         id: currentUser.id,
         name: currentUser.name,
+        email: currentUser.email,
         role: userRole,
         avatar: currentUser.avatar,
       },
@@ -252,6 +302,71 @@ export function TaskDetailModal({
     refreshCurrentTask(activeTask.id);
   };
 
+  // Direct attachment upload to the task
+  const handleDirectFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setTaskUploadError(null);
+
+    const newItems: TaskAttachment[] = [];
+    for (const file of Array.from(files)) {
+      try {
+        const uploadRes = await uploadHybridFile(file, { folder: 'absenku/tasks' });
+        const newAtt: TaskAttachment = {
+          id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: uploadRes.name,
+          type: 'FILE',
+          url: uploadRes.url,
+          fileType: uploadRes.type,
+          fileSize: formatBytes(uploadRes.size),
+          uploadedBy: currentUser.id,
+          uploadedByName: currentUser.name,
+          uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+          stage: 'DONE',
+        };
+        newItems.push(newAtt);
+      } catch (err: any) {
+        setTaskUploadError(err.message || 'Gagal mengunggah berkas.');
+        setTimeout(() => setTaskUploadError(null), 4000);
+      }
+    }
+
+    if (newItems.length > 0) {
+      const updatedAttachments = [...(activeTask.attachments || []), ...newItems];
+      AppStorage.updateTask(activeTask.id, { attachments: updatedAttachments });
+      refreshCurrentTask(activeTask.id);
+    }
+    e.target.value = '';
+  };
+
+  const handleDirectAddLink = () => {
+    if (!directLinkUrl.trim()) return;
+    let formattedUrl = directLinkUrl.trim();
+    if (!/^https?:\/\//i.test(formattedUrl)) {
+      formattedUrl = `https://${formattedUrl}`;
+    }
+
+    const newAtt: TaskAttachment = {
+      id: `att-link-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: directLinkTitle.trim() || directLinkUrl.trim(),
+      type: 'LINK',
+      url: formattedUrl,
+      uploadedBy: currentUser.id,
+      uploadedByName: currentUser.name,
+      uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      stage: 'DONE',
+    };
+
+    const updatedAttachments = [...(activeTask.attachments || []), newAtt];
+    AppStorage.updateTask(activeTask.id, { attachments: updatedAttachments });
+    refreshCurrentTask(activeTask.id);
+
+    setDirectLinkTitle('');
+    setDirectLinkUrl('');
+    setShowDirectAddLink(false);
+  };
+
+  // Preview file upload inside chat bar
   const handlePreviewFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -275,6 +390,7 @@ export function TaskDetailModal({
         setPreviewAttachments((prev) => [...prev, newAtt]);
       } catch (err: any) {
         setTaskUploadError(err.message || 'Gagal mengunggah berkas.');
+        setTimeout(() => setTaskUploadError(null), 4000);
       }
     }
     e.target.value = '';
@@ -311,7 +427,7 @@ export function TaskDetailModal({
 
   const handleSendPreview = () => {
     if (!previewNote.trim() && previewAttachments.length === 0) return;
-    const note = previewNote.trim() || 'Hasil preview tugas dilampirkan untuk ditinjau oleh PIC.';
+    const note = previewNote.trim();
 
     handleUpdateStatus('DONE', {
       submissionNotes: note,
@@ -328,15 +444,16 @@ export function TaskDetailModal({
 
     if (picDecision === 'APPROVE') {
       handleUpdateStatus('REVIEWED', {
-        reviewNotes: note || 'Penugasan Selesai (ACC oleh PIC)',
+        reviewNotes: note,
         newAttachments: previewAttachments,
       });
     } else if (picDecision === 'REVISION') {
       handleUpdateStatus('IN_PROGRESS', {
-        reviewNotes: note || 'Mohon disempurnakan kembali sesuai catatan arahan dari PIC.',
+        reviewNotes: note,
         newAttachments: previewAttachments,
       });
     } else {
+      if (!note && previewAttachments.length === 0) return;
       const activity: TaskActivity = {
         id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         type: 'COMMENT_ADDED',
@@ -345,7 +462,7 @@ export function TaskDetailModal({
         userAvatar: currentUser.avatar,
         userRole: userRole,
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-        notes: note || 'Catatan arahan dari PIC.',
+        notes: note,
         attachments: previewAttachments,
       };
       AppStorage.addTaskActivity(activeTask.id, activity);
@@ -390,6 +507,8 @@ export function TaskDetailModal({
   };
 
   const handleDeleteActivity = (actId: string) => {
+    const targetAct = activities.find((a) => a.id === actId);
+    if (targetAct && targetAct.userId !== currentUser.id) return;
     AppStorage.deleteTaskActivity(activeTask.id, actId);
     refreshCurrentTask(activeTask.id);
   };
@@ -397,12 +516,599 @@ export function TaskDetailModal({
   const activeTaskPicUser = users.find(
     (u) => u.id === activeTask.createdBy || u.role === 'ADMIN'
   );
-  const activeTaskPicName = activeTaskPicUser?.name || 'Administrator (PIC)';
-  const shortDueDate = formatIndonesianDateShort(activeTask.dueDate) || activeTask.dueDate;
+  const activeTaskPicName = activeTaskPicUser?.name || 'Administrator';
+  const shortDueDate = formatIndonesianDateFull(activeTask.dueDate) || activeTask.dueDate;
   const isPICActive = isAdmin || activeTask.createdBy === currentUser.id;
   const isMyTaskActive =
     activeTask.assignedTo === currentUser.id ||
     Boolean(activeTask.assignees?.some((a) => a.id === currentUser.id));
+
+  // Activities list
+  const activities = getTaskActivities(activeTask, users);
+
+  // Render attachment helper item
+  const renderAttachmentItem = (att: TaskAttachment) => {
+    const isLink = att.type === 'LINK';
+    const isImg = !isLink && (isImageFile(att.url, att.fileType) || isImageFile(att.name, att.fileType));
+
+    return (
+      <div
+        key={att.id}
+        className="flex items-center justify-between p-3 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-2xl transition-all shadow-2xs group"
+      >
+        <div
+          className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+          onClick={() => {
+            if (isLink) {
+              openExternalLink(att.url);
+            } else {
+              openAttachmentDirectly(att);
+            }
+          }}
+        >
+          {/* File Thumbnail or Icon */}
+          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0 text-blue-600">
+            {isLink ? (
+              <Globe className="w-5 h-5 text-sky-600" />
+            ) : isImg && att.url ? (
+              <img src={att.url} alt={att.name} className="w-full h-full object-cover rounded-xl" />
+            ) : att.name.endsWith('.pdf') ? (
+              <FileText className="w-5 h-5 text-rose-600" />
+            ) : att.name.endsWith('.zip') || att.name.endsWith('.rar') ? (
+              <FolderArchive className="w-5 h-5 text-amber-600" />
+            ) : (
+              <FileText className="w-5 h-5 text-blue-600" />
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm font-semibold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+              {att.name}
+            </p>
+            <p className="text-[11px] text-slate-400 truncate">
+              {att.fileSize ? `Ukuran: ${att.fileSize}` : isLink ? 'Tautan Web' : 'Berkas'}
+              {att.uploadedAt ? ` • ${extractActivityTime(att.uploadedAt)}` : ''}
+            </p>
+          </div>
+        </div>
+
+        {/* Action Button */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (isLink) {
+                openExternalLink(att.url);
+              } else {
+                openAttachmentDirectly(att);
+              }
+            }}
+            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer"
+            title="Buka / Unduh di tab baru"
+          >
+            {isLink ? <ExternalLink className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
+            <span>{isLink ? 'Buka' : 'Unduh'}</span>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // Render Image 1 Style Properties Table
+  const renderPropertiesTable = () => (
+    <div className="space-y-3 py-1 text-xs sm:text-sm">
+      {/* 1. Created time */}
+      <div className="flex items-center gap-4">
+        <div className="w-32 sm:w-36 flex items-center gap-2 text-slate-400 shrink-0 font-medium">
+          <Clock className="w-4 h-4 text-slate-400" />
+          <span>Created time</span>
+        </div>
+        <div className="text-slate-800 font-medium">
+          {formatDateTimeFull(activeTask.createdAt)}
+        </div>
+      </div>
+
+      {/* 2. Status */}
+      <div className="flex items-center gap-4">
+        <div className="w-32 sm:w-36 flex items-center gap-2 text-slate-400 shrink-0 font-medium">
+          <Sparkles className="w-4 h-4 text-slate-400" />
+          <span>Status</span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className={`inline-flex items-center gap-1.5 font-semibold px-3 py-0.5 rounded-full text-xs border ${
+              activeTask.status === 'REVIEWED'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : activeTask.status === 'DONE'
+                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                : activeTask.status === 'IN_PROGRESS'
+                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                : 'bg-slate-100 text-slate-700 border-slate-200'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                activeTask.status === 'REVIEWED'
+                  ? 'bg-emerald-500'
+                  : activeTask.status === 'DONE'
+                  ? 'bg-amber-500 animate-pulse'
+                  : activeTask.status === 'IN_PROGRESS'
+                  ? 'bg-blue-500 animate-pulse'
+                  : 'bg-slate-400'
+              }`}
+            />
+            {activeTask.status === 'TODO' && 'Penugasan'}
+            {activeTask.status === 'IN_PROGRESS' && 'Dalam Proses'}
+            {activeTask.status === 'DONE' && 'Tinjauan Tugas'}
+            {activeTask.status === 'REVIEWED' && 'Selesai'}
+          </span>
+
+          {activeTask.status === 'TODO' && isMyTaskActive && (
+            <button
+              type="button"
+              onClick={handleStartTask}
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-full text-xs transition-colors cursor-pointer"
+            >
+              <ArrowRight className="w-3 h-3" />
+              <span>Mulai</span>
+            </button>
+          )}
+
+          {activeTask.status === 'REVIEWED' && isPICActive && (
+            <button
+              type="button"
+              onClick={() => {
+                handleUpdateStatus('IN_PROGRESS', {
+                  reviewNotes: '',
+                });
+              }}
+              className="text-xs text-slate-500 hover:text-slate-800 font-medium underline underline-offset-2 cursor-pointer ml-1"
+            >
+              Buka Kembali
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 3. Priority */}
+      <div className="flex items-center gap-4">
+        <div className="w-32 sm:w-36 flex items-center gap-2 text-slate-400 shrink-0 font-medium">
+          <CheckCircle2 className="w-4 h-4 text-slate-400" />
+          <span>Priority</span>
+        </div>
+        <div>
+          <span
+            className={`inline-flex items-center px-3 py-0.5 rounded-full text-xs font-semibold ${
+              activeTask.priority === 'URGENT'
+                ? 'bg-rose-100 text-rose-700'
+                : activeTask.priority === 'HIGH'
+                ? 'bg-amber-100 text-amber-700'
+                : activeTask.priority === 'MEDIUM'
+                ? 'bg-sky-100 text-sky-700'
+                : 'bg-purple-100 text-purple-700'
+            }`}
+          >
+            {activeTask.priority === 'URGENT'
+              ? 'Urgent'
+              : activeTask.priority === 'HIGH'
+              ? 'High'
+              : activeTask.priority === 'MEDIUM'
+              ? 'Medium'
+              : 'Low'}
+          </span>
+        </div>
+      </div>
+
+      {/* 4. Due Date */}
+      <div className="flex items-center gap-4">
+        <div className="w-32 sm:w-36 flex items-center gap-2 text-slate-400 shrink-0 font-medium">
+          <Calendar className="w-4 h-4 text-slate-400" />
+          <span>Due Date</span>
+        </div>
+        <div className="text-slate-800 font-medium">
+          {shortDueDate}
+        </div>
+      </div>
+
+      {/* 5. Assignees */}
+      <div className="flex items-center gap-4">
+        <div className="w-32 sm:w-36 flex items-center gap-2 text-slate-400 shrink-0 font-medium">
+          <Users className="w-4 h-4 text-slate-400" />
+          <span>Assignees</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {activeTask.assignees && activeTask.assignees.length > 0 ? (
+            <div className="flex items-center -space-x-2">
+              {activeTask.assignees.map((a, i) => (
+                <div
+                  key={i}
+                  className="w-7 h-7 rounded-full border-2 border-white overflow-hidden bg-slate-200 shrink-0 shadow-2xs"
+                  title={a.name}
+                >
+                  {a.avatar ? (
+                    <img src={a.avatar} alt={a.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="w-full h-full flex items-center justify-center font-bold text-[10px] text-slate-700 bg-purple-100">
+                      {a.name.substring(0, 2).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <div className="w-7 h-7 rounded-full border-2 border-white overflow-hidden bg-slate-200 shrink-0 shadow-2xs">
+                {activeTask.assignedAvatar ? (
+                  <img
+                    src={activeTask.assignedAvatar}
+                    alt={activeTask.assignedName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="w-full h-full flex items-center justify-center font-bold text-[10px] text-slate-700 bg-purple-100">
+                    {activeTask.assignedName?.substring(0, 2).toUpperCase() || 'US'}
+                  </span>
+                )}
+              </div>
+              <span className="text-slate-800 font-medium">{activeTask.assignedName}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Chat activities stream component
+  const renderChatStream = () => (
+    <div className="space-y-3.5 pb-2">
+      {activities.length === 0 ? (
+        <div className="h-full flex-1 flex flex-col items-center justify-center py-10 px-6 text-center select-none">
+          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-2 text-slate-400">
+            <MessageSquare className="w-4 h-4" />
+          </div>
+          <p className="text-xs text-slate-400 font-medium">
+            Belum ada pesan atau catatan progres dalam ruang obrolan ini.
+          </p>
+        </div>
+      ) : (
+        (() => {
+          let lastDateKey = '';
+          return activities.map((act, index) => {
+            const isMe = act.userId === currentUser.id;
+            const dateKey = formatActivityDateDivider(act.timestamp);
+            const showDateDivider = dateKey !== lastDateKey;
+            if (showDateDivider) lastDateKey = dateKey;
+            const timeOnly = extractActivityTime(act.timestamp) || act.timestamp;
+
+            return (
+              <React.Fragment key={act.id || index}>
+                {showDateDivider && (
+                  <div className="flex items-center justify-center my-3 select-none">
+                    <div className="h-px bg-slate-200/90 flex-1" />
+                    <span className="mx-3 px-2.5 py-0.5 rounded-full bg-white border border-slate-200/80 text-[10px] font-semibold text-slate-500 tracking-wide shadow-2xs">
+                      {dateKey}
+                    </span>
+                    <div className="h-px bg-slate-200/90 flex-1" />
+                  </div>
+                )}
+
+                {isMe ? (
+                  /* Pesan Diri Sendiri (Kanan) */
+                  <div className="flex flex-col items-end self-end max-w-[85%] sm:max-w-[78%] ml-auto animate-in fade-in duration-150">
+                    <div className="bg-[#007AFF] text-white px-4 py-2.5 rounded-2xl rounded-br-xs text-xs sm:text-sm leading-relaxed shadow-2xs">
+                      {act.notes && (
+                        <div className="whitespace-pre-wrap">{act.notes}</div>
+                      )}
+
+                      {act.attachments && act.attachments.length > 0 && (
+                        <div className="pt-2 flex flex-wrap gap-2">
+                          {act.attachments.map((att) => (
+                            <button
+                              key={att.id}
+                              type="button"
+                              onClick={() => openAttachmentDirectly(att)}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/25 hover:bg-white/35 active:scale-95 border border-white/30 rounded-xl text-[11px] font-semibold text-white transition-all cursor-pointer shadow-2xs"
+                              title={`Buka ${att.name} di tab baru`}
+                            >
+                              {att.type === 'LINK' ? <Globe className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
+                              <span className="truncate max-w-[140px]">{att.name}</span>
+                              <ExternalLink className="w-3 h-3 opacity-70 ml-0.5" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 mr-2 mt-1">
+                      <span className="text-[10px] text-gray-400">{timeOnly} · Terkirim</span>
+                      {act.userId === currentUser.id && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteActivity(act.id)}
+                          className="text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 p-0.5 rounded transition-all cursor-pointer"
+                          title="Hapus pesan saya"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  /* Pesan Rekan / PIC (Kiri) */
+                  <div className="flex items-end gap-2 max-w-[85%] sm:max-w-[78%] animate-in fade-in duration-150">
+                    <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 border border-slate-300 shrink-0 mb-1">
+                      {act.userAvatar ? (
+                        <img src={act.userAvatar} alt={act.userName} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center font-bold text-xs text-slate-700 bg-purple-100">
+                          {act.userName ? act.userName.charAt(0).toUpperCase() : 'U'}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col items-start min-w-0">
+                      <div className="flex items-center gap-1.5 ml-3 mb-1">
+                        <span className="text-[11px] font-semibold text-gray-500">{act.userName}</span>
+                      </div>
+
+                      <div className="bg-[#E9E9EB] text-gray-900 px-4 py-2.5 rounded-2xl rounded-bl-xs text-xs sm:text-sm leading-relaxed shadow-2xs">
+                        {act.notes && (
+                          <div className="whitespace-pre-wrap">{act.notes}</div>
+                        )}
+
+                        {act.attachments && act.attachments.length > 0 && (
+                          <div className="pt-2 flex flex-wrap gap-2">
+                            {act.attachments.map((att) => (
+                              <button
+                                key={att.id}
+                                type="button"
+                                onClick={() => openAttachmentDirectly(att)}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 rounded-xl text-[11px] font-semibold text-[#1E3A8A] transition-all cursor-pointer shadow-2xs"
+                                title={`Buka ${att.name} di tab baru`}
+                              >
+                                {att.type === 'LINK' ? <Globe className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
+                                <span className="truncate max-w-[140px]">{att.name}</span>
+                                <ExternalLink className="w-3 h-3 opacity-70 ml-0.5" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 ml-3 mt-1">
+                        <span className="text-[10px] text-gray-400">{timeOnly}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          });
+        })()
+      )}
+      <div ref={messagesEndRef} />
+    </div>
+  );
+
+  // Bottom Input Action Section
+  const renderChatInput = () => (
+    <div className="p-4 border-t border-slate-200/80 bg-white shrink-0 space-y-3">
+      {/* Opsi Keputusan PIC untuk Tugas Menunggu Review */}
+      {isPICActive && activeTask.status === 'DONE' && (
+        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+          <div className="flex items-center gap-2 flex-1">
+            <button
+              type="button"
+              onClick={() => setPicDecision('APPROVE')}
+              className={`flex-1 py-1.5 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                picDecision === 'APPROVE'
+                  ? 'bg-emerald-100 border-emerald-400 text-emerald-800 ring-2 ring-emerald-400/30 shadow-2xs'
+                  : 'bg-emerald-50/60 border-emerald-200/60 text-emerald-700 hover:bg-emerald-100/70 font-semibold'
+              }`}
+            >
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Setujui (ACC)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPicDecision('REVISION')}
+              className={`flex-1 py-1.5 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                picDecision === 'REVISION'
+                  ? 'bg-rose-100 border-rose-400 text-rose-800 ring-2 ring-rose-400/30 shadow-2xs'
+                  : 'bg-rose-50/60 border-rose-200/60 text-rose-700 hover:bg-rose-100/70 font-semibold'
+              }`}
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+              <span>Minta Revisi</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Render Lampiran Berkas Sementara sebelum dikirim */}
+      {previewAttachments.length > 0 && (
+        <div className="flex flex-wrap gap-2 pt-1 max-h-24 overflow-y-auto">
+          {previewAttachments.map((att) => (
+            <div
+              key={att.id}
+              className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-2 text-xs text-slate-700"
+            >
+              {att.type === 'LINK' ? (
+                <Link2 className="w-3 h-3 text-sky-600" />
+              ) : (
+                <Paperclip className="w-3 h-3 text-slate-500" />
+              )}
+              <span className="truncate max-w-[120px] font-medium">{att.name}</span>
+              <button
+                type="button"
+                onClick={() => handleRemovePreviewAttachment(att.id)}
+                className="p-0.5 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Form Input Tambah Tautan Link */}
+      {showPreviewAddLink && (
+        <div className="p-3 bg-sky-50/70 border border-sky-200 rounded-xl space-y-2 animate-in fade-in">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-sky-900 flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5 text-sky-600" />
+              Sematkan Tautan
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowPreviewAddLink(false)}
+              className="text-slate-400 hover:text-slate-600 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            <input
+              type="text"
+              placeholder="Judul Tautan (Opsional)"
+              value={previewLinkTitle}
+              onChange={(e) => setPreviewLinkTitle(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-white border border-sky-200 rounded-lg text-xs outline-none text-slate-800"
+            />
+            <input
+              type="url"
+              placeholder="https://drive.google.com/..."
+              value={previewLinkUrl}
+              onChange={(e) => setPreviewLinkUrl(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-white border border-sky-200 rounded-lg text-xs outline-none text-slate-800"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleAddPreviewLink}
+              disabled={!previewLinkUrl.trim()}
+              className="px-3 py-1 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
+            >
+              Tambah Tautan
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Inline Peringatan Validasi Upload Berkas */}
+      {taskUploadError && (
+        <div className="flex items-center gap-2 px-3 py-2 text-xs text-rose-700 bg-rose-50 border border-rose-200/90 rounded-xl animate-in fade-in duration-200 shadow-2xs">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+          <span className="font-medium">{taskUploadError}</span>
+        </div>
+      )}
+
+      {/* Baris Input Chat Utama */}
+      <div className="flex items-end gap-1.5 sm:gap-2">
+        <label
+          className="p-2 text-gray-500 hover:text-[#1E3A8A] rounded-full hover:bg-slate-100 transition cursor-pointer shrink-0 mb-0.5"
+          title="Unggah Foto atau Berkas"
+        >
+          <Paperclip className="w-4 h-4" />
+          <input
+            type="file"
+            multiple
+            className="hidden"
+            onChange={handlePreviewFileUpload}
+          />
+        </label>
+
+        <button
+          type="button"
+          onClick={() => setShowPreviewAddLink(!showPreviewAddLink)}
+          title="Sematkan Tautan Link"
+          className={`p-2 rounded-full transition cursor-pointer shrink-0 mb-0.5 ${
+            showPreviewAddLink ? 'text-[#1E3A8A] bg-blue-100' : 'text-gray-500 hover:text-[#1E3A8A] hover:bg-slate-100'
+          }`}
+        >
+          <Globe className="w-4 h-4" />
+        </button>
+
+        <div className="relative flex-1">
+          <textarea
+            rows={1}
+            value={previewNote}
+            onChange={(e) => {
+              setPreviewNote(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (isPICActive && activeTask.status === 'DONE') {
+                  handlePicSubmitReview();
+                } else if (activeTask.status === 'REVIEWED') {
+                  handleAddGeneralNote();
+                } else {
+                  handleSendPreview();
+                }
+              }
+            }}
+            placeholder={
+              isPICActive && activeTask.status === 'DONE'
+                ? picDecision === 'APPROVE'
+                  ? 'Tulis konfirmasi penugasan selesai...'
+                  : 'Tulis arahan revisi...'
+                : isPICActive
+                ? `Tulis pesan untuk ${activeTask.assignedName}...`
+                : 'Tulis pesan di sini...'
+            }
+            className="w-full bg-[#F2F2F7] border border-gray-200/80 rounded-2xl px-4 py-2 text-xs sm:text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30 focus:bg-white transition resize-none max-h-28 overflow-y-auto leading-relaxed"
+          />
+        </div>
+
+        <button
+          type="button"
+          disabled={!previewNote.trim() && previewAttachments.length === 0}
+          onClick={() => {
+            if (isPICActive && activeTask.status === 'DONE') {
+              handlePicSubmitReview();
+            } else if (activeTask.status === 'REVIEWED') {
+              handleAddGeneralNote();
+            } else {
+              handleSendPreview();
+            }
+          }}
+          className={`w-8 h-8 rounded-full text-white flex items-center justify-center hover:opacity-90 active:scale-95 transition shrink-0 shadow-2xs disabled:opacity-40 cursor-pointer mb-1 ${
+            isPICActive && activeTask.status === 'DONE'
+              ? picDecision === 'APPROVE'
+                ? 'bg-emerald-600'
+                : 'bg-rose-600'
+              : 'bg-[#1E3A8A]'
+          }`}
+          title="Kirim Pesan"
+        >
+          <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+        </button>
+      </div>
+
+      {/* Admin Hapus Tugas Button */}
+      {isAdmin && (
+        <div className="pt-1 flex items-center justify-end text-[11px] text-slate-400">
+          <button
+            type="button"
+            onClick={() => {
+              executeDeleteTask(activeTask.id);
+              handleModalClose();
+            }}
+            className="px-2 py-0.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg font-semibold transition-colors flex items-center gap-1 cursor-pointer ml-auto"
+            title="Hapus Tugas Langsung"
+          >
+            <Trash2 className="w-3 h-3" />
+            Hapus Tugas
+          </button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div
@@ -412,13 +1118,13 @@ export function TaskDetailModal({
           : 'justify-end items-center p-2.5 sm:p-4 md:p-5'
       }`}
     >
-      {/* Backdrop Blur */}
+      {/* Backdrop */}
       <div
         className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity cursor-pointer z-[100]"
         onClick={handleModalClose}
       />
 
-      {/* Modal Dialog Card */}
+      {/* Dialog Card Container */}
       <div
         className={`relative z-[101] bg-white shadow-2xl flex flex-col min-h-0 overflow-hidden transition-all duration-300 font-sans ${
           isFullScreen
@@ -426,738 +1132,243 @@ export function TaskDetailModal({
             : 'w-full max-w-md sm:max-w-lg md:max-w-xl h-full max-h-[calc(100vh-1.25rem)] sm:max-h-[calc(100vh-2rem)] rounded-3xl border border-slate-200/80 animate-in slide-in-from-right duration-300 ease-out'
         }`}
       >
-        
-        {/* Header Drawer */}
-        <div className="px-5 py-4 border-b border-slate-100 bg-white space-y-3 shrink-0">
-          {/* Baris Atas: Zoom (kiri), Judul & Deskripsi Tugas (tengah), Tutup Panel (kanan) */}
-          <div className="flex items-start justify-between gap-3">
-            {/* Zoom / Fullscreen Button di pojok kiri atas */}
-            <div className="w-9 shrink-0 flex items-start">
-              <button
-                type="button"
-                onClick={() => setIsFullScreen(!isFullScreen)}
-                className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer shrink-0 mt-0.5"
-                title={isFullScreen ? "Perkecil Tampilan" : "Perbesar Layar Penuh"}
-              >
-                {isFullScreen ? (
-                  <Minimize2 className="w-4 h-4 text-slate-600" />
-                ) : (
-                  <Maximize2 className="w-4 h-4 text-slate-600" />
-                )}
-              </button>
-            </div>
-
-            {/* Judul & Subjudul diposisikan di tengah persis seperti di Ruang Obrolan */}
-            <div className="flex-1 min-w-0 text-center px-1 sm:px-3 space-y-1.5 flex flex-col items-center justify-center pt-2.5 sm:pt-3">
-              <h2 className="text-sm sm:text-[15px] font-bold text-slate-900 tracking-tight leading-snug max-w-2xl">
-                {activeTask.title}
-              </h2>
-              {activeTask.description && (
-                <p className="text-slate-500 text-[11px] sm:text-xs leading-relaxed font-normal whitespace-pre-wrap max-w-2xl">
-                  {activeTask.description}
-                </p>
+        {/* ========================================================= */}
+        {/* TOP NAVBAR (Sleek window navbar with Zoom & Close icons) */}
+        {/* ========================================================= */}
+        <div className="px-5 py-3 border-b border-slate-100 bg-white flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => setIsFullScreen(!isFullScreen)}
+              className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer"
+              title={isFullScreen ? 'Perkecil Tampilan' : 'Perbesar Layar Penuh'}
+            >
+              {isFullScreen ? (
+                <Minimize2 className="w-4 h-4 text-slate-600" />
+              ) : (
+                <Maximize2 className="w-4 h-4 text-slate-600" />
               )}
-            </div>
-
-            {/* Container Tombol Tutup Panel di pojok kanan atas */}
-            <div className="w-9 shrink-0 flex items-start justify-end">
-              <button
-                type="button"
-                onClick={handleModalClose}
-                className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0 mt-0.5"
-                title="Tutup Panel"
-              >
-                <X className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
-              </button>
-            </div>
+            </button>
+            {isFullScreen && (
+              <span className="text-xs font-semibold text-slate-500 truncate max-w-md hidden sm:inline">
+                {activeTask.title}
+              </span>
+            )}
           </div>
 
-          {/* Garis Pemisah Tipis */}
-          <div className="border-t border-slate-100 pt-0.5" />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={handleModalClose}
+              className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer"
+              title="Tutup Panel"
+            >
+              <X className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
+            </button>
+          </div>
+        </div>
 
-          {/* Baris Metadata: Kiri (Status & Pelaksana), Kanan (Tanggal & PIC) - Tetap utuh */}
-          <div className="flex items-start justify-between gap-4 pt-0.5 text-xs text-slate-500">
-            {/* Kolom Kiri: Status & Pelaksana */}
-            <div className="flex flex-col items-start gap-2 min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span
-                  className={`inline-flex items-center gap-1.5 font-semibold px-2.5 py-0.5 rounded-full text-[11px] border ${
-                    activeTask.status === 'REVIEWED'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : activeTask.status === 'DONE'
-                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : activeTask.status === 'IN_PROGRESS'
-                      ? 'bg-blue-50 text-blue-600 border-blue-200'
-                      : 'bg-slate-100 text-slate-700 border-slate-200'
-                  }`}
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      activeTask.status === 'REVIEWED'
-                        ? 'bg-emerald-600'
-                        : activeTask.status === 'DONE'
-                        ? 'bg-amber-500 animate-pulse'
-                        : activeTask.status === 'IN_PROGRESS'
-                        ? 'bg-blue-500 animate-pulse'
-                        : 'bg-slate-400'
-                    }`}
-                  />
-                  {activeTask.status === 'TODO' && 'Penugasan'}
-                  {activeTask.status === 'IN_PROGRESS' && 'Dalam Proses'}
-                  {activeTask.status === 'DONE' && 'Tinjauan Tugas'}
-                  {activeTask.status === 'REVIEWED' && 'Selesai'}
-                </span>
+        {/* ========================================================= */}
+        {/* MODAL BODY (Zoomed = Split 2 Columns; Unzoomed = Vertical) */}
+        {/* ========================================================= */}
+        {isFullScreen ? (
+          /* =================== FULLSCREEN SPLIT VIEW =================== */
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 lg:grid-rows-1 min-h-0 h-full overflow-hidden">
+            {/* SEBELAH KIRI (lg:col-span-7): RINCIAN TUGAS & LAMPIRAN */}
+            <div className="lg:col-span-7 xl:col-span-7 h-full min-h-0 overflow-y-auto custom-scrollbar p-6 sm:p-8 space-y-6 border-r border-slate-200/80 bg-white">
+              {/* Judul Besar (Gaya Gambar 1 & Gambar 2) */}
+              <div className="space-y-2">
+                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight leading-snug">
+                  {activeTask.title}
+                </h1>
+                <p className="text-xs text-slate-400">
+                  Dibuat oleh <strong className="text-slate-700">{activeTaskPicName}</strong> • {formatDateTimeFull(activeTask.createdAt)}
+                </p>
+              </div>
 
-                {activeTask.status === 'TODO' && isMyTaskActive && (
-                  <button
-                    type="button"
-                    onClick={handleStartTask}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded text-[11px] transition-colors cursor-pointer"
-                  >
-                    <ArrowRight className="w-3 h-3" />
-                    <span>Mulai</span>
-                  </button>
-                )}
+              {/* Project Description (Kotak Rounded Soft - Gaya Gambar 1) */}
+              <div className="bg-slate-50/80 rounded-2xl p-5 border border-slate-100 space-y-2">
+                <h3 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wider">
+                  Project Description
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
+                  {activeTask.description || 'Tidak ada deskripsi rinci untuk tugas ini.'}
+                </p>
+              </div>
 
-                {activeTask.status === 'REVIEWED' && isPICActive && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleUpdateStatus('IN_PROGRESS', {
-                        reviewNotes: 'Tugas dibuka kembali oleh PIC untuk penyesuaian lanjutan.',
-                      });
-                    }}
-                    className="text-[11px] text-slate-500 hover:text-slate-800 font-medium underline underline-offset-2 cursor-pointer"
-                  >
-                    Buka Kembali
-                  </button>
+              {/* Berkas & Tautan Lampiran (Attachments - Gaya Gambar 2) */}
+              <div className="space-y-3 pt-1">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Paperclip className="w-4 h-4 text-slate-500" />
+                    <span>Attachments ({allAttachments.length})</span>
+                  </h3>
+                </div>
+
+                {/* List Berkas Lampiran */}
+                {allAttachments.length === 0 ? (
+                  <div className="p-5 rounded-2xl border-2 border-dashed border-slate-200 text-center text-xs text-slate-400 space-y-1">
+                    <p className="font-semibold text-slate-500">Belum ada berkas atau tautan yang dilampirkan</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {allAttachments.map((att) => renderAttachmentItem(att))}
+                  </div>
                 )}
               </div>
 
-              {activeTask.assignees && activeTask.assignees.length > 1 ? (
-                <div className="flex items-center gap-1.5 text-xs flex-wrap" title={`Pelaksana: ${activeTask.assignees.map((a) => a.name).join(', ')}`}>
-                  <div className="flex items-center -space-x-1.5 shrink-0">
-                    {activeTask.assignees.slice(0, 4).map((a, i) => (
-                      a.avatar ? (
+              {/* Attributes / Metadata Section (Gaya Gambar 2 Sisi Kanan) */}
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <h3 className="text-sm font-bold text-slate-900">Attributes</h3>
+                <div className="bg-slate-50/70 rounded-2xl p-4 sm:p-5 border border-slate-100 space-y-3.5">
+                  {/* Due date */}
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
+                    <div className="flex items-center gap-2 text-slate-500 font-medium">
+                      <Calendar className="w-4 h-4 text-slate-400" />
+                      <span>Due date</span>
+                    </div>
+                    <span className="font-semibold text-slate-800">{shortDueDate}</span>
+                  </div>
+
+                  {/* Assigned to */}
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
+                    <div className="flex items-center gap-2 text-slate-500 font-medium">
+                      <Users className="w-4 h-4 text-slate-400" />
+                      <span>Assigned to</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {activeTask.assignedAvatar ? (
                         <img
-                          key={i}
-                          src={a.avatar}
-                          alt={a.name}
-                          title={a.name}
-                          className="w-5 h-5 rounded-full object-cover shrink-0 border border-white"
+                          src={activeTask.assignedAvatar}
+                          alt={activeTask.assignedName}
+                          className="w-5 h-5 rounded-full object-cover border border-slate-200"
                         />
                       ) : (
-                        <div
-                          key={i}
-                          className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 font-bold text-[9px] flex items-center justify-center shrink-0 border border-white"
-                          title={a.name}
-                        >
-                          {a.name.substring(0, 2).toUpperCase()}
+                        <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 font-bold text-[9px] flex items-center justify-center">
+                          {activeTask.assignedName?.substring(0, 2).toUpperCase() || 'ST'}
                         </div>
-                      )
-                    ))}
-                  </div>
-                  <span className="font-medium text-slate-700 truncate max-w-[150px]">
-                    {activeTask.assignees.map((a) => a.name.split(' ')[0]).join(', ')}
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 text-xs" title={`Pelaksana: ${activeTask.assignedName}`}>
-                  {activeTask.assignedAvatar ? (
-                    <img
-                      src={activeTask.assignedAvatar}
-                      alt={activeTask.assignedName}
-                      className="w-5 h-5 rounded-full object-cover shrink-0 border border-slate-200"
-                    />
-                  ) : (
-                    <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 font-bold text-[9px] flex items-center justify-center shrink-0">
-                      {activeTask.assignedName
-                        ? activeTask.assignedName.substring(0, 2).toUpperCase()
-                        : 'ST'}
+                      )}
+                      <span className="font-semibold text-slate-800">{activeTask.assignedName}</span>
                     </div>
-                  )}
-                  <span className="font-medium text-slate-700">{formatChipName(activeTask.assignedName)}</span>
+                  </div>
+
+                  {/* Priority */}
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
+                    <div className="flex items-center gap-2 text-slate-500 font-medium">
+                      <CheckCircle2 className="w-4 h-4 text-slate-400" />
+                      <span>Priority</span>
+                    </div>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                        activeTask.priority === 'URGENT'
+                          ? 'bg-rose-100 text-rose-700'
+                          : activeTask.priority === 'HIGH'
+                          ? 'bg-amber-100 text-amber-700'
+                          : activeTask.priority === 'MEDIUM'
+                          ? 'bg-sky-100 text-sky-700'
+                          : 'bg-purple-100 text-purple-700'
+                      }`}
+                    >
+                      {activeTask.priority === 'URGENT' ? 'Urgent' : activeTask.priority}
+                    </span>
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
 
-            {/* Kolom Kanan: Tanggal & PIC */}
-            <div className="flex flex-col items-end gap-2 shrink-0">
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="text-slate-700 font-medium">{shortDueDate}</span>
+            {/* SEBELAH KANAN (lg:col-span-5): ROOM CHATING */}
+            <div className="lg:col-span-5 xl:col-span-5 h-full min-h-0 flex flex-col overflow-hidden bg-slate-50/40">
+              {/* Header Ruang Obrolan */}
+              <div className="px-5 py-3.5 border-b border-slate-200/80 bg-white flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <MessageSquare className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 leading-tight">
+                      Ruang Obrolan & Diskusi Tugas
+                    </h3>
+                    <p className="text-[11px] text-slate-400">Diskusikan progres & arahan tugas secara langsung</p>
+                  </div>
+                </div>
+                <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                  {activities.length} Pesan
+                </span>
               </div>
 
-              <div className="flex items-center gap-1.5 text-xs" title={`PIC: ${activeTaskPicName}`}>
-                {activeTaskPicUser?.avatar ? (
-                  <img
-                    src={activeTaskPicUser.avatar}
-                    alt={activeTaskPicName}
-                    className="w-5 h-5 rounded-full object-cover shrink-0 border border-slate-200"
-                  />
-                ) : (
-                  <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
-                )}
-                <span className="font-medium text-slate-700">{formatChipName(activeTaskPicName)}</span>
-                <span className="text-[10px] text-slate-400 font-normal">• PIC</span>
+              {/* Chat messages stream */}
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 space-y-3.5">
+                {renderChatStream()}
               </div>
+
+              {/* Bottom input bar */}
+              {renderChatInput()}
             </div>
           </div>
-        </div>
+        ) : (
+          /* =================== UNZOOMED NORMAL DRAWER VIEW =================== */
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {/* Scrollable middle area */}
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 space-y-4 bg-slate-50/40">
+              {/* 1. Header Card (Gaya Gambar 1: Judul Besar + Metadata Tabel + Deskripsi Proyek) */}
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-100 shadow-2xs space-y-4">
+                {/* Judul Besar */}
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-snug">
+                  {activeTask.title}
+                </h1>
 
-        {/* Middle Content Area */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-3.5 bg-slate-50/40">
+                {/* Metadata Tabel Vertikal (Persis Gambar 1) */}
+                {renderPropertiesTable()}
 
-          {(() => {
-            const activities = getTaskActivities(activeTask, users);
-
-            if (activities.length === 0) {
-              return (
-                <div className="h-full flex-1 flex flex-col items-center justify-center py-10 px-6 text-center select-none">
-                  <div className="w-8 h-8 rounded-full bg-slate-100/90 flex items-center justify-center mb-1.5 text-slate-300">
-                    <MessageSquare className="w-3.5 h-3.5" />
-                  </div>
-                  <p className="text-xs text-slate-400 font-medium select-none">
-                    Belum Ada Pesan
+                {/* Kotak Deskripsi Proyek (Project Description - Persis Gambar 1) */}
+                <div className="bg-slate-50/90 rounded-2xl p-4 border border-slate-100 space-y-1.5">
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    Project Description
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-wrap font-normal">
+                    {activeTask.description || 'Tidak ada deskripsi rinci untuk tugas ini.'}
                   </p>
                 </div>
-              );
-            }
-
-            let lastDateKey = '';
-
-            return (
-              <div className="space-y-3 pb-2">
-                {activities.map((act, index) => {
-                  const isMe = act.userId === currentUser.id;
-                  const isImageAtt = (att: TaskAttachment) =>
-                    att.url.startsWith('data:image/') ||
-                    att.fileType?.startsWith('image/') ||
-                    /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(att.name);
-
-                  const dateKey = formatActivityDateDivider(act.timestamp);
-                  const showDateDivider = dateKey !== lastDateKey;
-                  if (showDateDivider) {
-                    lastDateKey = dateKey;
-                  }
-
-                  const timeOnly = extractActivityTime(act.timestamp) || act.timestamp;
-
-                  return (
-                    <React.Fragment key={act.id || index}>
-                      {showDateDivider && (
-                        <div className="flex items-center justify-center my-3 select-none">
-                          <div className="h-px bg-slate-200/90 flex-1" />
-                          <span className="mx-3 px-2.5 py-0.5 rounded-full bg-white border border-slate-200/80 text-[10px] font-semibold text-slate-500 tracking-wide shadow-2xs">
-                            {dateKey}
-                          </span>
-                          <div className="h-px bg-slate-200/90 flex-1" />
-                        </div>
-                      )}
-
-                      {isMe ? (
-                        /* 2. Pesan dari Diri Sendiri (Kanan) */
-                        <div className="flex flex-col items-end self-end max-w-[80%] sm:max-w-[75%] ml-auto animate-in fade-in duration-150">
-                          {/* Bubble Chat Biru Khas iOS / Ruang Obrolan */}
-                          <div className="bg-[#007AFF] text-white px-4 py-2.5 rounded-2xl rounded-br-xs text-xs sm:text-sm leading-relaxed shadow-2xs">
-                            {act.type === 'SUBMITTED' && (
-                              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/20 text-white text-[10px] font-bold mb-1">
-                                <FileCheck className="w-3 h-3" />
-                                <span>Preview Deliverable Diajukan</span>
-                              </div>
-                            )}
-
-                            {act.notes && (
-                              <div className="whitespace-pre-wrap">
-                                {act.notes.split(' ').map((word, idx) => {
-                                  if (word.startsWith('@')) {
-                                    return (
-                                      <span
-                                        key={idx}
-                                        className="text-yellow-200 font-semibold bg-white/20 px-1 py-0.5 rounded-md mr-0.5"
-                                      >
-                                        {word}{' '}
-                                      </span>
-                                    );
-                                  }
-                                  return word + ' ';
-                                })}
-                              </div>
-                            )}
-
-                            {act.attachments && act.attachments.length > 0 && (
-                              <div className="pt-2 flex flex-wrap gap-2">
-                                {act.attachments.map((att) => {
-                                  const isImg = isImageAtt(att) || isImageFile(att.url, att.fileType) || isImageFile(att.name, att.fileType);
-                                  if (isImg && att.url && att.url !== '#') {
-                                    return (
-                                      <div
-                                        key={att.id}
-                                        onClick={() => setMediaPreview({
-                                          url: att.url,
-                                          name: att.name,
-                                          type: 'FILE',
-                                          fileType: att.fileType,
-                                          fileSize: att.fileSize,
-                                        })}
-                                        className="relative group overflow-hidden rounded-xl border border-white/40 max-w-[180px] cursor-pointer shadow-2xs hover:shadow-md transition-all"
-                                        title={`Buka gambar ${att.name}`}
-                                      >
-                                        <img
-                                          src={att.url}
-                                          alt={att.name}
-                                          className="w-full h-24 object-cover rounded-xl transition-transform duration-200 group-hover:scale-105"
-                                        />
-                                        <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-[10px] gap-1">
-                                          <Maximize2 className="w-3.5 h-3.5 text-white" />
-                                          <span>Buka</span>
-                                        </div>
-                                      </div>
-                                    );
-                                  }
-                                  return (
-                                    <button
-                                      key={att.id}
-                                      type="button"
-                                      onClick={() => {
-                                        if (att.type === 'LINK') {
-                                          openExternalLink(att.url);
-                                        } else {
-                                          setMediaPreview({
-                                            url: att.url,
-                                            name: att.name,
-                                            type: att.type,
-                                            fileType: att.fileType,
-                                            fileSize: att.fileSize,
-                                          });
-                                        }
-                                      }}
-                                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/25 hover:bg-white/35 active:scale-95 border border-white/30 rounded-xl text-[11px] font-semibold text-white transition-all cursor-pointer shadow-2xs"
-                                      title={`Buka ${att.name}`}
-                                    >
-                                      {att.type === 'LINK' ? <Globe className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
-                                      <span className="truncate max-w-[130px]">{att.name}</span>
-                                      <ExternalLink className="w-3 h-3 opacity-70 ml-0.5" />
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Status / Timestamp */}
-                          <div className="flex items-center gap-1.5 mr-2 mt-1">
-                            <span className="text-[10px] text-gray-400">
-                              {timeOnly} · Terkirim
-                            </span>
-                            {(act.userId === currentUser.id || isAdmin) && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteActivity(act.id)}
-                                className="text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 p-0.5 rounded transition-all cursor-pointer"
-                                title="Hapus pesan"
-                              >
-                                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        /* 1. Pesan dari Rekan / PIC (Kiri) */
-                        <div className="flex items-end gap-2 max-w-[80%] sm:max-w-[75%] animate-in fade-in duration-150">
-                          {/* Avatar di pojok kiri bawah */}
-                          <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 border border-slate-300 shrink-0 mb-1">
-                            {act.userAvatar ? (
-                              <img
-                                src={act.userAvatar}
-                                alt={act.userName}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center font-bold text-xs text-slate-700 bg-purple-100">
-                                {act.userName ? act.userName.charAt(0).toUpperCase() : 'U'}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex flex-col items-start min-w-0">
-                            {/* Nama Pengirim & Badge Role */}
-                            <div className="flex items-center gap-1.5 ml-3 mb-1">
-                              <span className="text-[11px] font-semibold text-gray-500">
-                                {act.userName}
-                              </span>
-                              {act.userRole === 'ADMIN' || act.userRole === 'SUPER_ADMIN' ? (
-                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                  PIC
-                                </span>
-                              ) : null}
-                            </div>
-
-                            {/* Bubble Chat Abu-abu Khas iOS / Ruang Obrolan */}
-                            <div className="bg-[#E9E9EB] text-gray-900 px-4 py-2.5 rounded-2xl rounded-bl-xs text-xs sm:text-sm leading-relaxed shadow-2xs">
-                              {act.type === 'APPROVED' && (
-                                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold mb-1">
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  <span>Penugasan Disetujui (ACC) - Selesai</span>
-                                </div>
-                              )}
-                              {act.type === 'REVISION_REQUESTED' && (
-                                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-bold mb-1">
-                                  <RotateCcw className="w-3 h-3" />
-                                  <span>Arahan Revisi dari PIC</span>
-                                </div>
-                              )}
-                              {act.type === 'SUBMITTED' && (
-                                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-600 text-white text-[10px] font-bold mb-1">
-                                  <FileCheck className="w-3 h-3" />
-                                  <span>Preview Deliverable Diajukan</span>
-                                </div>
-                              )}
-
-                              {act.notes && (
-                                <div className="whitespace-pre-wrap">
-                                  {act.notes.split(' ').map((word, idx) => {
-                                    if (word.startsWith('@')) {
-                                      return (
-                                        <span
-                                          key={idx}
-                                          className="text-[#007AFF] font-bold bg-blue-50/80 px-1 py-0.5 rounded-md border border-blue-200/60 mr-0.5"
-                                        >
-                                          {word}{' '}
-                                        </span>
-                                      );
-                                    }
-                                    return word + ' ';
-                                  })}
-                                </div>
-                              )}
-
-                              {act.attachments && act.attachments.length > 0 && (
-                                <div className="pt-2 flex flex-wrap gap-2">
-                                  {act.attachments.map((att) => {
-                                    const isImg = isImageAtt(att) || isImageFile(att.url, att.fileType) || isImageFile(att.name, att.fileType);
-                                    if (isImg && att.url && att.url !== '#') {
-                                      return (
-                                        <div
-                                          key={att.id}
-                                          onClick={() => setMediaPreview({
-                                            url: att.url,
-                                            name: att.name,
-                                            type: 'FILE',
-                                            fileType: att.fileType,
-                                            fileSize: att.fileSize,
-                                          })}
-                                          className="relative group overflow-hidden rounded-xl border border-slate-300 max-w-[180px] cursor-pointer shadow-2xs hover:shadow-md transition-all"
-                                          title={`Buka gambar ${att.name}`}
-                                        >
-                                          <img
-                                            src={att.url}
-                                            alt={att.name}
-                                            className="w-full h-24 object-cover rounded-xl transition-transform duration-200 group-hover:scale-105"
-                                          />
-                                          <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-[10px] gap-1">
-                                            <Maximize2 className="w-3.5 h-3.5 text-white" />
-                                            <span>Buka</span>
-                                          </div>
-                                        </div>
-                                      );
-                                    }
-                                    return (
-                                      <button
-                                        key={att.id}
-                                        type="button"
-                                        onClick={() => {
-                                          if (att.type === 'LINK') {
-                                            openExternalLink(att.url);
-                                          } else {
-                                            setMediaPreview({
-                                              url: att.url,
-                                              name: att.name,
-                                              type: att.type,
-                                              fileType: att.fileType,
-                                              fileSize: att.fileSize,
-                                            });
-                                          }
-                                        }}
-                                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 rounded-xl text-[11px] font-semibold text-[#1E3A8A] transition-all cursor-pointer shadow-2xs"
-                                        title={`Buka ${att.name}`}
-                                      >
-                                        {att.type === 'LINK' ? <Globe className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
-                                        <span className="truncate max-w-[130px]">{att.name}</span>
-                                        <ExternalLink className="w-3 h-3 opacity-70 ml-0.5" />
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Status / Timestamp */}
-                            <div className="flex items-center gap-1.5 ml-3 mt-1">
-                              <span className="text-[10px] text-gray-400">
-                                {timeOnly}
-                              </span>
-                              {(act.userId === currentUser.id || isAdmin) && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteActivity(act.id)}
-                                  className="text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 p-0.5 rounded transition-all cursor-pointer"
-                                  title="Hapus pesan"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-                <div ref={messagesEndRef} />
               </div>
-            );
-          })()}
-        </div>
 
-        {/* Bottom Input Action Section */}
-        <div className="p-4 border-t border-slate-200/80 bg-white shrink-0 space-y-3 shadow-lg">
-          {/* Opsi Keputusan PIC untuk Tugas Menunggu Review */}
-          {isPICActive && activeTask.status === 'DONE' && (
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2 flex-1">
-                <button
-                  type="button"
-                  onClick={() => setPicDecision('APPROVE')}
-                  className={`flex-1 py-1.5 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    picDecision === 'APPROVE'
-                      ? 'bg-emerald-100 border-emerald-400 text-emerald-800 ring-2 ring-emerald-400/30 shadow-2xs'
-                      : 'bg-emerald-50/60 border-emerald-200/60 text-emerald-700 hover:bg-emerald-100/70 font-semibold'
-                  }`}
-                >
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Setujui (ACC)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPicDecision('REVISION')}
-                  className={`flex-1 py-1.5 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    picDecision === 'REVISION'
-                      ? 'bg-rose-100 border-rose-400 text-rose-800 ring-2 ring-rose-400/30 shadow-2xs'
-                      : 'bg-rose-50/60 border-rose-200/60 text-rose-700 hover:bg-rose-100/70 font-semibold'
-                  }`}
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
-                  <span>Minta Revisi</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Render Lampiran Berkas Sementara sebelum dikirim */}
-          {previewAttachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 pt-1 max-h-24 overflow-y-auto">
-              {previewAttachments.map((att) => (
-                <div
-                  key={att.id}
-                  className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-2 text-xs text-slate-700"
-                >
-                  {att.type === 'LINK' ? (
-                    <Link2 className="w-3 h-3 text-sky-600" />
-                  ) : (
-                    <Paperclip className="w-3 h-3 text-slate-500" />
-                  )}
-                  <span className="truncate max-w-[120px] font-medium">{att.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleRemovePreviewAttachment(att.id)}
-                    className="p-0.5 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+              {/* 2. Berkas & Tautan Lampiran (Attachments - Gaya Gambar 2) */}
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-100 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Paperclip className="w-4 h-4 text-slate-500" />
+                    <span>Attachments ({allAttachments.length})</span>
+                  </h3>
                 </div>
-              ))}
-            </div>
-          )}
 
-          {/* Form Input Tambah Tautan Link */}
-          {showPreviewAddLink && (
-            <div className="p-3 bg-sky-50/70 border border-sky-200 rounded-xl space-y-2 animate-in fade-in">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-sky-900 flex items-center gap-1.5">
-                  <Link2 className="w-3.5 h-3.5 text-sky-600" />
-                  Sematkan Tautan
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowPreviewAddLink(false)}
-                  className="text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                {/* List Berkas Lampiran */}
+                {allAttachments.length === 0 ? (
+                  <div className="p-4 rounded-xl border-2 border-dashed border-slate-200 text-center text-xs text-slate-400">
+                    Belum ada berkas atau tautan yang dilampirkan pada tugas ini.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {allAttachments.map((att) => renderAttachmentItem(att))}
+                  </div>
+                )}
               </div>
-              <div className="space-y-1.5">
-                <input
-                  type="text"
-                  placeholder="Judul Tautan (Opsional)"
-                  value={previewLinkTitle}
-                  onChange={(e) => setPreviewLinkTitle(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-sky-200 rounded-lg text-xs outline-none text-slate-800"
-                />
-                <input
-                  type="url"
-                  placeholder="https://drive.google.com/..."
-                  value={previewLinkUrl}
-                  onChange={(e) => setPreviewLinkUrl(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-sky-200 rounded-lg text-xs outline-none text-slate-800"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={handleAddPreviewLink}
-                  disabled={!previewLinkUrl.trim()}
-                  className="px-3 py-1 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
-                >
-                  Tambah Tautan
-                </button>
+
+              {/* 3. Ruang Obrolan & Riwayat Diskusi */}
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-100 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                    <MessageSquare className="w-4 h-4 text-blue-600" />
+                    <span>Ruang Obrolan & Riwayat Pesan</span>
+                  </h3>
+                  <span className="text-[11px] text-slate-400">{activities.length} Pesan</span>
+                </div>
+                {renderChatStream()}
               </div>
             </div>
-          )}
 
-          {/* Inline Peringatan Validasi Upload Berkas */}
-          {taskUploadError && (
-            <div className="flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs text-rose-600 bg-rose-50 border border-rose-200/90 rounded-xl animate-in fade-in duration-200">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
-                <span className="font-medium">{taskUploadError}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTaskUploadError(null)}
-                className="text-rose-400 hover:text-rose-700 ml-1 shrink-0 cursor-pointer p-0.5"
-                title="Tutup pesan"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-          {/* Baris Input Chat Utama - Persis Dengan Ruang Obrolan (image_50a19f56.png) */}
-          <div className="flex items-end gap-1.5 sm:gap-2">
-            {/* Tombol Lampiran Berkas di Sisi Kiri Luar Textarea */}
-            <label
-              className="p-2 text-gray-500 hover:text-[#1E3A8A] rounded-full hover:bg-slate-100 transition cursor-pointer shrink-0 mb-0.5"
-              title="Unggah Foto atau Berkas"
-            >
-              <Paperclip className="w-4 h-4" />
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                onChange={handlePreviewFileUpload}
-              />
-            </label>
-
-            {/* Tombol Tautan Link */}
-            <button
-              type="button"
-              onClick={() => setShowPreviewAddLink(!showPreviewAddLink)}
-              title="Sematkan Tautan Link"
-              className={`p-2 rounded-full transition cursor-pointer shrink-0 mb-0.5 ${
-                showPreviewAddLink ? 'text-[#1E3A8A] bg-blue-100' : 'text-gray-500 hover:text-[#1E3A8A] hover:bg-slate-100'
-              }`}
-            >
-              <Globe className="w-4 h-4" />
-            </button>
-
-            {/* Tombol Mention Rekan (@) */}
-            <button
-              type="button"
-              onClick={() => {
-                setPreviewNote((prev) => (prev ? `${prev} @` : '@'));
-              }}
-              title="Mention Rekan Tim (@)"
-              className="w-8 h-8 rounded-full text-gray-500 hover:text-[#1E3A8A] hover:bg-slate-100 transition cursor-pointer shrink-0 flex items-center justify-center text-xs font-bold mb-0.5"
-            >
-              <span className="text-sm font-bold">@</span>
-            </button>
-
-            {/* Textarea Input Box Khas Ruang Obrolan */}
-            <div className="relative flex-1">
-              <textarea
-                rows={1}
-                value={previewNote}
-                onChange={(e) => {
-                  setPreviewNote(e.target.value);
-                  e.target.style.height = 'auto';
-                  e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.stopPropagation();
-                  }
-                }}
-                placeholder={
-                  isPICActive && activeTask.status === 'DONE'
-                    ? picDecision === 'APPROVE'
-                      ? 'Tulis konfirmasi penugasan selesai...'
-                      : 'Tulis arahan revisi...'
-                    : isPICActive
-                    ? `Tulis pesan untuk ${activeTask.assignedName}...`
-                    : 'Tulis pesan atau mention @teman...'
-                }
-                className="w-full bg-[#F2F2F7] border border-gray-200/80 rounded-2xl px-4 py-2 text-xs sm:text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30 focus:bg-white transition resize-none max-h-28 overflow-y-auto leading-relaxed"
-              />
-            </div>
-
-            {/* Tombol Send Lingkaran di Sisi Kanan (Persis Ruang Obrolan) */}
-            <button
-              type="button"
-              disabled={!previewNote.trim() && previewAttachments.length === 0}
-              onClick={() => {
-                if (isPICActive && activeTask.status === 'DONE') {
-                  handlePicSubmitReview();
-                } else if (activeTask.status === 'REVIEWED') {
-                  handleAddGeneralNote();
-                } else {
-                  handleSendPreview();
-                }
-              }}
-              className={`w-8 h-8 rounded-full text-white flex items-center justify-center hover:opacity-90 active:scale-95 transition shrink-0 shadow-2xs disabled:opacity-40 cursor-pointer mb-1 ${
-                isPICActive && activeTask.status === 'DONE'
-                  ? picDecision === 'APPROVE'
-                    ? 'bg-emerald-600'
-                    : 'bg-rose-600'
-                  : 'bg-[#1E3A8A]'
-              }`}
-              title={
-                isPICActive && activeTask.status === 'DONE'
-                  ? 'Kirim Evaluasi PIC'
-                  : activeTask.status === 'REVIEWED'
-                  ? 'Kirim Pesan'
-                  : 'Kirim Pesan'
-              }
-            >
-              <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-            </button>
+            {/* Bottom Input Action Section */}
+            {renderChatInput()}
           </div>
-
-          {/* Admin Hapus Tugas Button */}
-          {isAdmin && (
-            <div className="pt-1 flex items-center justify-end text-[11px] text-slate-400">
-              <button
-                type="button"
-                onClick={() => setTaskToDelete(activeTask.id)}
-                className="px-2 py-0.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg font-semibold transition-colors flex items-center gap-1 cursor-pointer ml-auto"
-              >
-                <Trash2 className="w-3 h-3" />
-                Hapus Tugas
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Modern Confirm Dialog for Deleting Task */}
@@ -1173,12 +1384,6 @@ export function TaskDetailModal({
           setTaskToDelete(null);
         }}
         onCancel={() => setTaskToDelete(null)}
-      />
-
-      {/* Modal Pratinjau Berkas, Gambar, dan Tautan Interaktif */}
-      <MediaPreviewModal
-        media={mediaPreview}
-        onClose={() => setMediaPreview(null)}
       />
     </div>
   );

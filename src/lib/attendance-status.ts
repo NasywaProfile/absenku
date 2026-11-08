@@ -297,14 +297,14 @@ function build(
   extra: Partial<DailyStatus> = {}
 ): DailyStatus {
   const labels: Record<DayStatusKey, { label: string; short: string }> = {
-    PRESENT: { label: 'Hadir (Kantor)', short: 'Hadir' },
+    PRESENT: { label: 'Hadir WFO', short: 'Hadir' },
     LATE: { label: 'Terlambat', short: 'Terlambat' },
     WFH: { label: 'WFH', short: 'WFH' },
     BUSINESS_TRIP: { label: 'Dinas Luar', short: 'Dinas Luar' },
-    LEAVE: { label: 'Cuti / Izin', short: 'Cuti / Izin' },
+    LEAVE: { label: 'Izin / Cuti', short: 'Izin / Cuti' },
     SICK: { label: 'Sakit', short: 'Sakit' },
-    HOLIDAY: { label: 'Libur (Sabtu & Minggu)', short: 'Libur' },
-    ABSENT: { label: 'Tidak Hadir', short: 'Tidak Hadir' },
+    HOLIDAY: { label: 'Libur', short: 'Libur' },
+    ABSENT: { label: 'Alpa', short: 'Alpa' },
     TODAY_PENDING: { label: 'Hari Ini (Belum Presensi)', short: 'Belum Presensi' },
     FUTURE: { label: 'Hari Kerja', short: '—' },
   };

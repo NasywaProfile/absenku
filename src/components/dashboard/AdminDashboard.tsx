@@ -237,12 +237,6 @@ export function AdminDashboard({
                   <span className="text-xs font-extrabold text-slate-900">Kamis, 29 Okt 2026</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-600">Jam Kerja Kantor:</span>
-                  <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                    {officeConfig?.workStartHour || '08:00'} - {officeConfig?.workEndHour || '17:00'} WIB
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-600">Status Akun:</span>
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
                     Super Admin / Direksi
@@ -266,9 +260,9 @@ export function AdminDashboard({
                   <button
                     type="button"
                     onClick={handleSaveAdminLogbook}
-                    className="w-full py-3 px-6 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white text-xs sm:text-sm font-bold rounded-xl shadow-md border border-[#1E3A8A] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full py-2.5 px-6 bg-blue-50 hover:bg-blue-100 active:scale-[0.98] text-[#1E3A8A] text-xs sm:text-sm font-bold rounded-xl border border-blue-200 shadow-2xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <Check className="w-4 h-4 text-white" />
+                    <Check className="w-4 h-4 text-[#1E3A8A]" />
                     <span>Simpan Logbook</span>
                   </button>
                 </div>
@@ -466,7 +460,7 @@ export function AdminDashboard({
 
                   <div className="flex items-center gap-3 text-right">
                     <div>
-                      <p className="text-xs font-mono font-bold text-slate-800">
+                      <p className="text-xs font-bold text-slate-800">
                         {rec.clockInTime} WIB
                       </p>
                       <span
@@ -521,7 +515,7 @@ export function AdminDashboard({
             </div>
 
             <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-400">
-              Pusat Kantor: <span className="font-mono text-slate-600">{officeConfig.latitude}, {officeConfig.longitude}</span>
+              Pusat Kantor: <span className="text-slate-600">{officeConfig.latitude}, {officeConfig.longitude}</span>
             </div>
           </div>
 

@@ -23,6 +23,7 @@ import {
   Loader2,
   Cloud,
   ShieldCheck,
+  AlertCircle,
 } from 'lucide-react';
 import { LeaveRequest, LeaveCategory, User } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
@@ -40,7 +41,6 @@ interface MyLeaveRequestsProps {
   leaves?: LeaveRequest[];
   leaveRequests?: LeaveRequest[];
   onRefresh?: () => void;
-  onOpenEmailModal?: () => void;
 }
 
 export function MyLeaveRequests({
@@ -48,7 +48,6 @@ export function MyLeaveRequests({
   leaves: propLeaves,
   leaveRequests: propLeaveRequests,
   onRefresh,
-  onOpenEmailModal,
 }: MyLeaveRequestsProps) {
   const leaves = propLeaves || propLeaveRequests || AppStorage.getLeaveRequests();
 
@@ -124,6 +123,7 @@ export function MyLeaveRequests({
         setAttachmentData(result.url);
       } catch (err: any) {
         setFileAlert(err.message || 'Gagal mengunggah berkas lampiran.');
+        setTimeout(() => setFileAlert(null), 4000);
       } finally {
         setIsUploadingAttachment(false);
       }
@@ -340,10 +340,14 @@ export function MyLeaveRequests({
               <button
                 type="button"
                 onClick={() => setDateFilterOpen(!dateFilterOpen)}
-                className="flex items-center justify-between gap-2 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 font-semibold text-xs px-3.5 h-10 rounded-xl transition-all cursor-pointer border border-slate-200 shadow-2xs min-w-[145px]"
+                className={`flex items-center justify-between gap-2 font-semibold text-xs px-3.5 h-10 rounded-xl transition-all cursor-pointer shadow-2xs min-w-[145px] border ${
+                  specificDateFilter
+                    ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] font-bold ring-1 ring-blue-300/40'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border-slate-200'
+                }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <Calendar className={`w-3.5 h-3.5 shrink-0 ${specificDateFilter ? 'text-[#1E3A8A]' : 'text-slate-500'}`} />
                   <span className="truncate">
                     {specificDateFilter
                       ? `${specificDateFilter.split('-').reverse().join('/')}`
@@ -351,9 +355,9 @@ export function MyLeaveRequests({
                   </span>
                 </div>
                 <ChevronDown
-                  className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 shrink-0 ${
+                  className={`w-3.5 h-3.5 transition-transform duration-200 shrink-0 ${
                     dateFilterOpen ? 'rotate-180' : ''
-                  }`}
+                  } ${specificDateFilter ? 'text-[#1E3A8A]' : 'text-slate-500'}`}
                 />
               </button>
 
@@ -425,11 +429,19 @@ export function MyLeaveRequests({
             </div>
 
             {/* Filter Status Desktop */}
-            <div className="relative flex items-center">
+            <div
+              className={`relative flex items-center h-10 rounded-xl border transition-all shadow-2xs min-w-[135px] ${
+                filterStatus !== 'ALL'
+                  ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] font-bold ring-1 ring-blue-300/40'
+                  : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
+              }`}
+            >
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="h-10 pl-3.5 pr-8 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-[#1E3A8A] outline-none cursor-pointer transition-all shadow-2xs appearance-none min-w-[135px]"
+                className={`h-full pl-3.5 pr-8 bg-transparent text-xs font-semibold outline-none cursor-pointer appearance-none w-full ${
+                  filterStatus !== 'ALL' ? 'text-[#1E3A8A] font-bold' : 'text-slate-800'
+                }`}
                 title="Filter berdasarkan status"
               >
                 <option value="ALL">Semua Status</option>
@@ -437,7 +449,11 @@ export function MyLeaveRequests({
                 <option value="PENDING">Menunggu Persetujuan</option>
                 <option value="REJECTED">Ditolak</option>
               </select>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-3 pointer-events-none shrink-0" />
+              <ChevronDown
+                className={`w-3.5 h-3.5 absolute right-3 pointer-events-none shrink-0 ${
+                  filterStatus !== 'ALL' ? 'text-[#1E3A8A]' : 'text-slate-500'
+                }`}
+              />
             </div>
 
           </div>
@@ -497,10 +513,14 @@ export function MyLeaveRequests({
               <button
                 type="button"
                 onClick={() => setDateFilterOpen(!dateFilterOpen)}
-                className="w-full flex items-center justify-between gap-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 font-semibold text-xs px-3 h-11 rounded-xl transition-all cursor-pointer border border-slate-200 shadow-2xs"
+                className={`w-full flex items-center justify-between gap-1.5 font-semibold text-xs px-3 h-11 rounded-xl transition-all cursor-pointer shadow-2xs border ${
+                  specificDateFilter
+                    ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] font-bold ring-1 ring-blue-300/40'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border-slate-200'
+                }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <Calendar className={`w-3.5 h-3.5 shrink-0 ${specificDateFilter ? 'text-[#1E3A8A]' : 'text-slate-500'}`} />
                   <span className="truncate">
                     {specificDateFilter
                       ? `${specificDateFilter.split('-').reverse().join('/')}`
@@ -508,9 +528,9 @@ export function MyLeaveRequests({
                   </span>
                 </div>
                 <ChevronDown
-                  className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 shrink-0 ${
+                  className={`w-3.5 h-3.5 transition-transform duration-200 shrink-0 ${
                     dateFilterOpen ? 'rotate-180' : ''
-                  }`}
+                  } ${specificDateFilter ? 'text-[#1E3A8A]' : 'text-slate-500'}`}
                 />
               </button>
 
@@ -582,11 +602,19 @@ export function MyLeaveRequests({
             </div>
 
             {/* Filter Status Mobile */}
-            <div className="relative w-full flex items-center">
+            <div
+              className={`relative w-full flex items-center h-11 rounded-xl border transition-all shadow-2xs ${
+                filterStatus !== 'ALL'
+                  ? 'bg-blue-50 border-blue-300 text-[#1E3A8A] font-bold ring-1 ring-blue-300/40'
+                  : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
+              }`}
+            >
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full h-11 pl-3 pr-8 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-[#1E3A8A] outline-none cursor-pointer transition-all shadow-2xs appearance-none truncate"
+                className={`w-full h-full pl-3 pr-8 bg-transparent text-xs font-semibold outline-none cursor-pointer appearance-none truncate ${
+                  filterStatus !== 'ALL' ? 'text-[#1E3A8A] font-bold' : 'text-slate-800'
+                }`}
                 title="Filter berdasarkan status"
               >
                 <option value="ALL">Semua Status</option>
@@ -594,7 +622,11 @@ export function MyLeaveRequests({
                 <option value="PENDING">Menunggu Persetujuan</option>
                 <option value="REJECTED">Ditolak</option>
               </select>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-3 pointer-events-none shrink-0" />
+              <ChevronDown
+                className={`w-3.5 h-3.5 absolute right-3 pointer-events-none shrink-0 ${
+                  filterStatus !== 'ALL' ? 'text-[#1E3A8A]' : 'text-slate-500'
+                }`}
+              />
             </div>
           </div>
         </div>
@@ -753,17 +785,21 @@ export function MyLeaveRequests({
                         )}
                       </td>
                       <td className="py-3.5 px-3.5 text-center whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedLeaveDetail(req);
-                          }}
-                          title="Lihat Detail & Batalkan Pengajuan"
-                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-rose-200 shadow-2xs"
-                        >
-                          <Trash2 className="w-4 h-4 mx-auto" />
-                        </button>
+                        {!isApproved && !isRejected ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCancelTargetId(req.id);
+                            }}
+                            title="Batalkan & Hapus Pengajuan"
+                            className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-rose-200 shadow-2xs active:scale-95"
+                          >
+                            <Trash2 className="w-4 h-4 mx-auto" />
+                          </button>
+                        ) : (
+                          <span className="text-slate-300 font-bold">-</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -807,7 +843,7 @@ export function MyLeaveRequests({
         )}
       </div>
 
-      {/* MODAL BATALKAN */}
+      {/* MODAL BATALKAN / HAPUS PENGAJUAN */}
       {cancelTargetId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
@@ -815,26 +851,40 @@ export function MyLeaveRequests({
             onClick={() => setCancelTargetId(null)}
           />
           <div className="relative w-full max-w-sm bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <div>
-              <h3 className="font-bold text-base text-slate-900">Batalkan Pengajuan?</h3>
-              <p className="text-xs text-slate-500 pt-1">
-                Pengajuan yang masih berstatus menunggu dapat dibatalkan dan akan dihapus.
-              </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-base text-slate-900">
+                  Batalkan Pengajuan?
+                </h3>
+                <p className="text-xs text-slate-500 pt-1 leading-relaxed">
+                  Pengajuan yang masih berstatus menunggu dapat dibatalkan dan akan langsung dihapus dari sistem.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCancelTargetId(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
+                title="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setCancelTargetId(null)}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs cursor-pointer"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs cursor-pointer transition-colors"
               >
-                Kembali
+                Batal
               </button>
               <button
                 type="button"
                 onClick={() => executeCancelLeave(cancelTargetId)}
                 className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs active:scale-95"
               >
-                Ya, Batalkan
+                {leaves.find((l) => l.id === cancelTargetId)?.status === 'APPROVED'
+                  ? 'Ya, Hapus (Test)'
+                  : 'Ya, Batalkan'}
               </button>
             </div>
           </div>
@@ -1031,10 +1081,16 @@ export function MyLeaveRequests({
 
                     {!isUploadingAttachment && !attachmentName && (
                       <span className="text-xs text-slate-400">
-                        Belum ada berkas dipilih (Maks 10MB, PDF/JPG/PNG)
+                        Belum ada berkas dipilih (Maks 15MB, PDF/JPG/PNG)
                       </span>
                     )}
                   </div>
+                  {fileAlert && (
+                    <div className="flex items-center gap-2 mt-2 px-3 py-2 text-xs text-rose-700 bg-rose-50 border border-rose-200/90 rounded-xl animate-in fade-in duration-200 shadow-2xs">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                      <span className="font-medium">{fileAlert}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1198,17 +1254,13 @@ export function MyLeaveRequests({
           </div>
         </div>
       )}
-      {/* Pop Up Dialog Notifikasi Berkas Simpel */}
-      <ModernConfirmDialog
-        isOpen={!!fileAlert}
-        variant="warning"
-        title="Berkas Terlalu Besar"
-        message={fileAlert || ''}
-        confirmText="Mengerti"
-        hideCancel={true}
-        onConfirm={() => setFileAlert(null)}
-        onCancel={() => setFileAlert(null)}
-      />
+      {/* Toast Notifikasi Berkas (Otomatis Hilang 4 Detik, Tanpa Icon Silang) */}
+      {fileAlert && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-4 py-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs sm:text-sm font-semibold animate-in fade-in slide-in-from-top-3 duration-200">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{fileAlert}</span>
+        </div>
+      )}
 
       {/* Pop Up Profil Simpel (Foto dan Nama Saja) */}
       <SimpleProfileModal

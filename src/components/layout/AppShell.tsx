@@ -30,7 +30,7 @@ import {
   FolderOpen,
   MessageSquare,
 } from 'lucide-react';
-import { User, OfficeConfig, AttendanceRecord, EMPLOYMENT_TYPE_LABELS } from '../../types/index.ts';
+import { User, UserRole, OfficeConfig, AttendanceRecord, EMPLOYMENT_TYPE_LABELS } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
 import { useOnlineStatus } from '../../lib/offline-sync.ts';
 import { NavIcon } from '../common/NavIcons.tsx';
@@ -427,7 +427,7 @@ export function AppShell({
   const todayDatePill = new Intl.DateTimeFormat('id-ID', {
     weekday: 'long',
     day: 'numeric',
-    month: 'short',
+    month: 'long',
     year: 'numeric',
   }).format(new Date());
 
@@ -441,9 +441,11 @@ export function AppShell({
           <div className="space-y-4">
             {/* Brand Logo Header */}
             <div className="flex items-center gap-2.5 pb-2 px-3">
-              <span className="font-extrabold text-[#1E3A8A] text-xl tracking-tight select-none">
-                absenku
-              </span>
+              <img
+                src="/assets/in-time-logo.png"
+                alt="in-Time indekraf presence system"
+                className="h-8 w-auto max-w-[155px] object-contain select-none"
+              />
             </div>
 
             {/* Section: Menu with Colored Icons & Folders */}
@@ -595,15 +597,16 @@ export function AppShell({
               </button>
 
               {/* Date Capsule Pill (Posisi di Navbar) dengan Tooltip */}
-              <Tooltip content={`Hari & Tanggal: ${todayFormatted}`} position="bottom">
+              <Tooltip content={`Hari & Tanggal: ${todayDatePill}`} position="bottom">
                 <div
-                  title={`Hari & Tanggal: ${todayFormatted}`}
-                  className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-white border border-slate-200/90 rounded-full shadow-2xs text-[11px] sm:text-xs font-semibold text-slate-700 max-w-[160px] xs:max-w-none cursor-default"
+                  title={`Hari & Tanggal: ${todayDatePill}`}
+                  className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-white border border-slate-200/90 rounded-full shadow-2xs text-[11px] sm:text-xs font-semibold text-slate-700 whitespace-nowrap cursor-default shrink-0"
                 >
                   <Calendar className="w-3.5 h-3.5 text-[#1E3A8A] shrink-0" />
-                  <span className="truncate">{todayDatePill}</span>
+                  <span>{todayDatePill}</span>
                 </div>
               </Tooltip>
+
             </div>
 
             {/* Right: Offline status + User Profile Photo & Name */}
@@ -670,20 +673,24 @@ export function AppShell({
                       onClick={() => setProfileDropdownOpen(false)}
                     />
                     <div className="absolute right-0 mt-2.5 w-[calc(100vw-1.5rem)] max-w-[340px] sm:max-w-none sm:w-96 bg-white/95 backdrop-blur-xl rounded-[28px] shadow-[0_20px_50px_rgba(15,23,42,0.22)] border border-white/80 p-4 sm:p-6 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                      {/* Top Bar: Administrator di Kiri (tanpa icon, bg putih, tulisan hitam), Posisi/Jabatan di Kanan */}
+                      {/* Top Bar: Role di Kiri, Tipe Kepegawaian di Kanan */}
                       <div className="flex items-center justify-between gap-2 pb-3 text-xs border-b border-slate-100">
                         {/* Role: background putih, font hitam seperti posisi */}
                         <span className="px-2.5 py-0.5 rounded-full bg-white text-slate-800 border border-slate-200/90 font-semibold text-xs shrink-0 shadow-2xs">
-                          {getRoleAndTypeLabel()}
+                          {currentUser.role === 'SUPER_ADMIN'
+                            ? 'Super Admin'
+                            : currentUser.role === 'ADMIN'
+                            ? 'Administrator'
+                            : 'Karyawan'}
                         </span>
 
-                        {/* Posisi/Jabatan di Kanan dengan Tooltip */}
-                        <Tooltip content={currentUser.position || currentUser.department || 'Staf Operasional'} position="top">
+                        {/* Tipe Kepegawaian di Kanan */}
+                        <Tooltip content={EMPLOYMENT_TYPE_LABELS[currentUser.employmentType] || currentUser.employmentType || 'Karyawan Tetap'} position="top">
                           <span
                             className="truncate max-w-[170px] sm:max-w-[200px] text-slate-600 font-semibold tracking-tight text-right block"
-                            title={currentUser.position || currentUser.department || 'Posisi'}
+                            title={EMPLOYMENT_TYPE_LABELS[currentUser.employmentType] || currentUser.employmentType || 'Tipe Kepegawaian'}
                           >
-                            {currentUser.position || currentUser.department || 'Staf Operasional'}
+                            {EMPLOYMENT_TYPE_LABELS[currentUser.employmentType] || currentUser.employmentType || 'Karyawan Tetap'}
                           </span>
                         </Tooltip>
                       </div>
@@ -728,8 +735,8 @@ export function AppShell({
                         </div>
                       </div>
 
-                      {/* Action Row: Biodata Diri Saja */}
-                      <div className="pt-2.5">
+                      {/* Action Row: Biodata Diri */}
+                      <div className="pt-2">
                         <button
                           type="button"
                           onClick={() => {
@@ -814,9 +821,11 @@ export function AppShell({
         >
           {/* Drawer Header (Brand Logo & Tombol Tutup Menu) */}
           <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between">
-            <span className="font-extrabold text-[#1E3A8A] text-2xl tracking-tight select-none">
-              absenku
-            </span>
+            <img
+              src="/assets/in-time-logo.png"
+              alt="in-Time indekraf presence system"
+              className="h-8 w-auto max-w-[145px] object-contain select-none"
+            />
             <button
               type="button"
               onClick={() => setMobileMenuOpen(false)}
@@ -985,7 +994,6 @@ export function AppShell({
           </div>
         </div>
       </div>
-
     </div>
   );
 }

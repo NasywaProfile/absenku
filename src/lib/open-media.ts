@@ -1,7 +1,7 @@
 import { getAttachmentFromIDB } from './attachment-storage.ts';
 
 /**
- * Utility for opening files, links, and images safely and reliably across Absenku.
+ * Utility for opening files, links, and images safely and reliably across in-Time.
  */
 
 export const SAMPLE_FALLBACK_PDF =
@@ -39,8 +39,65 @@ export function isPdfFile(nameOrUrl?: string, fileType?: string): boolean {
   return clean.endsWith('.pdf');
 }
 
-export function downloadMediaFile(url: string, fileName = 'berkas_lampiran'): void {
-  const targetUrl = !url || url === '#' ? SAMPLE_FALLBACK_PDF : url;
+export async function resolveMediaUrl(url?: string, fallback = SAMPLE_FALLBACK_PDF): Promise<string> {
+  if (!url || url === '#' || url.trim() === '') return fallback;
+  if (url.startsWith('idb:')) {
+    const id = url.replace(/^idb:/, '');
+    try {
+      const data = await getAttachmentFromIDB(id);
+      return data || fallback;
+    } catch (e) {
+      console.warn('Gagal membaca attachment dari IndexedDB:', e);
+      return fallback;
+    }
+  }
+  return url;
+}
+
+export function dataUrlToBlob(dataUrl: string, defaultMime = 'application/octet-stream'): Blob {
+  try {
+    if (!dataUrl || !dataUrl.includes(',')) {
+      return new Blob([], { type: defaultMime });
+    }
+    const parts = dataUrl.split(',');
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : defaultMime;
+    const bstr = atob(parts[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+  } catch (err) {
+    console.warn('Konversi dataUrlToBlob gagal:', err);
+    return new Blob([], { type: defaultMime });
+  }
+}
+
+export async function downloadMediaFile(url: string, fileName = 'berkas_lampiran'): Promise<void> {
+  let targetUrl = url;
+  if (targetUrl && targetUrl.startsWith('idb:')) {
+    targetUrl = await resolveMediaUrl(targetUrl);
+  }
+  if (!targetUrl || targetUrl === '#') targetUrl = SAMPLE_FALLBACK_PDF;
+
+  if (targetUrl.startsWith('data:')) {
+    try {
+      const isPdf = isPdfFile(fileName) || targetUrl.startsWith('data:application/pdf');
+      const blob = dataUrlToBlob(targetUrl, isPdf ? 'application/pdf' : 'application/octet-stream');
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+      return;
+    } catch {}
+  }
+
   const link = document.createElement('a');
   link.href = targetUrl;
   link.download = fileName;
@@ -63,25 +120,29 @@ export function openDataUrlInNewTab(dataUrl: string, fileName = 'berkas_lampiran
   // Base64 Data URLs -> Convert to Blob URL
   if (targetUrl.startsWith('data:')) {
     try {
-      const parts = targetUrl.split(',');
-      const mimeMatch = parts[0].match(/:(.*?);/);
-      const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-      const bstr = atob(parts[1]);
-      let n = bstr.length;
-      const u8arr = new Uint8Array(n);
-      while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
+      const isPdf = isPdfFile(fileName) || targetUrl.startsWith('data:application/pdf');
+      const isImg = isImageFile(fileName) || targetUrl.startsWith('data:image/');
+      let defaultMime = 'application/octet-stream';
+      if (isPdf) {
+        defaultMime = 'application/pdf';
+      } else if (isImg) {
+        const mimeMatch = targetUrl.substring(0, 35).match(/^data:(image\/[a-zA-Z0-9.+-]+);/);
+        defaultMime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
       }
-      const blob = new Blob([u8arr], { type: mime });
+      const blob = dataUrlToBlob(targetUrl, defaultMime);
       const blobUrl = URL.createObjectURL(blob);
 
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const win = window.open(blobUrl, '_blank');
+      if (!win) {
+        // Fallback jika popup diblokir oleh browser
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
       return;
     } catch (e) {
       console.warn('Failed to convert base64 to Blob URL:', e);

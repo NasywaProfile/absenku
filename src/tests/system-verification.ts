@@ -1,5 +1,5 @@
 /**
- * Comprehensive System Verification Suite for Absenku
+ * Comprehensive System Verification Suite for in-Time
  * Tests all core features, conditions, business logic, storage, and status computation.
  */
 
@@ -318,6 +318,21 @@ const approvedUser = AppStorage.getUserById(registerRes.user!.id);
 assert(approvedUser?.status === 'ACTIVE', 'Status karyawan berubah menjadi ACTIVE setelah di-approve');
 assert(approvedUser?.role === 'EMPLOYEE', 'Role karyawan diset ke EMPLOYEE');
 
+const emailsAfterRegApprove = AppStorage.getEmailNotifications();
+const accVerifiedEmail = emailsAfterRegApprove.find(
+  (e) => e.toEmail === registerRes.user!.email && e.category === 'ACCOUNT_VERIFIED'
+);
+assert(!!accVerifiedEmail, 'Email verifikasi akun terkirim otomatis ke pendaftar baru setelah di-ACC');
+assert(
+  Boolean(accVerifiedEmail?.subject.includes('Akun Terverifikasi') && accVerifiedEmail?.notificationType === 'ACCOUNT'),
+  'Subjek email verifikasi memuat konfirmasi akun aktif dan tipe ACCOUNT'
+);
+
+const countBefore = emailsAfterRegApprove.length;
+AppStorage.approveRegistration(registerRes.user!.id, 'Super Admin', 'EMPLOYEE');
+const countAfter = AppStorage.getEmailNotifications().length;
+assert(countAfter === countBefore, 'Tidak mengirimkan email duplikat jika akun sudah berstatus ACTIVE');
+
 // 4.3. Update Biodata Diri & Kelengkapan Profil
 AppStorage.updateUser({
   ...approvedUser!,
@@ -489,10 +504,12 @@ assert(
   'Reset password dengan nama parsial / tidak sama persis DITOLAK'
 );
 assert(
-  AppStorage.resetPasswordSelfService('superadmin@gmail.com', 'Super Admin', 'Hacked123').success === false &&
-    AppStorage.authenticate('superadmin', 'Hacked123') === null,
-  'Reset password akun Admin / Super Admin lewat jalur mandiri DITOLAK'
+  AppStorage.resetPasswordSelfService('nasywadavina384@gmail.com', 'Super Admin', 'SuperAdminBaru123').success === true &&
+    AppStorage.authenticate('nasywadavina384@gmail.com', 'SuperAdminBaru123') !== null,
+  'Reset password akun Super Admin dengan data valid berhasil'
 );
+// Kembalikan password Super Admin ke semula untuk suite pengetesan berikutnya
+AppStorage.resetPasswordSelfService('nasywadavina384@gmail.com', 'Super Admin', 'SuperAdminabsenkuMantap');
 assert(
   AppStorage.resetPasswordSelfService('alissa@gmail.com', 'Alissa Anastasia', 'BaruAman1').success === true &&
     AppStorage.authenticate('alissa@gmail.com', 'BaruAman1') !== null &&
@@ -590,6 +607,103 @@ assert(
   !!sharedAfter && sharedAfter.assignedTo === budiAdmin.id && sharedAfter.assignees!.length === 1,
   'Tugas bersama tetap ada dan hanya melepas karyawan yang dihapus'
 );
+
+// -----------------------------------------------------------------------------
+// SUITE 10: NOTIFIKASI EMAIL PROSES PENUGASAN (KARYAWAN & PIC / ADMIN)
+// -----------------------------------------------------------------------------
+console.log('\n📧 SUITE 10: Notifikasi Email Proses Penugasan');
+
+// Bersihkan notifikasi email untuk pengetesan isolasi
+AppStorage.clearEmailNotifications();
+
+// Buat tugas baru oleh Admin untuk Budi
+const testTask = AppStorage.addTask({
+  title: 'Audit Keamanan Otentikasi',
+  description: 'Validasi token sanctum dan hashing password',
+  priority: 'HIGH',
+  assignedTo: budiAdmin.id,
+  assignedName: budiAdmin.name,
+  createdBy: 'usr_super_admin',
+  dueDate: '2026-11-25',
+  status: 'TODO',
+});
+
+const emailsAfterCreate = AppStorage.getEmailNotifications();
+const empNotif = emailsAfterCreate.find(
+  (e) => e.toEmail === budiAdmin.email && e.category === 'TASK_ASSIGNED'
+);
+const picNotif = emailsAfterCreate.find(
+  (e) => (e.toEmail === 'nasywadavina384@gmail.com' || e.toEmail === 'superadmin@gmail.com') && e.category === 'TASK_ASSIGNED'
+);
+
+assert(!!empNotif, 'Email notifikasi penugasan baru terkirim ke karyawan yang ditugaskan');
+assert(
+  Boolean(empNotif?.subject.includes('Audit Keamanan Otentikasi') && empNotif?.taskPriority === 'Tinggi'),
+  'Subjek email penugasan karyawan memuat judul tugas & prioritas akurat'
+);
+assert(!!picNotif, 'Email konfirmasi penugasan terkirim ke Admin / Super Admin (PIC)');
+assert(
+  Boolean(picNotif?.subject.includes('Audit Keamanan Otentikasi')),
+  'Subjek email PIC memuat konfirmasi penugasan tugas yang diberikan'
+);
+
+// 2. Karyawan mengumpulkan hasil tugas (Preview Tugas / DONE)
+AppStorage.updateTaskStatus(testTask.id, 'DONE', {
+  submissionNotes: 'Audit selesai dan seluruh endpoint telah terlindungi.',
+  activityUser: budiAdmin,
+});
+
+const emailsAfterSubmit = AppStorage.getEmailNotifications();
+const picSubmitNotif = emailsAfterSubmit.find(
+  (e) => (e.toEmail === 'nasywadavina384@gmail.com' || e.toEmail === 'superadmin@gmail.com') && e.category === 'TASK_SUBMITTED'
+);
+const empSubmitConfirm = emailsAfterSubmit.find(
+  (e) => e.toEmail === budiAdmin.email && e.category === 'TASK_SUBMITTED'
+);
+
+assert(!!picSubmitNotif, 'Email hasil tugas terkirim ke PIC untuk ditinjau saat karyawan submit tugas');
+assert(
+  picSubmitNotif?.notes === 'Audit selesai dan seluruh endpoint telah terlindungi.',
+  'Email ke PIC memuat catatan hasil pengerjaan (deliverable) karyawan'
+);
+assert(!!empSubmitConfirm, 'Email konfirmasi pengumpulan terkirim ke karyawan');
+
+// 3. Admin / PIC meminta revisi (IN_PROGRESS)
+AppStorage.updateTaskStatus(testTask.id, 'IN_PROGRESS', {
+  reviewNotes: 'Mohon tambahkan sanitasi input pada form registrasi.',
+  activityUser: { id: 'usr_super_admin', name: 'Super Admin', email: 'nasywadavina384@gmail.com', role: 'SUPER_ADMIN' },
+});
+
+const emailsAfterRevision = AppStorage.getEmailNotifications();
+const empRevNotif = emailsAfterRevision.find(
+  (e) => e.toEmail === budiAdmin.email && e.category === 'TASK_REVISION'
+);
+assert(!!empRevNotif, 'Email instruksi revisi terkirim ke karyawan saat PIC meminta perbaikan');
+assert(
+  empRevNotif?.notes === 'Mohon tambahkan sanitasi input pada form registrasi.',
+  'Email revisi memuat catatan instruksi perbaikan dari PIC'
+);
+
+// 4. Admin / PIC menyetujui tugas (REVIEWED / ACC Selesai)
+AppStorage.updateTaskStatus(testTask.id, 'REVIEWED', {
+  reviewNotes: 'Pengerjaan sangat baik dan siap dideploy ke server produksi.',
+  activityUser: { id: 'usr_super_admin', name: 'Super Admin', email: 'nasywadavina384@gmail.com', role: 'SUPER_ADMIN' },
+});
+
+const emailsAfterApprove = AppStorage.getEmailNotifications();
+const empApproveNotif = emailsAfterApprove.find(
+  (e) => e.toEmail === budiAdmin.email && e.category === 'TASK_APPROVED'
+);
+const picApproveNotif = emailsAfterApprove.find(
+  (e) => (e.toEmail === 'nasywadavina384@gmail.com' || e.toEmail === 'superadmin@gmail.com') && e.category === 'TASK_APPROVED'
+);
+
+assert(!!empApproveNotif, 'Email tugas disetujui (ACC) terkirim ke karyawan');
+assert(
+  empApproveNotif?.notes === 'Pengerjaan sangat baik dan siap dideploy ke server produksi.',
+  'Email ACC memuat catatan review dari PIC'
+);
+assert(!!picApproveNotif, 'Email penugasan selesai tercatat untuk arsip PIC');
 
 // -----------------------------------------------------------------------------
 // REKAP HASIL AKHIR

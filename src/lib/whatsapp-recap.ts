@@ -56,7 +56,7 @@ export function generateWhatsAppAttendanceRecap(params: {
 ${formattedTasks}
 
 Status Kehadiran: Tervalidasi
-_Sistem Absenku Kantor Modern_`;
+_Sistem in-Time Presensi Modern_`;
 }
 
 /**
@@ -81,7 +81,7 @@ export function generateWhatsAppLeaveRecap(leave: LeaveRequest): string {
 📎 Lampiran  : ${leave.attachmentName || 'Tidak Ada Lampiran'}
 ⚡ Status    : ${leave.status === 'APPROVED' ? 'Disetujui' : leave.status === 'REJECTED' ? 'Ditolak' : 'Menunggu Approval Admin'}
 
-_Sistem Absenku Kantor Modern_`;
+_Sistem in-Time Presensi Modern_`;
 }
 
 /**

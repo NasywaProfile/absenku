@@ -4,12 +4,11 @@ import {
   CheckCircle2,
   RefreshCw,
   Compass,
-  Navigation,
   Building2,
-  Maximize2,
   LocateFixed,
   Home,
   Briefcase,
+  Globe,
 } from 'lucide-react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -68,7 +67,8 @@ export function GeolocationWidget({
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const officeMarkerRef = useRef<maplibregl.Marker | null>(null);
 
-  // Status fleksibilitas kerja remote (WFH / Dinas Luar)
+  // Status fleksibilitas kerja remote (WFH / Dinas Luar / Freelance Hybrid)
+  const isFreelance = currentUser?.employmentType === 'FREELANCE';
   const isWfh = Boolean(isWfhApproved || workMode === 'WFH');
   const isDinas = Boolean(isBusinessTripApproved || workMode === 'DINAS');
   const isRemote = isWfh || isDinas;
@@ -82,17 +82,18 @@ export function GeolocationWidget({
   const isGeofenceActive = officeConfig.isGeofenceActive ?? true;
   const radiusMeters = officeConfig.geofenceRadiusMeter || 100;
   const distance = currentCoords ? calculateHaversineDistance(currentCoords, officeCoords) : null;
-  const isWithinRadius = distance !== null ? (isGeofenceActive ? (isRemote || distance <= radiusMeters) : true) : false;
+  const isPhysicallyInOffice = distance !== null ? distance <= radiusMeters : false;
+  const isWithinRadius = distance !== null ? (isGeofenceActive ? (isPhysicallyInOffice || isRemote || isFreelance) : true) : false;
 
   // Evaluasi jarak dan kirim ke parent
   const evaluateLocation = useCallback(
     (coords: Coordinates) => {
       setCurrentCoords(coords);
       const dist = calculateHaversineDistance(coords, officeCoords);
-      const withinRadius = isRemote || dist <= radiusMeters;
-      onLocationVerified(coords, dist, withinRadius);
+      const physicallyInOffice = dist <= radiusMeters;
+      onLocationVerified(coords, dist, physicallyInOffice);
     },
-    [officeCoords.latitude, officeCoords.longitude, radiusMeters, onLocationVerified, isRemote]
+    [officeCoords.latitude, officeCoords.longitude, radiusMeters, onLocationVerified]
   );
 
   // Fit bounds agar kedua titik (Kantor & Posisi User) tampak jelas di layar
@@ -104,8 +105,8 @@ export function GeolocationWidget({
       bounds.extend([userCoords.longitude, userCoords.latitude]);
 
       mapInstanceRef.current.fitBounds(bounds, {
-        padding: { top: 85, bottom: 120, left: 60, right: 60 },
-        maxZoom: 16.8,
+        padding: { top: 90, bottom: 135, left: 100, right: 100 },
+        maxZoom: 16.5,
         duration: 900,
       });
     },
@@ -311,7 +312,7 @@ export function GeolocationWidget({
             </div>
             <div class="absolute -bottom-1 w-3 h-1 bg-black/30 rounded-full blur-[1px]"></div>
           </div>
-          <div class="mt-1 px-2.5 py-0.5 bg-[#1E3A8A] text-white text-[10px] font-extrabold rounded-md shadow-md whitespace-nowrap border border-white/20">
+          <div class="mt-1 px-2.5 py-0.5 bg-[#1E3A8A] text-white text-[10px] font-extrabold rounded-md shadow-md whitespace-nowrap max-w-[180px] truncate border border-white/20 text-center">
             ${officeConfig.name || 'IndigoSpace Malang (Kantor Pusat)'}
           </div>
         `;
@@ -353,22 +354,26 @@ export function GeolocationWidget({
       );
       (map.getSource('geofence-circle') as maplibregl.GeoJSONSource).setData(circleData);
 
-      // Ubah warna fill & stroke sesuai status radius & mode kerja remote
+      // Ubah warna fill & stroke sesuai status radius & mode kerja remote / hybrid
       const fillColor = isRemote
         ? '#e0e7ff'
-        : isWithinRadius
+        : isPhysicallyInOffice
         ? '#10b981'
+        : isFreelance
+        ? '#dbeafe'
         : '#ef4444';
       const strokeColor = isRemote
         ? '#6366f1'
-        : isWithinRadius
+        : isPhysicallyInOffice
         ? '#059669'
+        : isFreelance
+        ? '#3b82f6'
         : '#dc2626';
 
       map.setPaintProperty('geofence-fill', 'fill-color', fillColor);
       map.setPaintProperty('geofence-stroke', 'line-color', strokeColor);
     }
-  }, [isWithinRadius, radiusMeters, officeCoords.latitude, officeCoords.longitude, isRemote]);
+  }, [isWithinRadius, radiusMeters, officeCoords.latitude, officeCoords.longitude, isRemote, isPhysicallyInOffice, isFreelance]);
 
   // Update Live User Marker saat koordinat GPS berubah
   useEffect(() => {
@@ -390,11 +395,18 @@ export function GeolocationWidget({
       userColorClass = 'bg-purple-600';
       userPulseClass = 'bg-purple-500/30';
       userBorderClass = 'border-purple-400';
-    } else if (isWithinRadius) {
-      userBadgeText = 'Posisi Anda (Dalam Radius)';
+    } else if (isPhysicallyInOffice) {
+      userBadgeText = 'Posisi Anda (Di Kantor)';
       userColorClass = 'bg-emerald-600';
       userPulseClass = 'bg-emerald-500/30';
       userBorderClass = 'border-emerald-400';
+    } else if (isFreelance) {
+      userBadgeText = distance
+        ? `Posisi Anda (Freelance Hybrid • ${formatDistanceDisplay(distance)})`
+        : 'Posisi Anda (Freelance Hybrid)';
+      userColorClass = 'bg-blue-600';
+      userPulseClass = 'bg-blue-500/30';
+      userBorderClass = 'border-blue-400';
     } else {
       userBadgeText = distance
         ? `Posisi Anda (${formatDistanceDisplay(distance)})`
@@ -417,7 +429,7 @@ export function GeolocationWidget({
           </div>
           <div class="absolute -bottom-1 w-3 h-1 bg-black/30 rounded-full blur-[1px]"></div>
         </div>
-        <div class="mt-1 px-2.5 py-0.5 ${userColorClass} text-white text-[10px] font-extrabold rounded-md shadow-lg whitespace-nowrap border border-white/30">
+        <div class="mt-1 px-2.5 py-0.5 ${userColorClass} text-white text-[10px] font-extrabold rounded-md shadow-lg whitespace-nowrap max-w-[180px] truncate border border-white/30 text-center">
           ${userBadgeText}
         </div>
       `;
@@ -439,7 +451,7 @@ export function GeolocationWidget({
             </div>
             <div class="absolute -bottom-1 w-3 h-1 bg-black/30 rounded-full blur-[1px]"></div>
           </div>
-          <div class="mt-1 px-2.5 py-0.5 ${userColorClass} text-white text-[10px] font-extrabold rounded-md shadow-lg whitespace-nowrap border border-white/30">
+          <div class="mt-1 px-2.5 py-0.5 ${userColorClass} text-white text-[10px] font-extrabold rounded-md shadow-lg whitespace-nowrap max-w-[180px] truncate border border-white/30 text-center">
             ${userBadgeText}
           </div>
         `;
@@ -474,9 +486,6 @@ export function GeolocationWidget({
             <h2 className="text-base font-bold text-slate-900 tracking-tight leading-tight">
               Status Geofence Radar
             </h2>
-            <p className="text-[11px] text-slate-500 font-medium">
-              Pendeteksian posisi GPS real-time
-            </p>
           </div>
         </div>
 
@@ -515,7 +524,7 @@ export function GeolocationWidget({
       )}
 
       {/* MAP CONTAINER (Mengisi 100% sisa tinggi Card Tanpa Space Kosong) */}
-      <div className="relative w-full flex-1 min-h-[360px] bg-[#eef2f6] overflow-hidden select-none">
+      <div className="relative w-full flex-1 min-h-[260px] bg-[#eef2f6] overflow-hidden select-none">
         
         {/* PROMINENT BADGE DI ATAS PETA */}
         <div className="absolute top-3.5 left-1/2 -translate-x-1/2 z-20 pointer-events-none max-w-[calc(100%-2rem)] px-1">
@@ -523,22 +532,27 @@ export function GeolocationWidget({
             isWfh ? (
               <div className="px-4 py-2 rounded-full bg-indigo-600/95 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg backdrop-blur-xs border border-indigo-400/50 truncate">
                 <Home className="w-4 h-4 text-indigo-200 shrink-0" />
-                <span className="truncate">Mode WFH Aktif • Presensi Fleksibel dari Rumah Diizinkan</span>
+                <span className="truncate">WFH Disetujui • Bebas Absen dari Rumah</span>
               </div>
             ) : isDinas ? (
               <div className="px-4 py-2 rounded-full bg-purple-600/95 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg backdrop-blur-xs border border-purple-400/50 truncate">
                 <Briefcase className="w-4 h-4 text-purple-200 shrink-0" />
-                <span className="truncate">Mode Dinas Luar Aktif • Presensi Fleksibel Diizinkan</span>
+                <span className="truncate">Dinas Luar Disetujui • Absen Fleksibel</span>
               </div>
-            ) : isWithinRadius ? (
+            ) : isPhysicallyInOffice ? (
               <div className="px-4 py-2 rounded-full bg-emerald-600/95 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg backdrop-blur-xs border border-emerald-400/50 truncate">
                 <CheckCircle2 className="w-4 h-4 text-emerald-200 shrink-0" />
-                <span className="truncate">Di Dalam Radius Kantor ({radiusMeters}m)</span>
+                <span className="truncate">Berada di Area Kantor (Jarak {distance ? formatDistanceDisplay(distance) : '15m'})</span>
+              </div>
+            ) : isFreelance ? (
+              <div className="px-4 py-2 rounded-full bg-blue-600/95 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg backdrop-blur-xs border border-blue-400/50 truncate">
+                <Globe className="w-4 h-4 text-blue-200 shrink-0" />
+                <span className="truncate">Freelance • Absen Fleksibel</span>
               </div>
             ) : (
               <div className="px-4 py-2 rounded-full bg-rose-600/95 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg backdrop-blur-xs border border-rose-400/50 truncate">
                 <AlertTriangle className="w-4 h-4 text-rose-200 shrink-0" />
-                <span className="truncate">Di Luar Radius Kantor ({distance ? formatDistanceDisplay(distance) : '>100m'})</span>
+                <span className="truncate">Di Luar Area Kantor (Jarak {distance ? formatDistanceDisplay(distance) : '>100m'})</span>
               </div>
             )
           ) : (
@@ -546,37 +560,6 @@ export function GeolocationWidget({
               <RefreshCw className="w-3.5 h-3.5 text-blue-400 animate-spin shrink-0" />
               <span>Mencari koordinat GPS Anda...</span>
             </div>
-          )}
-        </div>
-
-        {/* Quick Nav Controls (Floating Buttons di Kanan Atas Peta) */}
-        <div className="absolute top-3.5 right-3.5 z-20 flex flex-col gap-1.5">
-          <button
-            type="button"
-            onClick={centerToUser}
-            disabled={!currentCoords}
-            className="w-9 h-9 rounded-xl bg-white/95 backdrop-blur-sm border border-slate-200 shadow-md text-slate-700 hover:text-[#1E3A8A] hover:bg-white flex items-center justify-center transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
-            title="Pusatkan ke Posisi Saya"
-          >
-            <Navigation className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={centerToOffice}
-            className="w-9 h-9 rounded-xl bg-white/95 backdrop-blur-sm border border-slate-200 shadow-md text-slate-700 hover:text-[#1E3A8A] hover:bg-white flex items-center justify-center transition-all cursor-pointer"
-            title="Pusatkan ke Titik Kantor"
-          >
-            <Building2 className="w-4 h-4" />
-          </button>
-          {currentCoords && (
-            <button
-              type="button"
-              onClick={() => fitBothPoints(currentCoords)}
-              className="w-9 h-9 rounded-xl bg-white/95 backdrop-blur-sm border border-slate-200 shadow-md text-slate-700 hover:text-[#1E3A8A] hover:bg-white flex items-center justify-center transition-all cursor-pointer"
-              title="Tampilkan Kantor & Posisi Saya Sekaligus"
-            >
-              <Maximize2 className="w-4 h-4" />
-            </button>
           )}
         </div>
 
@@ -597,42 +580,23 @@ export function GeolocationWidget({
               centerToOffice();
             }
           }}
-          className="absolute left-3 right-3 bottom-3 z-20 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-xl p-3.5 sm:p-4 cursor-pointer hover:bg-white hover:border-[#1E3A8A]/50 hover:shadow-2xl transition-all group select-none"
+          className="absolute left-2.5 right-2.5 bottom-2.5 sm:left-3 sm:right-3 sm:bottom-3 z-20 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-xl p-3 sm:p-3.5 cursor-pointer hover:bg-white hover:border-[#1E3A8A]/50 hover:shadow-2xl transition-all group select-none"
           title="Klik untuk memusatkan kembali peta ke titik kantor"
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             {/* Logo / Ikon Kantor */}
             <div className="relative shrink-0">
-              <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200 text-[#1E3A8A] shadow-2xs flex items-center justify-center group-hover:scale-105 transition-transform overflow-hidden">
-                <Building2 className="w-6 h-6" />
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-blue-50 border border-blue-200 text-[#1E3A8A] shadow-2xs flex items-center justify-center group-hover:scale-105 transition-transform overflow-hidden">
+                <Building2 className="w-5 h-5 text-[#1E3A8A]" />
               </div>
             </div>
 
             {/* Nama & Alamat Lengkap */}
             <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 truncate group-hover:text-[#1E3A8A] transition-colors">
-                  {officeConfig.name || 'IndigoSpace Malang (Kantor Pusat)'}
-                </h4>
-                {distance !== null && (
-                  <span className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-md shrink-0 ${
-                    isWfh
-                      ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                      : isDinas
-                      ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                      : isWithinRadius
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-rose-100 text-rose-800'
-                  }`}>
-                    {isWfh
-                      ? `WFH Bebas Radius (${formatDistanceDisplay(distance)})`
-                      : isDinas
-                      ? `Dinas Bebas Radius (${formatDistanceDisplay(distance)})`
-                      : formatDistanceDisplay(distance)}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 leading-snug">
+              <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 truncate group-hover:text-[#1E3A8A] transition-colors leading-tight">
+                {officeConfig.name || 'IndigoSpace Malang (Kantor Pusat)'}
+              </h4>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-tight line-clamp-2">
                 {officeConfig.address || 'Jl. Simpang Borobudur No. 1, Mojolangu, Kec. Lowokwaru, Kota Malang, Jawa Timur 65142'}
               </p>
             </div>

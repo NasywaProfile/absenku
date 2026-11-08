@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Plus,
   Maximize2,
@@ -38,6 +38,7 @@ import {
   ArrowUp,
 } from 'lucide-react';
 import { TaskItem, TaskPriority, TaskStatus, TaskAttachment, TaskActivity, TaskAssignee, User as UserType, UserRole } from '../../types/index.ts';
+import { TaskDetailModal } from './TaskDetailModal.tsx';
 import { AppStorage } from '../../lib/storage.ts';
 import { Tooltip } from '../ui/tooltip.tsx';
 import { formatIndonesianDate, formatIndonesianDateShort } from '../../lib/time-utils.ts';
@@ -56,6 +57,7 @@ interface KanbanBoardProps {
   currentUser: UserType;
   userRole: UserRole;
   onRefresh: () => void;
+  isMyTasks?: boolean;
 }
 
 function formatBytes(bytes: number): string {
@@ -215,8 +217,14 @@ export function KanbanBoard({
   currentUser,
   userRole,
   onRefresh,
+  isMyTasks = false,
 }: KanbanBoardProps) {
   const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+
+  // Daftar pembuat tugas (Admin & Super Admin) untuk filter pada "Tugas Saya"
+  const creatorUsers = useMemo(() => {
+    return users.filter((u) => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN');
+  }, [users]);
   const [taskViewMode, setTaskViewMode] = useState<'BOARD' | 'TABLE'>('BOARD');
   const [searchTerm, setSearchTerm] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('ALL');
@@ -336,6 +344,7 @@ export function KanbanBoard({
       activityUser: {
         id: currentUser.id,
         name: currentUser.name,
+        email: currentUser.email,
         role: userRole,
         avatar: currentUser.avatar,
       },
@@ -371,6 +380,7 @@ export function KanbanBoard({
         setCreateAttachments((prev) => [...prev, newAtt]);
       } catch (err: any) {
         setCreateTaskUploadError(err.message || 'Gagal mengunggah berkas.');
+        setTimeout(() => setCreateTaskUploadError(null), 4000);
       }
     }
     e.target.value = '';
@@ -506,7 +516,7 @@ export function KanbanBoard({
     if (!activeTaskDetail) return;
     if (!previewNote.trim() && previewAttachments.length === 0) return;
 
-    const note = previewNote.trim() || 'Hasil preview tugas dilampirkan untuk ditinjau oleh PIC.';
+    const note = previewNote.trim();
 
     handleUpdateStatus(activeTaskDetail.id, 'DONE', {
       submissionNotes: note,
@@ -525,16 +535,17 @@ export function KanbanBoard({
 
     if (picDecision === 'APPROVE') {
       handleUpdateStatus(activeTaskDetail.id, 'REVIEWED', {
-        reviewNotes: note || 'Penugasan Selesai (ACC oleh PIC)',
+        reviewNotes: note,
         newAttachments: previewAttachments,
       });
     } else if (picDecision === 'REVISION') {
       handleUpdateStatus(activeTaskDetail.id, 'IN_PROGRESS', {
-        reviewNotes: note || 'Mohon disempurnakan kembali sesuai catatan arahan dari PIC.',
+        reviewNotes: note,
         newAttachments: previewAttachments,
       });
     } else {
       // NOTE (Catatan Saja)
+      if (!note && previewAttachments.length === 0) return;
       const activity: TaskActivity = {
         id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         type: 'COMMENT_ADDED',
@@ -543,7 +554,7 @@ export function KanbanBoard({
         userAvatar: currentUser.avatar,
         userRole: userRole,
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-        notes: note || 'Catatan arahan dari PIC.',
+        notes: note,
         attachments: previewAttachments,
       };
       AppStorage.addTaskActivity(activeTaskDetail.id, activity);
@@ -590,7 +601,7 @@ export function KanbanBoard({
   };
 
   const handleDeleteTask = (taskId: string) => {
-    setTaskToDelete(taskId);
+    executeDeleteTask(taskId);
   };
 
   const executeDeleteTask = (taskId: string) => {
@@ -599,6 +610,7 @@ export function KanbanBoard({
     if (activeTaskDetail && activeTaskDetail.id === taskId) {
       setActiveTaskDetail(null);
     }
+    setTaskToDelete(null);
   };
 
   const handleDeleteActivity = (actId: string) => {
@@ -618,10 +630,21 @@ export function KanbanBoard({
       (t.assignedName && t.assignedName.toLowerCase().includes(searchTerm.toLowerCase())) ||
       Boolean(t.assignees?.some((a) => a.name.toLowerCase().includes(searchTerm.toLowerCase())));
 
-    const matchesAssignee =
-      assigneeFilter === 'ALL' ||
-      t.assignedTo === assigneeFilter ||
-      Boolean(t.assignees?.some((a) => a.id === assigneeFilter));
+    const matchesAssignee = (() => {
+      if (assigneeFilter === 'ALL') return true;
+      if (isMyTasks) {
+        const selectedUser = users.find((u) => u.id === assigneeFilter);
+        return (
+          t.createdBy === assigneeFilter ||
+          (selectedUser && t.createdBy === selectedUser.name) ||
+          (!t.createdBy && (selectedUser?.role === 'ADMIN' || selectedUser?.role === 'SUPER_ADMIN'))
+        );
+      }
+      return (
+        t.assignedTo === assigneeFilter ||
+        Boolean(t.assignees?.some((a) => a.id === assigneeFilter))
+      );
+    })();
 
     const matchesCreatedDate = (() => {
       if (!createdDateCustom) return true;
@@ -729,7 +752,7 @@ export function KanbanBoard({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Cari tugas, deskripsi..."
+              placeholder="Cari tugas atau deskripsi..."
               className="h-11 w-full pl-10 pr-12 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-2xl focus:outline-hidden focus:ring-2 focus:ring-[#1E3A8A] text-slate-900 text-xs transition-colors font-medium shadow-2xs"
             />
             {searchTerm && (
@@ -804,7 +827,7 @@ export function KanbanBoard({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Cari tugas, deskripsi..."
+                placeholder="Cari tugas atau deskripsi..."
                 className="h-10 w-full pl-9 pr-3.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#1E3A8A] text-slate-900 text-xs transition-colors font-medium"
               />
               {searchTerm && (
@@ -840,7 +863,7 @@ export function KanbanBoard({
         {/* BARIS 2: Dedicated Filter Strip (Desktop: selalu tampil | Mobile: hanya tampil jika panah filter diklik) */}
         <div className={`${isMobileFilterOpen ? 'flex' : 'hidden'} sm:flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5 sm:gap-3 bg-slate-50/90 p-3 sm:p-2.5 md:p-3 rounded-2xl border border-slate-200/80 text-xs w-full animate-in fade-in slide-in-from-top-1 duration-150`}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 flex-1 min-w-0">
-            {/* Filter 1: Pelaksana Tugas (Assignee) */}
+            {/* Filter 1: Pelaksana Tugas (Assignee) / Dibuat oleh (Creator pada Tugas Saya) */}
             <div
               className={`flex items-center gap-2.5 h-12 sm:h-10 px-4 sm:px-3 rounded-xl border transition-all shadow-2xs min-w-0 ${
                 assigneeFilter !== 'ALL'
@@ -848,15 +871,17 @@ export function KanbanBoard({
                   : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
               }`}
             >
-              <span className="text-xs font-semibold text-slate-500 whitespace-nowrap shrink-0">Pelaksana:</span>
+              <span className="text-xs font-semibold text-slate-500 whitespace-nowrap shrink-0">
+                {isMyTasks ? 'Dibuat oleh:' : 'Pelaksana:'}
+              </span>
               <div className="relative flex items-center flex-1 min-w-0">
                 <select
                   value={assigneeFilter}
                   onChange={(e) => setAssigneeFilter(e.target.value)}
                   className="w-full appearance-none pr-6 bg-transparent font-semibold text-slate-900 text-xs focus:outline-hidden cursor-pointer truncate py-1.5"
                 >
-                  <option value="ALL">Semua Rekan</option>
-                  {users.map((u) => (
+                  <option value="ALL">{isMyTasks ? 'Semua Pembuat' : 'Semua Rekan'}</option>
+                  {(isMyTasks ? creatorUsers : users).map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.name}
                     </option>
@@ -1033,16 +1058,21 @@ export function KanbanBoard({
                         return (
                           <div
                             key={task.id}
-                            onClick={() => openTaskDetail(task)}
-                            className={`bg-white rounded-2xl p-5 border ${cardProcessBorder} shadow-2xs hover:shadow-md transition-all duration-200 cursor-pointer space-y-3.5 group`}
+                            onClick={() => {
+                              if (task.status === 'TODO') return;
+                              openTaskDetail(task);
+                            }}
+                            className={`bg-white rounded-2xl p-5 border ${cardProcessBorder} shadow-2xs hover:shadow-md transition-all duration-200 ${
+                              task.status === 'TODO' ? 'cursor-default' : 'cursor-pointer'
+                            } space-y-3.5 group`}
                           >
-                            {/* Baris Atas: Priority Badge & 3 Dots Menu / Button Hapus jika Selesai */}
+                            {/* Baris Atas: Priority Badge & 3 Dots Menu / Button Hapus jika PIC */}
                             <div className="flex items-center justify-between gap-2">
                               <div>
                                 {getPriorityBadge(task.priority)}
                               </div>
 
-                              {task.status === 'REVIEWED' ? (
+                              {isPIC ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1050,11 +1080,11 @@ export function KanbanBoard({
                                     handleDeleteTask(task.id);
                                   }}
                                   className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
-                                  title="Hapus Tugas Selesai"
+                                  title="Hapus Tugas"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
-                              ) : (
+                              ) : task.status !== 'TODO' ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1066,7 +1096,7 @@ export function KanbanBoard({
                                 >
                                   <span className="text-base font-bold leading-none tracking-widest">&#8942;</span>
                                 </button>
-                              )}
+                              ) : null}
                             </div>
 
                             {/* Judul Tugas */}
@@ -1152,7 +1182,7 @@ export function KanbanBoard({
 
                             {/* Tombol Aksi Sesuai Flow Penugasan ke PIC */}
                             <div className="pt-1 flex flex-wrap items-center gap-1.5 text-xs">
-                              {/* 1. TO-DO: Mulai Kerjakan (Jika tugas ini ditugaskan ke saya, baik Admin maupun Karyawan bisa Mulai Kerjakan!) */}
+                              {/* 1. TO-DO: Mulai Mengerjakan (Jika tugas ini ditugaskan ke saya, baik Admin maupun Karyawan bisa Mulai Mengerjakan!) */}
                               {task.status === 'TODO' && isMyTask && (
                                 <button
                                   type="button"
@@ -1162,7 +1192,7 @@ export function KanbanBoard({
                                   }}
                                   className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
                                 >
-                                  <span>Mulai Kerjakan</span>
+                                  <span>Mulai Mengerjakan</span>
                                   <ArrowRight className="w-3.5 h-3.5" />
                                 </button>
                               )}
@@ -1191,9 +1221,7 @@ export function KanbanBoard({
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleUpdateStatus(task.id, 'REVIEWED', {
-                                          reviewNotes: 'Penugasan Selesai (ACC oleh PIC)',
-                                        });
+                                        handleUpdateStatus(task.id, 'REVIEWED');
                                       }}
                                       className="py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 font-bold rounded-xl text-center transition-all shadow-2xs cursor-pointer flex items-center justify-center gap-1"
                                       title="Setujui Hasil Kerja (ACC)"
@@ -1300,8 +1328,13 @@ export function KanbanBoard({
                     return (
                       <tr
                         key={task.id}
-                        onClick={() => openTaskDetail(task)}
-                        className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                        onClick={() => {
+                          if (task.status === 'TODO') return;
+                          openTaskDetail(task);
+                        }}
+                        className={`hover:bg-slate-50/80 transition-colors ${
+                          task.status === 'TODO' ? 'cursor-default' : 'cursor-pointer'
+                        } group`}
                       >
                         <td className="py-3.5 px-4 max-w-[280px]">
                           <div className="font-bold text-slate-900 leading-snug group-hover:text-indigo-600 transition-colors">
@@ -1369,7 +1402,7 @@ export function KanbanBoard({
                             {stageLabel}
                           </span>
                         </td>
-                        <td className="py-3 px-3.5 font-mono text-slate-700 text-xs whitespace-nowrap">
+                        <td className="py-3 px-3.5 text-slate-700 text-xs whitespace-nowrap">
                           {task.dueDate || '-'}
                         </td>
                       </tr>
@@ -1382,781 +1415,15 @@ export function KanbanBoard({
         </div>
       )}
 
-      {/* 4. PANEL SLIDE-OVER SEBELAH KANAN: DETAIL TUGAS & DISKUSI */}
+      {/* 4. DETAIL TUGAS & DISKUSI MODAL */}
       {activeTaskDetail && (
-        <div
-          className={`fixed inset-0 z-50 flex animate-in fade-in duration-200 ${
-            isTaskDetailFullScreen
-              ? 'items-center justify-center p-0'
-              : 'justify-end items-center p-2.5 sm:p-4 md:p-5'
-          }`}
-        >
-          {/* Backdrop Blur */}
-          <div
-            className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity cursor-pointer"
-            onClick={() => setActiveTaskDetail(null)}
-          />
-
-          {/* Dialog Card */}
-          <div
-            className={`relative z-10 bg-white shadow-2xl flex flex-col min-h-0 overflow-hidden transition-all duration-300 font-sans ${
-              isTaskDetailFullScreen
-                ? 'w-full h-full max-w-none max-h-none rounded-none border-0'
-                : 'w-full max-w-md sm:max-w-lg md:max-w-xl h-full max-h-[calc(100vh-1.25rem)] sm:max-h-[calc(100vh-2rem)] rounded-3xl border border-slate-200/80 animate-in slide-in-from-right duration-300 ease-out'
-            }`}
-          >
-            
-            {/* Header Drawer Ringkas, Lega & Terstruktur: Judul -> Deskripsi -> Inline Metadata */}
-            <div className="px-5 py-4 border-b border-slate-100 bg-white space-y-3 shrink-0">
-              {/* Baris Atas: Zoom (kiri), Judul & Deskripsi Tugas (tengah), Tutup Panel (kanan) */}
-              <div className="flex items-start justify-between gap-3">
-                {/* Zoom / Fullscreen Button di pojok kiri atas */}
-                <div className="w-9 shrink-0 flex items-start">
-                  <button
-                    type="button"
-                    onClick={() => setIsTaskDetailFullScreen(!isTaskDetailFullScreen)}
-                    className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer shrink-0 mt-0.5"
-                    title={isTaskDetailFullScreen ? "Perkecil Tampilan" : "Perbesar Layar Penuh"}
-                  >
-                    {isTaskDetailFullScreen ? (
-                      <Minimize2 className="w-4 h-4 text-slate-600" />
-                    ) : (
-                      <Maximize2 className="w-4 h-4 text-slate-600" />
-                    )}
-                  </button>
-                </div>
-
-                {/* Judul & Subjudul diposisikan di tengah persis seperti di Ruang Obrolan */}
-                <div className="flex-1 min-w-0 text-center px-1 sm:px-3 space-y-1.5 flex flex-col items-center justify-center pt-2.5 sm:pt-3">
-                  <h2 className="text-sm sm:text-[15px] font-bold text-slate-900 tracking-tight leading-snug max-w-2xl">
-                    {activeTaskDetail.title}
-                  </h2>
-                  {activeTaskDetail.description && (
-                    <p className="text-slate-500 text-[11px] sm:text-xs leading-relaxed font-normal whitespace-pre-wrap max-w-2xl">
-                      {activeTaskDetail.description}
-                    </p>
-                  )}
-                </div>
-
-                {/* Container Tombol Tutup Panel di pojok kanan atas */}
-                <div className="w-9 shrink-0 flex items-start justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTaskDetail(null)}
-                    className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0 mt-0.5"
-                    title="Tutup Panel"
-                  >
-                    <X className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Garis Pemisah Tipis */}
-              <div className="border-t border-slate-100 pt-0.5" />
-
-              {/* Baris Metadata: Kiri (Status & Pelaksana), Kanan (Tanggal & PIC) - Tetap utuh */}
-              {(() => {
-                const activeTaskPicUser = users.find(
-                  (u) => u.id === activeTaskDetail.createdBy || u.role === 'ADMIN'
-                );
-                const activeTaskPicName = activeTaskPicUser?.name || 'Administrator';
-                const shortDueDate = formatIndonesianDateShort(activeTaskDetail.dueDate) || activeTaskDetail.dueDate;
-                const isPICActive = isAdmin || activeTaskDetail.createdBy === currentUser.id;
-                const isMyTaskActive = activeTaskDetail.assignedTo === currentUser.id || Boolean(activeTaskDetail.assignees?.some((a) => a.id === currentUser.id));
-
-                return (
-                  <div className="flex items-start justify-between gap-4 pt-0.5 text-xs text-slate-500">
-                    {/* Kolom Kiri: Status di atas, Pelaksana di bawah */}
-                    <div className="flex flex-col items-start gap-2 min-w-0">
-                      {/* Baris 1: Status Badge */}
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span
-                          className={`inline-flex items-center gap-1.5 font-semibold px-2.5 py-0.5 rounded-full text-[11px] border ${
-                            activeTaskDetail.status === 'REVIEWED'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : activeTaskDetail.status === 'DONE'
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                              : activeTaskDetail.status === 'IN_PROGRESS'
-                              ? 'bg-blue-50 text-blue-600 border-blue-200'
-                              : 'bg-slate-100 text-slate-700 border-slate-200'
-                          }`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              activeTaskDetail.status === 'REVIEWED'
-                                ? 'bg-emerald-600'
-                                : activeTaskDetail.status === 'DONE'
-                                ? 'bg-amber-500 animate-pulse'
-                                : activeTaskDetail.status === 'IN_PROGRESS'
-                                ? 'bg-blue-500 animate-pulse'
-                                : 'bg-slate-400'
-                            }`}
-                          />
-                          {activeTaskDetail.status === 'TODO' && 'Penugasan'}
-                          {activeTaskDetail.status === 'IN_PROGRESS' && 'Dalam Proses'}
-                          {activeTaskDetail.status === 'DONE' && 'Tinjauan Tugas'}
-                          {activeTaskDetail.status === 'REVIEWED' && 'Selesai'}
-                        </span>
-
-                        {activeTaskDetail.status === 'TODO' && isMyTaskActive && (
-                          <button
-                            type="button"
-                            onClick={handleStartTask}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded text-[11px] transition-colors cursor-pointer"
-                          >
-                            <ArrowRight className="w-3 h-3" />
-                            <span>Mulai</span>
-                          </button>
-                        )}
-
-                        {activeTaskDetail.status === 'REVIEWED' && isPICActive && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleUpdateStatus(activeTaskDetail.id, 'IN_PROGRESS', {
-                                reviewNotes: 'Tugas dibuka kembali oleh PIC untuk penyesuaian lanjutan.',
-                              });
-                            }}
-                            className="text-[11px] text-slate-500 hover:text-slate-800 font-medium underline underline-offset-2 cursor-pointer"
-                          >
-                            Buka Kembali
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Baris 2: Pelaksana di bawah Dalam Proses */}
-                      {activeTaskDetail.assignees && activeTaskDetail.assignees.length > 1 ? (
-                        <div className="flex items-center gap-1.5 text-xs flex-wrap" title={`Pelaksana: ${activeTaskDetail.assignees.map((a) => a.name).join(', ')}`}>
-                          <div className="flex items-center -space-x-1.5 shrink-0">
-                            {activeTaskDetail.assignees.slice(0, 4).map((a, i) => (
-                              a.avatar ? (
-                                <img
-                                  key={i}
-                                  src={a.avatar}
-                                  alt={a.name}
-                                  title={a.name}
-                                  className="w-5 h-5 rounded-full object-cover shrink-0 border border-white"
-                                />
-                              ) : (
-                                <div
-                                  key={i}
-                                  className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 font-bold text-[9px] flex items-center justify-center shrink-0 border border-white"
-                                  title={a.name}
-                                >
-                                  {a.name.substring(0, 2).toUpperCase()}
-                                </div>
-                              )
-                            ))}
-                          </div>
-                          <span className="font-medium text-slate-700 truncate max-w-[150px]">
-                            {activeTaskDetail.assignees.map((a) => a.name.split(' ')[0]).join(', ')}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5 text-xs" title={`Pelaksana: ${activeTaskDetail.assignedName}`}>
-                          {activeTaskDetail.assignedAvatar ? (
-                            <img
-                              src={activeTaskDetail.assignedAvatar}
-                              alt={activeTaskDetail.assignedName}
-                              className="w-5 h-5 rounded-full object-cover shrink-0 border border-slate-200"
-                            />
-                          ) : (
-                            <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 font-bold text-[9px] flex items-center justify-center shrink-0">
-                              {activeTaskDetail.assignedName
-                                ? activeTaskDetail.assignedName.substring(0, 2).toUpperCase()
-                                : 'ST'}
-                            </div>
-                          )}
-                          <span className="font-medium text-slate-700">{formatChipName(activeTaskDetail.assignedName)}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Kolom Kanan: Tanggal di atas, PIC di bawahnya (berjarak di sisi kanan) */}
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      {/* Baris 1: Tanggal Tenggat */}
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="text-slate-700 font-medium">{shortDueDate}</span>
-                      </div>
-
-                      {/* Baris 2: PIC di bawah Tanggal */}
-                      <div className="flex items-center gap-1.5 text-xs" title={`PIC: ${activeTaskPicName}`}>
-                        {activeTaskPicUser?.avatar ? (
-                          <img
-                            src={activeTaskPicUser.avatar}
-                            alt={activeTaskPicName}
-                            className="w-5 h-5 rounded-full object-cover shrink-0 border border-slate-200"
-                          />
-                        ) : (
-                          <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
-                        )}
-                        <span className="font-medium text-slate-700">{formatChipName(activeTaskPicName)}</span>
-                        <span className="text-[10px] text-slate-400 font-normal">• PIC</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {(() => {
-              const activeTaskPicUser = users.find(
-                (u) => u.id === activeTaskDetail.createdBy || u.role === 'ADMIN'
-              );
-              const activeTaskPicName = activeTaskPicUser?.name || 'Administrator (PIC)';
-              const isPICActive = isAdmin || activeTaskDetail.createdBy === currentUser.id;
-
-              return (
-                <>
-                  {/* 2. MIDDLE CONTENT: AREA CHAT & RIWAYAT PREVIEW (Scrollable Independen) */}
-                  <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-3.5 bg-slate-50/40">
-
-                    {(() => {
-                      const activities = getTaskActivities(activeTaskDetail, users);
-
-                      {/* Sederhanakan tampilan Empty State: kasual, ringkas & minimalis */}
-                      if (activities.length === 0) {
-                        return (
-                          <div className="h-full flex-1 flex flex-col items-center justify-center py-10 px-6 text-center select-none">
-                            <div className="w-8 h-8 rounded-full bg-slate-100/90 flex items-center justify-center mb-1.5 text-slate-300">
-                              <MessageSquare className="w-3.5 h-3.5" />
-                            </div>
-                            <p className="text-xs text-slate-400 font-medium select-none">
-                              Belum Ada Pesan
-                            </p>
-                          </div>
-                        );
-                      }
-
-                      let lastDateKey = '';
-
-                      return (
-                        <div className="space-y-3 pb-2">
-                          {activities.map((act, index) => {
-                            const isMe = act.userId === currentUser.id;
-                            const isImageAtt = (att: TaskAttachment) =>
-                              att.url.startsWith('data:image/') ||
-                              att.fileType?.startsWith('image/') ||
-                              /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(att.name);
-
-                            const isSenderPIC =
-                              act.userRole === 'ADMIN' ||
-                              act.userRole === 'SUPER_ADMIN' ||
-                              act.userId === activeTaskDetail.createdBy;
-
-                            const dateKey = formatActivityDateDivider(act.timestamp);
-                            const showDateDivider = dateKey !== lastDateKey;
-                            if (showDateDivider) {
-                              lastDateKey = dateKey;
-                            }
-
-                            const timeOnly = extractActivityTime(act.timestamp) || act.timestamp;
-
-                            return (
-                              <React.Fragment key={act.id || index}>
-                                {/* Pemisah Tanggal (Date Divider) */}
-                                {showDateDivider && (
-                                  <div className="flex items-center justify-center my-3 select-none">
-                                    <div className="h-px bg-slate-200/90 flex-1" />
-                                    <span className="mx-3 px-2.5 py-0.5 rounded-full bg-white border border-slate-200/80 text-[10px] font-semibold text-slate-500 tracking-wide shadow-2xs">
-                                      {dateKey}
-                                    </span>
-                                    <div className="h-px bg-slate-200/90 flex-1" />
-                                  </div>
-                                )}
-
-                                 {/* Bubble Chat Dua Sisi - Gaya Ruang Obrolan */}
-                                {isMe ? (
-                                  /* 2. Pesan dari Diri Sendiri (Kanan) */
-                                  <div className="flex flex-col items-end self-end max-w-[80%] sm:max-w-[75%] ml-auto animate-in fade-in duration-150">
-                                    {/* Bubble Chat Biru Khas iOS / Ruang Obrolan */}
-                                    <div className="bg-[#007AFF] text-white px-4 py-2.5 rounded-2xl rounded-br-xs text-xs sm:text-sm leading-relaxed shadow-2xs">
-                                      {act.type === 'SUBMITTED' && (
-                                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/20 text-white text-[10px] font-bold mb-1">
-                                          <FileCheck className="w-3 h-3" />
-                                          <span>Preview Deliverable Diajukan</span>
-                                        </div>
-                                      )}
-
-                                      {act.notes && (
-                                        <div className="whitespace-pre-wrap">
-                                          {act.notes.split(' ').map((word, idx) => {
-                                            if (word.startsWith('@')) {
-                                              return (
-                                                <span
-                                                  key={idx}
-                                                  className="text-yellow-200 font-semibold bg-white/20 px-1 py-0.5 rounded-md mr-0.5"
-                                                >
-                                                  {word}{' '}
-                                                </span>
-                                              );
-                                            }
-                                            return word + ' ';
-                                          })}
-                                        </div>
-                                      )}
-
-                                      {/* Lampiran berkas / link */}
-                                      {act.attachments && act.attachments.length > 0 && (
-                                        <div className="pt-2 flex flex-wrap gap-2">
-                                          {act.attachments.map((att) => {
-                                            const isImg = isImageAtt(att) || isImageFile(att.url, att.fileType) || isImageFile(att.name, att.fileType);
-                                            if (isImg && att.url && att.url !== '#') {
-                                              return (
-                                                <div
-                                                  key={att.id}
-                                                  onClick={() => setMediaPreview({
-                                                    url: att.url,
-                                                    name: att.name,
-                                                    type: 'FILE',
-                                                    fileType: att.fileType,
-                                                    fileSize: att.fileSize,
-                                                  })}
-                                                  className="relative group overflow-hidden rounded-xl border border-white/40 max-w-[180px] cursor-pointer shadow-2xs hover:shadow-md transition-all"
-                                                  title={`Buka gambar ${att.name}`}
-                                                >
-                                                  <img
-                                                    src={att.url}
-                                                    alt={att.name}
-                                                    className="w-full h-24 object-cover rounded-xl transition-transform duration-200 group-hover:scale-105"
-                                                  />
-                                                  <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-[10px] gap-1">
-                                                    <Maximize2 className="w-3.5 h-3.5 text-white" />
-                                                    <span>Buka</span>
-                                                  </div>
-                                                </div>
-                                              );
-                                            }
-                                            return (
-                                              <button
-                                                key={att.id}
-                                                type="button"
-                                                onClick={() => {
-                                                  if (att.type === 'LINK') {
-                                                    openExternalLink(att.url);
-                                                  } else {
-                                                    setMediaPreview({
-                                                      url: att.url,
-                                                      name: att.name,
-                                                      type: att.type,
-                                                      fileType: att.fileType,
-                                                      fileSize: att.fileSize,
-                                                    });
-                                                  }
-                                                }}
-                                                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/25 hover:bg-white/35 active:scale-95 border border-white/30 rounded-xl text-[11px] font-semibold text-white transition-all cursor-pointer shadow-2xs"
-                                                title={`Buka ${att.name}`}
-                                              >
-                                                {att.type === 'LINK' ? <Globe className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
-                                                <span className="truncate max-w-[130px]">{att.name}</span>
-                                                <ExternalLink className="w-3 h-3 opacity-70 ml-0.5" />
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {/* Status / Timestamp */}
-                                    <div className="flex items-center gap-1.5 mr-2 mt-1">
-                                      <span className="text-[10px] text-gray-400">
-                                        {timeOnly} · Terkirim
-                                      </span>
-                                      {(act.userId === currentUser.id || isAdmin) && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleDeleteActivity(act.id)}
-                                          className="text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 p-0.5 rounded transition-all cursor-pointer"
-                                          title="Hapus pesan"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  /* 1. Pesan dari Rekan / PIC (Kiri) */
-                                  <div className="flex items-end gap-2 max-w-[80%] sm:max-w-[75%] animate-in fade-in duration-150">
-                                    {/* Avatar di pojok kiri bawah */}
-                                    <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 border border-slate-300 shrink-0 mb-1">
-                                      {act.userAvatar ? (
-                                        <img
-                                          src={act.userAvatar}
-                                          alt={act.userName}
-                                          className="w-full h-full object-cover"
-                                        />
-                                      ) : (
-                                        <div className="w-full h-full flex items-center justify-center font-bold text-xs text-slate-700 bg-purple-100">
-                                          {act.userName ? act.userName.charAt(0).toUpperCase() : 'U'}
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    <div className="flex flex-col items-start min-w-0">
-                                      {/* Nama Pengirim & Badge Role */}
-                                      <div className="flex items-center gap-1.5 ml-3 mb-1">
-                                        <span className="text-[11px] font-semibold text-gray-500">
-                                          {act.userName}
-                                        </span>
-                                        {isSenderPIC ? (
-                                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                            PIC
-                                          </span>
-                                        ) : (
-                                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
-                                            Pelaksana
-                                          </span>
-                                        )}
-                                      </div>
-
-                                      {/* Bubble Chat Abu-abu Khas iOS / Ruang Obrolan */}
-                                      <div className="bg-[#E9E9EB] text-gray-900 px-4 py-2.5 rounded-2xl rounded-bl-xs text-xs sm:text-sm leading-relaxed shadow-2xs">
-                                        {act.type === 'APPROVED' && (
-                                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold mb-1">
-                                            <CheckCircle2 className="w-3 h-3" />
-                                            <span>Penugasan Disetujui (ACC) - Selesai</span>
-                                          </div>
-                                        )}
-                                        {act.type === 'REVISION_REQUESTED' && (
-                                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-bold mb-1">
-                                            <RotateCcw className="w-3 h-3" />
-                                            <span>Arahan Revisi dari PIC</span>
-                                          </div>
-                                        )}
-                                        {act.type === 'SUBMITTED' && (
-                                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-600 text-white text-[10px] font-bold mb-1">
-                                            <FileCheck className="w-3 h-3" />
-                                            <span>Preview Deliverable Diajukan</span>
-                                          </div>
-                                        )}
-
-                                        {act.notes && (
-                                          <div className="whitespace-pre-wrap">
-                                            {act.notes.split(' ').map((word, idx) => {
-                                              if (word.startsWith('@')) {
-                                                return (
-                                                  <span
-                                                    key={idx}
-                                                    className="text-[#007AFF] font-bold bg-blue-50/80 px-1 py-0.5 rounded-md border border-blue-200/60 mr-0.5"
-                                                  >
-                                                    {word}{' '}
-                                                  </span>
-                                                );
-                                              }
-                                              return word + ' ';
-                                            })}
-                                          </div>
-                                        )}
-
-                                        {/* Lampiran berkas / link */}
-                                        {act.attachments && act.attachments.length > 0 && (
-                                          <div className="pt-2 flex flex-wrap gap-2">
-                                            {act.attachments.map((att) => {
-                                              const isImg = isImageAtt(att) || isImageFile(att.url, att.fileType) || isImageFile(att.name, att.fileType);
-                                              if (isImg && att.url && att.url !== '#') {
-                                                return (
-                                                  <div
-                                                    key={att.id}
-                                                    onClick={() => setMediaPreview({
-                                                      url: att.url,
-                                                      name: att.name,
-                                                      type: 'FILE',
-                                                      fileType: att.fileType,
-                                                      fileSize: att.fileSize,
-                                                    })}
-                                                    className="relative group overflow-hidden rounded-xl border border-slate-300 max-w-[180px] cursor-pointer shadow-2xs hover:shadow-md transition-all"
-                                                    title={`Buka gambar ${att.name}`}
-                                                  >
-                                                    <img
-                                                      src={att.url}
-                                                      alt={att.name}
-                                                      className="w-full h-24 object-cover rounded-xl transition-transform duration-200 group-hover:scale-105"
-                                                    />
-                                                    <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-[10px] gap-1">
-                                                      <Maximize2 className="w-3.5 h-3.5 text-white" />
-                                                      <span>Buka</span>
-                                                    </div>
-                                                  </div>
-                                                );
-                                              }
-                                              return (
-                                                <button
-                                                  key={att.id}
-                                                  type="button"
-                                                  onClick={() => {
-                                                    if (att.type === 'LINK') {
-                                                      openExternalLink(att.url);
-                                                    } else {
-                                                      setMediaPreview({
-                                                        url: att.url,
-                                                        name: att.name,
-                                                        type: att.type,
-                                                        fileType: att.fileType,
-                                                        fileSize: att.fileSize,
-                                                      });
-                                                    }
-                                                  }}
-                                                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 rounded-xl text-[11px] font-semibold text-[#1E3A8A] transition-all cursor-pointer shadow-2xs"
-                                                  title={`Buka ${att.name}`}
-                                                >
-                                                  {att.type === 'LINK' ? <Globe className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
-                                                  <span className="truncate max-w-[130px]">{att.name}</span>
-                                                  <ExternalLink className="w-3 h-3 opacity-70 ml-0.5" />
-                                                </button>
-                                              );
-                                            })}
-                                          </div>
-                                        )}
-                                      </div>
-
-                                      {/* Status / Timestamp */}
-                                      <div className="flex items-center gap-1.5 ml-3 mt-1">
-                                        <span className="text-[10px] text-gray-400">
-                                          {timeOnly}
-                                        </span>
-                                        {(act.userId === currentUser.id || isAdmin) && (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleDeleteActivity(act.id)}
-                                            className="text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 p-0.5 rounded transition-all cursor-pointer"
-                                            title="Hapus pesan"
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </React.Fragment>
-                            );
-                          })}
-                          <div ref={messagesEndRef} />
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* 3. BOTTOM CHAT INPUT BAR: Ramping, Melekat di Bawah */}
-                  <div className="p-3 sm:p-4 border-t border-slate-100 bg-white shrink-0 space-y-2">
-                    {/* Mode Khusus PIC Reviewing in DONE status */}
-                    {isPICActive && activeTaskDetail.status === 'DONE' && (
-                      <div className="flex items-center gap-1.5 p-1 bg-slate-100/70 rounded-xl border border-slate-200/80 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => setPicDecision('APPROVE')}
-                          className={`flex-1 py-1.5 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                            picDecision === 'APPROVE'
-                              ? 'bg-emerald-100 border-emerald-400 text-emerald-800 shadow-2xs ring-2 ring-emerald-400/30'
-                              : 'bg-emerald-50/60 border-emerald-200/60 text-emerald-700 hover:bg-emerald-100/70 font-semibold'
-                          }`}
-                        >
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Setujui (ACC)</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPicDecision('REVISION')}
-                          className={`flex-1 py-1.5 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                            picDecision === 'REVISION'
-                              ? 'bg-rose-100 border-rose-400 text-rose-800 shadow-2xs ring-2 ring-rose-400/30'
-                              : 'bg-rose-50/60 border-rose-200/60 text-rose-700 hover:bg-rose-100/70 font-semibold'
-                          }`}
-                        >
-                          <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
-                          <span>Minta Revisi</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Popover Sematkan Tautan */}
-                    {showPreviewAddLink && (
-                      <div className="p-3 bg-white rounded-2xl border border-sky-200 shadow-md space-y-2 animate-in fade-in duration-150">
-                        <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-                          <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                            <Link2 className="w-3.5 h-3.5 text-sky-600" />
-                            <span>Sematkan Tautan Deliverable / Preview</span>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setShowPreviewAddLink(false)}
-                            className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                        <input
-                          type="text"
-                          value={previewLinkTitle}
-                          onChange={(e) => setPreviewLinkTitle(e.target.value)}
-                          placeholder="Nama Tautan (misal: Prototipe Figma / Google Docs / PR GitHub)"
-                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 outline-none"
-                        />
-                        <input
-                          type="text"
-                          value={previewLinkUrl}
-                          onChange={(e) => setPreviewLinkUrl(e.target.value)}
-                          placeholder="URL (misal: https://...)"
-                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 outline-none"
-                        />
-                        <div className="flex justify-end gap-1.5 pt-0.5">
-                          <button
-                            type="button"
-                            onClick={handlePreviewAddLink}
-                            className="px-3.5 py-1 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-lg text-xs cursor-pointer shadow-2xs"
-                          >
-                            Sematkan Link
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Preview Chips Lampiran Deliverables */}
-                    {previewAttachments.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1.5 px-0.5">
-                        {previewAttachments.map((att, idx) => (
-                          <div
-                            key={idx}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-sky-50 border border-sky-200 rounded-full text-[11px] font-semibold text-sky-800 shadow-2xs"
-                          >
-                            {att.type === 'FILE' ? (
-                              <Paperclip className="w-3 h-3 text-sky-600 shrink-0" />
-                            ) : (
-                              <Link2 className="w-3 h-3 text-sky-600 shrink-0" />
-                            )}
-                            <span className="max-w-[140px] truncate">{att.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => setPreviewAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                              className="text-slate-400 hover:text-rose-600 p-0.5 rounded-full cursor-pointer"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Baris Input Chat Utama - Persis Dengan Ruang Obrolan (image_50a19f56.png) */}
-                    <div className="flex items-end gap-1.5 sm:gap-2">
-                      {/* Tombol Lampiran Berkas di Sisi Kiri Luar Textarea */}
-                      <label
-                        className="p-2 text-gray-500 hover:text-[#1E3A8A] rounded-full hover:bg-slate-100 transition cursor-pointer shrink-0 mb-0.5"
-                        title="Unggah Foto atau Berkas"
-                      >
-                        <Paperclip className="w-4 h-4" />
-                        <input
-                          type="file"
-                          multiple
-                          className="hidden"
-                          onChange={handlePreviewFileUpload}
-                        />
-                      </label>
-
-                      {/* Tombol Tautan Link */}
-                      <button
-                        type="button"
-                        onClick={() => setShowPreviewAddLink(!showPreviewAddLink)}
-                        title="Sematkan Tautan Link"
-                        className={`p-2 rounded-full transition cursor-pointer shrink-0 mb-0.5 ${
-                          showPreviewAddLink ? 'text-[#1E3A8A] bg-blue-100' : 'text-gray-500 hover:text-[#1E3A8A] hover:bg-slate-100'
-                        }`}
-                      >
-                        <Globe className="w-4 h-4" />
-                      </button>
-
-                      {/* Tombol Mention Rekan (@) */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPreviewNote((prev) => (prev ? `${prev} @` : '@'));
-                        }}
-                        title="Mention Rekan Tim (@)"
-                        className="w-8 h-8 rounded-full text-gray-500 hover:text-[#1E3A8A] hover:bg-slate-100 transition cursor-pointer shrink-0 flex items-center justify-center text-xs font-bold mb-0.5"
-                      >
-                        <span className="text-sm font-bold">@</span>
-                      </button>
-
-                      {/* Textarea Input Box Khas Ruang Obrolan */}
-                      <div className="relative flex-1">
-                        <textarea
-                          rows={1}
-                          value={previewNote}
-                          onChange={(e) => {
-                            setPreviewNote(e.target.value);
-                            e.target.style.height = 'auto';
-                            e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.stopPropagation();
-                            }
-                          }}
-                          placeholder={
-                            isPICActive && activeTaskDetail.status === 'DONE'
-                              ? picDecision === 'APPROVE'
-                                ? 'Tulis konfirmasi penugasan selesai...'
-                                : 'Tulis arahan revisi...'
-                              : isPICActive
-                              ? `Tulis pesan untuk ${activeTaskDetail.assignedName}...`
-                              : 'Tulis pesan atau mention @teman...'
-                          }
-                          className="w-full bg-[#F2F2F7] border border-gray-200/80 rounded-2xl px-4 py-2 text-xs sm:text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30 focus:bg-white transition resize-none max-h-28 overflow-y-auto leading-relaxed"
-                        />
-                      </div>
-
-                      {/* Tombol Send Lingkaran di Sisi Kanan (Persis Ruang Obrolan) */}
-                      <button
-                        type="button"
-                        disabled={!previewNote.trim() && previewAttachments.length === 0}
-                        onClick={() => {
-                          if (isPICActive && activeTaskDetail.status === 'DONE') {
-                            handlePicSubmitReview();
-                          } else if (activeTaskDetail.status === 'REVIEWED') {
-                            handleAddGeneralNote();
-                          } else {
-                            handleSendPreview();
-                          }
-                        }}
-                        className={`w-8 h-8 rounded-full text-white flex items-center justify-center hover:opacity-90 active:scale-95 transition shrink-0 shadow-2xs disabled:opacity-40 cursor-pointer mb-1 ${
-                          isPICActive && activeTaskDetail.status === 'DONE'
-                            ? picDecision === 'APPROVE'
-                              ? 'bg-emerald-600'
-                              : 'bg-rose-600'
-                            : 'bg-[#1E3A8A]'
-                        }`}
-                        title={
-                          isPICActive && activeTaskDetail.status === 'DONE'
-                            ? 'Kirim Evaluasi PIC'
-                            : activeTaskDetail.status === 'REVIEWED'
-                            ? 'Kirim Pesan'
-                            : 'Kirim Pesan'
-                        }
-                      >
-                        <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-                      </button>
-                    </div>
-
-                    {/* Admin Hapus Tugas Button */}
-                    {isAdmin && (
-                      <div className="pt-1 flex items-center justify-end text-[11px] text-slate-400">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteTask(activeTaskDetail.id)}
-                          className="px-2 py-0.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg font-semibold transition-colors flex items-center gap-1 cursor-pointer ml-auto"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          Hapus Tugas
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
+        <TaskDetailModal
+          task={activeTaskDetail}
+          onClose={() => setActiveTaskDetail(null)}
+          currentUser={currentUser}
+          users={users}
+          onRefresh={onRefresh}
+        />
       )}
 
       {/* 5. MODAL BUAT TUGAS BARU OLEH ADMIN */}
@@ -2207,7 +1474,7 @@ export function KanbanBoard({
                     Buat Tugas Baru
                   </h2>
                   <p className="text-slate-500 text-[11px] sm:text-xs leading-relaxed font-normal whitespace-pre-wrap max-w-2xl">
-                    Lengkapi formulir di bawah ini untuk menerbitkan tugas baru bagi anggota tim.
+                    Isi formulir untuk membuat tugas baru.
                   </p>
                 </div>
 
@@ -2439,19 +1706,9 @@ export function KanbanBoard({
 
                   {/* Inline Peringatan Validasi Upload Berkas */}
                   {createTaskUploadError && (
-                    <div className="flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs text-rose-600 bg-rose-50 border border-rose-200/90 rounded-xl animate-in fade-in duration-200">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
-                        <span className="font-medium">{createTaskUploadError}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setCreateTaskUploadError(null)}
-                        className="text-rose-400 hover:text-rose-700 ml-1 shrink-0 cursor-pointer p-0.5"
-                        title="Tutup pesan"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-rose-700 bg-rose-50 border border-rose-200/90 rounded-xl animate-in fade-in duration-200 shadow-2xs">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                      <span className="font-medium">{createTaskUploadError}</span>
                     </div>
                   )}
 
@@ -2499,28 +1756,18 @@ export function KanbanBoard({
                         >
                           <div
                             onClick={() => {
-                              if (att.type === 'LINK') {
-                                openExternalLink(att.url);
-                              } else {
-                                setMediaPreview({
-                                  url: att.url,
-                                  name: att.name,
-                                  type: att.type,
-                                  fileType: att.fileType,
-                                  fileSize: att.fileSize,
-                                });
-                              }
+                              openAttachmentDirectly(att);
                             }}
                             className="flex items-center gap-2.5 truncate cursor-pointer flex-1 min-w-0"
-                            title={`Buka ${att.name}`}
+                            title={`Buka ${att.name} di tab baru`}
                           >
                             <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
                               {att.type === 'FILE' ? <FileText className="w-3.5 h-3.5" /> : <Link2 className="w-3.5 h-3.5" />}
                             </div>
                             <div className="truncate">
                               <span className="truncate font-semibold text-slate-800 block hover:text-[#1E3A8A] transition-colors">{att.name}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                {att.type === 'FILE' ? 'Berkas Unggahan (Klik untuk pratinjau)' : 'Tautan Eksternal (Klik untuk buka)'}
+                              <span className="text-[11px] text-slate-500 font-normal block leading-tight">
+                                {att.type === 'FILE' ? 'Berkas Unggahan (Klik untuk buka di tab baru)' : 'Tautan Eksternal (Klik untuk buka)'}
                               </span>
                             </div>
                           </div>
@@ -2540,14 +1787,7 @@ export function KanbanBoard({
               </div>
 
               {/* Sticky Footer */}
-              <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
+              <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-end gap-3 shrink-0">
                 <button
                   type="submit"
                   disabled={!newAssigneeId}

@@ -92,7 +92,11 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
     } catch (apiErr: any) {
       if (apiErr.status === 403) {
         setIsLoading(false);
-        setErrorMsg(apiErr.message || 'Akun tidak diizinkan masuk.');
+        const msg =
+          apiErr.message && !apiErr.message.toLowerCase().includes('fetch')
+            ? apiErr.message
+            : 'Akun tidak diizinkan masuk atau belum disetujui.';
+        setErrorMsg(msg);
         return;
       }
       // Jika akun dibuat via mock/test harness lokal di browser
@@ -105,7 +109,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
       }
 
       setIsLoading(false);
-      setErrorMsg(apiErr.message || 'Email/username atau password tidak sesuai.');
+      setErrorMsg('Email/username atau password tidak sesuai.');
       return;
     }
 
@@ -152,6 +156,13 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
       });
 
       if (regRes && regRes.user) {
+        const now = new Date();
+        const localYear = now.getFullYear();
+        const localMonth = String(now.getMonth() + 1).padStart(2, '0');
+        const localDay = String(now.getDate()).padStart(2, '0');
+        const localDateStr = `${localYear}-${localMonth}-${localDay}`;
+        const localTimeStr = `${localDateStr} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
         const newUser: UserType = {
           id: regRes.user.id,
           name: regRes.user.name,
@@ -163,9 +174,9 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
           position: regRes.user.position || 'Staf',
           avatar: regRes.user.avatar || '',
           phone: regRes.user.phone || '',
-          joinDate: regRes.user.join_date || '',
+          joinDate: regRes.user.join_date || regRes.user.registered_at?.substring(0, 10) || localDateStr,
           leaveBalance: regRes.user.leave_balance ?? 12,
-          registeredAt: regRes.user.registered_at || '',
+          registeredAt: regRes.user.registered_at || localTimeStr,
           isProfileComplete: false,
         };
 
@@ -210,8 +221,8 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    if (!resetEmail.trim() || !resetName.trim() || !newPassword) {
-      setErrorMsg('Harap isi email, nama lengkap terdaftar, dan password baru.');
+    if (!resetEmail.trim() || !newPassword) {
+      setErrorMsg('Harap isi email terdaftar dan password baru.');
       return;
     }
 
@@ -223,7 +234,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
     setIsLoading(true);
 
     setTimeout(() => {
-      const res = AppStorage.resetPasswordSelfService(resetEmail, resetName, newPassword);
+      const res = AppStorage.resetPasswordSelfService(resetEmail.trim(), resetName.trim(), newPassword);
       setIsLoading(false);
 
       if (!res.success) {
@@ -241,303 +252,319 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
   };
 
   return (
-    <div className="min-h-screen lg:h-screen w-full bg-white flex flex-col lg:flex-row font-sans text-slate-900 antialiased selection:bg-[#0D1C42] selection:text-white overflow-x-hidden">
+    <div className="min-h-screen lg:h-screen w-full bg-[#F3F6FA] lg:bg-white flex flex-col lg:flex-row font-sans text-slate-900 antialiased selection:bg-[#0D1C42] selection:text-white overflow-x-hidden">
       
-      {/* 1. SEBELAH KIRI: DOODLE ILLUSTRATION FLUSH LEFT-BOTTOM (BACKGROUND WHITE) */}
+      {/* 1. KHUSUS DESKTOP (lg:flex): DOODLE ILLUSTRATION FLUSH LEFT-BOTTOM */}
       <div className="hidden lg:flex lg:w-1/2 h-screen sticky top-0 left-0 bg-white items-end justify-start overflow-hidden">
         <InteractiveDoodleScene className="w-full h-full" />
       </div>
 
-      {/* 2. SEBELAH KANAN: FORM MATCHING SCREENSHOT DESIGN (PAS 1 HALAMAN) */}
-      <div className="w-full lg:w-1/2 min-h-screen lg:h-screen flex flex-col items-center justify-center p-5 sm:p-8 lg:p-12 bg-white overflow-y-auto">
+      {/* 2. AREA FORM (DESKTOP KANAN / MOBILE & IPAD/TABLET KARTU UTUH TERPADU PROPORSIONAL) */}
+      <div className="w-full lg:w-1/2 min-h-screen lg:h-screen flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 lg:px-10 lg:py-6 overflow-y-auto">
         
-        <div className="w-full max-w-[360px] sm:max-w-[400px] space-y-6 my-auto py-8 lg:py-0">
+        {/* KARTU TERPADU: UKURAN PROPORSIONAL & LEGA UNTUK MOBILE MAUPUN IPAD/TABLET */}
+        <div className="w-full max-w-[370px] xs:max-w-[380px] sm:max-w-[400px] lg:max-w-[380px] my-auto bg-white rounded-[26px] sm:rounded-[32px] lg:rounded-none shadow-xl shadow-slate-300/40 lg:shadow-none border border-slate-200/90 lg:border-0 overflow-hidden lg:overflow-visible flex flex-col transition-all">
           
-          {/* Header Title Matching Screenshot ("absenku" replace "Welcome back!") */}
-          <div className="text-center space-y-1">
-            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-[#1E3A8A] lowercase font-sans">
-              absenku
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 font-normal">
-              {authMode === 'LOGIN'
-                ? 'Silakan masukkan detail akun Anda'
-                : authMode === 'REGISTER'
-                ? 'Silakan isi data diri untuk membuat akun baru'
-                : 'Atur ulang kata sandi akun Anda'}
-            </p>
+          {/* BAGIAN 1 (ATAS KARTU): DOODLE KARAKTER LEGA DI MOBILE & TABLET/IPAD */}
+          <div className="lg:hidden w-full h-52 xs:h-60 sm:h-68 bg-white relative overflow-hidden flex items-end justify-center select-none shrink-0 pt-2">
+            <InteractiveDoodleScene
+              className="w-full h-full"
+              viewBox="0 80 800 520"
+              preserveAspectRatio="xMidYMin slice"
+            />
           </div>
 
-          {/* Feedback Banners */}
-          {errorMsg && (
-            <div className="p-3 bg-rose-50 border-b border-rose-200 text-rose-700 rounded-lg text-xs flex items-center gap-2 animate-in fade-in">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
+          {/* GARIS PEMISAH ELEGAN ANTARA DOODLE DAN FORM */}
+          <div className="lg:hidden w-full border-b border-slate-200/80" />
 
-          {successMsg && (
-            <div className="p-3 bg-emerald-50 border-b border-emerald-200 text-emerald-800 rounded-lg text-xs flex items-center gap-2 font-medium animate-in fade-in">
-              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-              <span>{successMsg}</span>
+          {/* BAGIAN 2 (BAWAH KARTU): FORM MASUK / DAFTAR / LUPA PASSWORD DENGAN UKURAN LEBIH BESAR SEDIKIT */}
+          <div className="px-6 pt-6 pb-7 xs:px-7 xs:pt-7 xs:pb-8 sm:px-9 sm:pt-8 sm:pb-9 lg:p-0 space-y-4">
+            
+            {/* Header Brand Logo (in-Time indekraf presence system) */}
+            <div className="text-center space-y-2 pb-1 flex flex-col items-center">
+              <img
+                src="/assets/in-time-logo.png"
+                alt="in-Time indekraf presence system"
+                className="h-12 sm:h-14 w-auto object-contain select-none"
+              />
+              <p className="text-xs sm:text-sm text-slate-500 font-normal">
+                {authMode === 'LOGIN'
+                  ? 'Silakan masukkan detail akun Anda'
+                  : authMode === 'REGISTER'
+                  ? 'Silakan isi data diri untuk membuat akun baru'
+                  : 'Atur ulang kata sandi akun Anda'}
+              </p>
             </div>
-          )}
 
-          {/* 1. FORM LOGIN (Matching Underline Style from Screenshot) */}
-          {authMode === 'LOGIN' && (
-            <form onSubmit={handleLoginSubmit} className="space-y-5">
-              {/* Email / Username Underline Field */}
-              <div className="space-y-1 text-left">
-                <label className="block text-xs font-medium text-slate-500">
-                  Email
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={loginIdentifier}
-                  onChange={(e) => setLoginIdentifier(e.target.value)}
-                  placeholder="email@contoh.com"
-                  autoComplete="username"
-                  className="w-full bg-transparent border-b border-slate-300 focus:border-[#0D1C42] focus:outline-hidden py-2 text-sm text-slate-900 font-medium placeholder:text-slate-300 transition-colors"
-                />
+            {/* Feedback Banners */}
+            {errorMsg && (
+              <div className="p-3 bg-rose-50 border border-rose-200/80 text-rose-700 rounded-xl text-xs sm:text-sm flex items-center gap-2 animate-in fade-in shadow-2xs">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                <span>
+                  {errorMsg.toLowerCase().includes('failed to fetch') || errorMsg.toLowerCase().includes('network')
+                    ? 'Email/username atau password tidak sesuai.'
+                    : errorMsg}
+                </span>
               </div>
+            )}
 
-              {/* Password Underline Field */}
-              <div className="space-y-1 text-left">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-medium text-slate-500">
-                    Password
+            {successMsg && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200/80 text-emerald-800 rounded-xl text-xs sm:text-sm flex items-center gap-2 font-medium animate-in fade-in shadow-2xs">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
+            {/* 1. FORM LOGIN */}
+            {authMode === 'LOGIN' && (
+              <form onSubmit={handleLoginSubmit} className="space-y-3.5 sm:space-y-4">
+                {/* Email / Username Field */}
+                <div className="space-y-1 text-left">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                    Email
                   </label>
+                  <input
+                    type="text"
+                    required
+                    value={loginIdentifier}
+                    onChange={(e) => setLoginIdentifier(e.target.value)}
+                    placeholder="email@contoh.com"
+                    autoComplete="username"
+                    className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
+                  />
+                </div>
+
+                {/* Password Field */}
+                <div className="space-y-1 text-left">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                      Password
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('FORGOT_PASSWORD');
+                        setErrorMsg(null);
+                        setSuccessMsg(null);
+                      }}
+                      className="text-xs sm:text-sm text-[#1E3A8A] hover:underline font-semibold transition-colors cursor-pointer"
+                    >
+                      Lupa password?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showLoginPassword ? 'text' : 'password'}
+                      required
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      placeholder="••••••••••••"
+                      autoComplete="current-password"
+                      className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 pr-8 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowLoginPassword(!showLoginPassword)}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#1E3A8A] p-1 cursor-pointer transition-colors"
+                      title={showLoginPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+                    >
+                      {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Primary Pill Button (#1E3A8A Navy Blue) */}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-3 sm:py-3.5 px-6 bg-[#1E3A8A] hover:bg-[#152a65] active:scale-[0.99] disabled:opacity-50 text-white font-bold rounded-full text-sm shadow-md shadow-blue-950/15 transition-all duration-200 cursor-pointer mt-3.5 sm:mt-4"
+                >
+                  {isLoading ? 'Memverifikasi...' : 'Masuk'}
+                </button>
+
+                {/* Centered Sign Up Link */}
+                <div className="flex justify-center pt-2 pb-2">
                   <button
                     type="button"
                     onClick={() => {
-                      setAuthMode('FORGOT_PASSWORD');
+                      setAuthMode('REGISTER');
                       setErrorMsg(null);
                       setSuccessMsg(null);
                     }}
-                    className="text-xs text-slate-500 hover:text-[#0D1C42] font-medium transition-colors cursor-pointer"
+                    className="text-xs sm:text-[13px] text-slate-500 font-normal hover:text-[#1E3A8A] transition-colors cursor-pointer"
                   >
-                    Lupa password?
+                    Belum punya akun?{' '}
+                    <span className="font-semibold text-slate-800 underline underline-offset-2 hover:text-[#1E3A8A]">
+                      Daftar
+                    </span>
                   </button>
                 </div>
-                <div className="relative">
+              </form>
+            )}
+
+            {/* 2. FORM REGISTER (Sign Up) */}
+            {authMode === 'REGISTER' && (
+              <form onSubmit={handleRegisterSubmit} className="space-y-3.5 sm:space-y-4">
+                <div className="space-y-1 text-left">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                    Nama Lengkap
+                  </label>
                   <input
-                    type={showLoginPassword ? 'text' : 'password'}
+                    type="text"
                     required
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    autoComplete="current-password"
-                    className="w-full bg-transparent border-b border-slate-300 focus:border-[#0D1C42] focus:outline-hidden py-2 pr-8 text-sm text-slate-900 font-medium placeholder:text-slate-300 transition-colors"
+                    value={regName}
+                    onChange={(e) => setRegName(e.target.value)}
+                    placeholder="Contoh: Pratama Arhan"
+                    className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
                   />
+                </div>
+
+                <div className="space-y-1 text-left">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    placeholder="email@contoh.com"
+                    className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1 text-left">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showRegPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      value={regPassword}
+                      onChange={(e) => setRegPassword(e.target.value)}
+                      placeholder="Minimal 6 karakter"
+                      className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 pr-8 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegPassword(!showRegPassword)}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#1E3A8A] p-1 cursor-pointer transition-colors"
+                    >
+                      {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-3 sm:py-3.5 px-6 bg-[#1E3A8A] hover:bg-[#152a65] active:scale-[0.99] disabled:opacity-50 text-white font-bold rounded-full text-sm shadow-md shadow-blue-950/15 transition-all duration-200 cursor-pointer mt-3.5 sm:mt-4"
+                >
+                  {isLoading ? 'Mendaftarkan...' : 'Daftar Akun Baru'}
+                </button>
+
+                {/* Centered Login Link Below with Safe Bottom Spacing */}
+                <div className="flex justify-center pt-2 pb-2">
                   <button
                     type="button"
-                    onClick={() => setShowLoginPassword(!showLoginPassword)}
-                    className="absolute right-1 top-2 text-slate-400 hover:text-[#0D1C42] p-0.5 cursor-pointer"
-                    title={showLoginPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+                    onClick={() => {
+                      setAuthMode('LOGIN');
+                      setErrorMsg(null);
+                      setSuccessMsg(null);
+                    }}
+                    className="text-xs sm:text-[13px] text-slate-500 font-normal hover:text-[#1E3A8A] transition-colors cursor-pointer"
                   >
-                    {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    Sudah punya akun?{' '}
+                    <span className="font-semibold text-slate-800 underline underline-offset-2 hover:text-[#1E3A8A]">
+                      Masuk
+                    </span>
                   </button>
                 </div>
-              </div>
+              </form>
+            )}
 
-              {/* Primary Pill Button (#1E3A8A theme) */}
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3.5 px-6 bg-[#1E3A8A] hover:bg-[#172554] disabled:opacity-50 text-white font-semibold rounded-2xl text-sm shadow-xs transition-all duration-200 cursor-pointer mt-2"
-              >
-                {isLoading ? 'Memverifikasi...' : 'Masuk'}
-              </button>
-
-              {/* Small Sign Up Link Below on the Right Side */}
-              <div className="flex justify-end pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('REGISTER');
-                    setErrorMsg(null);
-                    setSuccessMsg(null);
-                  }}
-                  className="text-xs text-slate-500 hover:text-[#0D1C42] font-normal transition-colors cursor-pointer"
-                >
-                  Belum punya akun? <span className="font-semibold text-[#0D1C42] underline underline-offset-2">Daftar</span>
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* 2. FORM REGISTER (Sign Up) */}
-          {authMode === 'REGISTER' && (
-            <form onSubmit={handleRegisterSubmit} className="space-y-4">
-              <div className="space-y-1 text-left">
-                <label className="block text-xs font-medium text-slate-500">
-                  Nama Lengkap
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={regName}
-                  onChange={(e) => setRegName(e.target.value)}
-                  placeholder="Contoh: Pratama Arhan"
-                  className="w-full bg-transparent border-b border-slate-300 focus:border-[#0D1C42] focus:outline-hidden py-2 text-sm text-slate-900 font-medium placeholder:text-slate-300 transition-colors"
-                />
-              </div>
-
-              <div className="space-y-1 text-left">
-                <label className="block text-xs font-medium text-slate-500">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={regEmail}
-                  onChange={(e) => setRegEmail(e.target.value)}
-                  placeholder="email@contoh.com"
-                  className="w-full bg-transparent border-b border-slate-300 focus:border-[#0D1C42] focus:outline-hidden py-2 text-sm text-slate-900 font-medium placeholder:text-slate-300 transition-colors"
-                />
-              </div>
-
-              <div className="space-y-1 text-left">
-                <label className="block text-xs font-medium text-slate-500">
-                  Divisi
-                </label>
-                <input
-                  type="text"
-                  value={regDepartment}
-                  onChange={(e) => setRegDepartment(e.target.value)}
-                  placeholder="Contoh: Operasional / Marketing / IT"
-                  className="w-full bg-transparent border-b border-slate-300 focus:border-[#0D1C42] focus:outline-hidden py-2 text-sm text-slate-900 font-medium placeholder:text-slate-300 transition-colors"
-                />
-              </div>
-
-              <div className="space-y-1 text-left">
-                <label className="block text-xs font-medium text-slate-500">
-                  Password
-                </label>
-                <div className="relative">
+            {/* 3. FORM LUPA PASSWORD */}
+            {authMode === 'FORGOT_PASSWORD' && (
+              <form onSubmit={handleResetPasswordSubmit} className="space-y-3.5 sm:space-y-4">
+                <div className="space-y-1 text-left">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                    Email Terdaftar <span className="text-rose-500">*</span>
+                  </label>
                   <input
-                    type={showRegPassword ? 'text' : 'password'}
+                    type="email"
                     required
-                    minLength={6}
-                    value={regPassword}
-                    onChange={(e) => setRegPassword(e.target.value)}
-                    placeholder="Minimal 6 karakter"
-                    className="w-full bg-transparent border-b border-slate-300 focus:border-[#0D1C42] focus:outline-hidden py-2 pr-8 text-sm text-slate-900 font-medium placeholder:text-slate-300 transition-colors"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    placeholder="contoh: superadmin@gmail.com"
+                    className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
                   />
+                </div>
+
+                <div className="space-y-1 text-left">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                    Nama Lengkap Terdaftar <span className="text-slate-400 text-[10px] sm:text-xs font-normal">(Opsional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={resetName}
+                    onChange={(e) => setResetName(e.target.value)}
+                    placeholder="Contoh: Super Admin"
+                    className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1 text-left">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                    Password Baru
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Minimal 6 karakter"
+                      className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 pr-8 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#1E3A8A] p-1 cursor-pointer transition-colors"
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-3 sm:py-3.5 px-6 bg-[#1E3A8A] hover:bg-[#152a65] active:scale-[0.99] disabled:opacity-50 text-white font-bold rounded-full text-sm shadow-md shadow-blue-950/15 transition-all duration-200 cursor-pointer mt-3.5 sm:mt-4"
+                >
+                  {isLoading ? 'Memproses...' : 'Simpan Password Baru'}
+                </button>
+
+                <div className="flex justify-center items-center pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowRegPassword(!showRegPassword)}
-                    className="absolute right-1 top-2 text-slate-400 hover:text-[#0D1C42] p-0.5 cursor-pointer"
+                    onClick={() => {
+                      setAuthMode('LOGIN');
+                      setErrorMsg(null);
+                      setSuccessMsg(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs sm:text-sm text-slate-500 hover:text-[#1E3A8A] font-semibold transition-colors cursor-pointer"
                   >
-                    {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span>Kembali ke Halaman Masuk</span>
                   </button>
                 </div>
-              </div>
+              </form>
+            )}
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3.5 px-6 bg-[#1E3A8A] hover:bg-[#172554] disabled:opacity-50 text-white font-semibold rounded-2xl text-sm shadow-xs transition-all duration-200 cursor-pointer mt-2"
-              >
-                {isLoading ? 'Mendaftarkan...' : 'Daftar Akun Baru'}
-              </button>
-
-              {/* Small Login Link Below on the Right Side */}
-              <div className="flex justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('LOGIN');
-                    setErrorMsg(null);
-                    setSuccessMsg(null);
-                  }}
-                  className="text-xs text-slate-500 hover:text-[#0D1C42] font-normal transition-colors cursor-pointer"
-                >
-                  Sudah punya akun? <span className="font-semibold text-[#0D1C42] underline underline-offset-2">Masuk</span>
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* 3. FORM LUPA PASSWORD */}
-          {authMode === 'FORGOT_PASSWORD' && (
-            <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
-              <div className="space-y-1 text-left">
-                <label className="block text-xs font-medium text-slate-500">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={resetEmail}
-                  onChange={(e) => setResetEmail(e.target.value)}
-                  placeholder="email@contoh.com"
-                  className="w-full bg-transparent border-b border-slate-300 focus:border-[#0D1C42] focus:outline-hidden py-2 text-sm text-slate-900 font-medium placeholder:text-slate-300 transition-colors"
-                />
-              </div>
-
-              <div className="space-y-1 text-left">
-                <label className="block text-xs font-medium text-slate-500">
-                  Nama Lengkap Terdaftar
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={resetName}
-                  onChange={(e) => setResetName(e.target.value)}
-                  placeholder="Masukkan nama lengkap"
-                  className="w-full bg-transparent border-b border-slate-300 focus:border-[#0D1C42] focus:outline-hidden py-2 text-sm text-slate-900 font-medium placeholder:text-slate-300 transition-colors"
-                />
-              </div>
-
-              <div className="space-y-1 text-left">
-                <label className="block text-xs font-medium text-slate-500">
-                  Password Baru
-                </label>
-                <div className="relative">
-                  <input
-                    type={showNewPassword ? 'text' : 'password'}
-                    required
-                    minLength={6}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Minimal 6 karakter"
-                    className="w-full bg-transparent border-b border-slate-300 focus:border-[#0D1C42] focus:outline-hidden py-2 pr-8 text-sm text-slate-900 font-medium placeholder:text-slate-300 transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute right-1 top-2 text-slate-400 hover:text-[#0D1C42] p-0.5 cursor-pointer"
-                  >
-                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3.5 px-6 bg-[#1E3A8A] hover:bg-[#172554] disabled:opacity-50 text-white font-semibold rounded-2xl text-sm shadow-xs transition-all duration-200 cursor-pointer mt-2"
-              >
-                {isLoading ? 'Memproses...' : 'Simpan Password Baru'}
-              </button>
-
-              <div className="flex justify-between items-center pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('LOGIN');
-                    setErrorMsg(null);
-                    setSuccessMsg(null);
-                  }}
-                  className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-[#0D1C42] font-medium transition-colors cursor-pointer"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Kembali ke Halaman Masuk</span>
-                </button>
-              </div>
-            </form>
-          )}
+          </div>
 
         </div>
 

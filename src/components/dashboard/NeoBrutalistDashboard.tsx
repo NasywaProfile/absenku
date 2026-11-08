@@ -10,6 +10,7 @@ import {
   Trash2,
   CalendarCheck,
   Calendar,
+  CalendarDays,
   ListTodo,
   ClipboardList,
   CheckCircle2,
@@ -21,13 +22,15 @@ import {
   Send,
   RotateCcw,
   AlertCircle,
+  AlertTriangle,
   MessageSquare,
   ArrowLeftRight,
+  MapPin,
 } from 'lucide-react';
 import { User, OfficeConfig, AttendanceRecord, LeaveRequest, TaskItem, TaskStatus, TaskPriority, getPriorityLabel, ChatTopic } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
-import { getDailyStatus, getCalendarCell } from '../../lib/attendance-status.ts';
-import { getCurrentDateString, formatIndonesianDate } from '../../lib/time-utils.ts';
+import { getDailyStatus, getCalendarCell, isOffCategory } from '../../lib/attendance-status.ts';
+import { getCurrentDateString, formatIndonesianDate, calculateClockInPunctuality } from '../../lib/time-utils.ts';
 import { TaskDetailModal } from '../tasks/TaskDetailModal.tsx';
 import { EmptyStateTaskIllustration } from '../common/Illustrations.tsx';
 import { Tooltip } from '../ui/tooltip.tsx';
@@ -47,6 +50,7 @@ interface NeoBrutalistDashboardProps {
   onNavigateTab: (tabId: string) => void;
   onSwitchUser?: (userId: string) => void;
   onResetTodayAttendance?: () => void;
+  onRefreshData?: () => void;
 }
 
 export function NeoBrutalistDashboard({
@@ -61,42 +65,30 @@ export function NeoBrutalistDashboard({
   onNavigateTab,
   onSwitchUser,
   onResetTodayAttendance,
+  onRefreshData,
 }: NeoBrutalistDashboardProps) {
   // Mode tampilan Tugas Saya: 'CARDS' | 'TABLE'
   const [taskViewMode, setTaskViewMode] = useState<'CARDS' | 'TABLE'>('CARDS');
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<TaskItem | null>(null);
   const [selectedChatTopic, setSelectedChatTopic] = useState<ChatTopic | null>(null);
 
-  // Sekilas Ruang Obrolan (Hanya topik yang relevan untuk pengguna jika bukan Admin)
+  // Sekilas Ruang Obrolan (Hanya topik di mana akun terdaftar di Assignees / pembuat)
   const chatTopics = useMemo(() => {
     const allTopics = AppStorage.getChatTopics();
-    if (currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') {
-      return allTopics;
-    }
-    const currentNameLower = currentUser.name.toLowerCase();
-    const currentFirstName = currentUser.name.split(' ')[0].toLowerCase();
+    const currentNameLower = currentUser?.name ? currentUser.name.toLowerCase() : '';
+    if (!Array.isArray(allTopics)) return [];
     return allTopics.filter((t) => {
-      const isCreator = t.createdBy === currentUser.id;
-      const isTagged = Boolean(t.taggedTeammateIds?.includes(currentUser.id));
-      const isMentioned = Boolean(
-        t.comments?.some((c) => {
-          const notesLower = (c.notes || '').toLowerCase();
-          const mentionsMatch = c.mentions?.some((m) => {
-            const mLower = m.toLowerCase();
-            return (
-              mLower === currentUser.id.toLowerCase() ||
-              mLower === currentNameLower ||
-              mLower === currentFirstName ||
-              currentNameLower.includes(mLower)
-            );
-          });
-          const textMention =
-            notesLower.includes(`@${currentNameLower}`) ||
-            notesLower.includes(`@${currentFirstName}`);
-          return mentionsMatch || textMention;
-        })
+      const tagged = Array.isArray(t.taggedTeammateIds) ? t.taggedTeammateIds : [];
+      return Boolean(
+        (currentUser?.id && tagged.includes(currentUser.id)) ||
+        (currentUser?.id && t.createdBy === currentUser.id) ||
+        (currentNameLower &&
+          tagged.some(
+            (idOrName) =>
+              (currentUser?.id && idOrName === currentUser.id) ||
+              (typeof idOrName === 'string' && idOrName.toLowerCase() === currentNameLower)
+          ))
       );
-      return isCreator || isTagged || isMentioned;
     });
   }, [currentUser]);
 
@@ -109,13 +101,45 @@ export function NeoBrutalistDashboard({
   const [savedSuccessMessage, setSavedSuccessMessage] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
 
-  const isApprovedWfhToday = useMemo(() => {
+  const todayApprovedLeave = useMemo(() => {
+    const leavesList = propLeaves || AppStorage.getLeaves();
+    return leavesList.find(
+      (l) =>
+        (l.userId === currentUser.id || l.userName?.toLowerCase() === currentUser.name.toLowerCase()) &&
+        l.status === 'APPROVED' &&
+        todayDateStr >= l.startDate &&
+        todayDateStr <= l.endDate
+    );
+  }, [currentUser, todayDateStr, dataVersion, propLeaves]);
+
+  const isOffToday = Boolean(
+    todayApprovedLeave && isOffCategory(todayApprovedLeave.category)
+  );
+
+  const isApprovedWfhToday = todayApprovedLeave?.category === 'WFH' || (todayApprovedLeave as any)?.type === 'WFH';
+
+  const selectedDateApprovedLeave = useMemo(() => {
+    const leavesList = propLeaves || AppStorage.getLeaves();
+    return leavesList.find(
+      (l) =>
+        (l.userId === currentUser.id || l.userName?.toLowerCase() === currentUser.name.toLowerCase()) &&
+        l.status === 'APPROVED' &&
+        selectedDate >= l.startDate &&
+        selectedDate <= l.endDate
+    );
+  }, [currentUser, selectedDate, dataVersion, propLeaves]);
+
+  const isOffSelectedDate = Boolean(
+    selectedDateApprovedLeave && isOffCategory(selectedDateApprovedLeave.category)
+  );
+
+  const isApprovedBusinessTripToday = useMemo(() => {
     const leavesList = propLeaves || AppStorage.getLeaves();
     return leavesList.some(
       (l) =>
         (l.userId === currentUser.id || l.userName?.toLowerCase() === currentUser.name.toLowerCase()) &&
         l.status === 'APPROVED' &&
-        (l.category === 'WFH' || (l as any).type === 'WFH') &&
+        (l.category === 'BUSINESS_TRIP' || (l as any).type === 'BUSINESS_TRIP' || (l as any).category === 'DINAS' || (l as any).type === 'DINAS') &&
         todayDateStr >= l.startDate &&
         todayDateStr <= l.endDate
     );
@@ -188,6 +212,19 @@ export function NeoBrutalistDashboard({
   }, [selectedDate, currentUser.id, allAttendance, dataVersion]);
 
   const handleSaveLogbook = () => {
+    if (isOffSelectedDate) {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Status OFF (Bebas Presensi)',
+        message: `Status tanggal ini adalah OFF (${selectedDateApprovedLeave?.category === 'SICK' ? 'Sakit' : 'Cuti / Izin'}) yang telah disetujui. Pengisian logbook tidak aktif.`,
+        variant: 'info',
+        confirmText: 'Mengerti',
+        hideCancel: true,
+        onConfirm: () => setConfirmModal((prev) => ({ ...prev, isOpen: false })),
+      });
+      return;
+    }
+
     if (!logbookText.trim()) {
       setConfirmModal({
         isOpen: true,
@@ -354,7 +391,7 @@ export function NeoBrutalistDashboard({
           <div>
             {/* Header Kalender */}
             <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-slate-100 min-h-[44px]">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
                 <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 text-[#1E3A8A] flex items-center justify-center shrink-0">
                   <Calendar className="w-4 h-4" />
                 </div>
@@ -481,61 +518,116 @@ export function NeoBrutalistDashboard({
 
             {/* Indicator / Status Bawah Presensi */}
             <div className="pt-3">
-              {todayRecord?.clockInTime ? (
-                <div className={`w-full py-2.5 px-3 sm:px-4 border rounded-2xl flex items-center gap-2.5 shadow-2xs ${
-                  isApprovedWfhToday
-                    ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
-                    : todayRecord.clockInStatus === 'LATE'
-                    ? 'bg-amber-50 border-amber-200 text-amber-900'
-                    : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                }`}>
-                  <CheckCircle2 className={`w-4 h-4 shrink-0 self-start mt-0.5 ${
-                    isApprovedWfhToday
-                      ? 'text-indigo-600'
-                      : todayRecord.clockInStatus === 'LATE'
-                      ? 'text-amber-600'
-                      : 'text-emerald-600'
-                  }`} />
-                  <div className="flex-1 min-w-0 text-[11px] sm:text-xs font-semibold leading-relaxed flex flex-col items-start gap-0.5 text-left">
-                    <span className="font-bold text-slate-900">Presensi Masuk ({todayRecord.clockInTime} WIB)</span>
-                    {(() => {
-                      const isWfh = isApprovedWfhToday || todayRecord.workMode === 'WFH' || todayRecord.clockInLocationStatus === 'WFH_APPROVED';
-                      const isDinas = todayRecord.workMode === 'DINAS' || todayRecord.clockInLocationStatus === 'DINAS_APPROVED';
-                      const isLate = todayRecord.clockInStatus === 'LATE';
-                      const lateMin = todayRecord.clockInLateMinutes || 0;
+              {isOffToday ? (
+                <Tooltip
+                  content={`Anda berstatus OFF (${todayApprovedLeave?.category === 'SICK' ? 'Sakit' : 'Cuti / Izin'}) hari ini — Bebas Presensi`}
+                  position="top"
+                  className="w-full"
+                >
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full py-3 px-4 bg-slate-100 border border-slate-200 text-slate-400 text-xs font-bold rounded-2xl shadow-2xs flex items-center justify-center gap-2 cursor-not-allowed select-none opacity-80"
+                  >
+                    {todayApprovedLeave?.category === 'SICK' ? (
+                      <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                    ) : (
+                      <CalendarDays className="w-4 h-4 text-sky-500 shrink-0" />
+                    )}
+                    <span>Presensi Masuk Tidak Aktif (OFF: {todayApprovedLeave?.category === 'SICK' ? 'Sakit' : 'Cuti / Izin'})</span>
+                  </button>
+                </Tooltip>
+              ) : todayRecord?.clockInTime ? (
+                (() => {
+                  const isWfh = isApprovedWfhToday || todayRecord.workMode === 'WFH' || todayRecord.clockInLocationStatus === 'WFH_APPROVED';
+                  const isDinas = isApprovedBusinessTripToday || todayRecord.workMode === 'DINAS' || todayRecord.clockInLocationStatus === 'DINAS_APPROVED';
 
-                      let statusBadgeText = 'Hadir';
-                      let statusBadgeColor = 'text-emerald-700 font-bold';
+                  const punctuality = calculateClockInPunctuality(
+                    todayRecord.clockInTime,
+                    officeConfig?.workStartHour || '08:00',
+                    officeConfig?.gracePeriodMinutes || 0
+                  );
+                  const isLate = todayRecord.clockInStatus === 'LATE' || punctuality.status === 'LATE' || (todayRecord.clockInLateMinutes !== undefined && todayRecord.clockInLateMinutes > 0);
+                  const lateMin = (todayRecord.clockInLateMinutes !== undefined && todayRecord.clockInLateMinutes > 0)
+                    ? todayRecord.clockInLateMinutes
+                    : punctuality.lateMinutes;
 
-                      if (isWfh) {
-                        statusBadgeText = isLate && lateMin > 0 ? `WFH • Terlambat (${lateMin}m)` : 'WFH';
-                        statusBadgeColor = isLate ? 'text-amber-700 font-bold' : 'text-indigo-700 font-bold';
-                      } else if (isDinas) {
-                        statusBadgeText = isLate && lateMin > 0 ? `Dinas Luar • Terlambat (${lateMin}m)` : 'Dinas Luar';
-                        statusBadgeColor = isLate ? 'text-amber-700 font-bold' : 'text-purple-700 font-bold';
-                      } else if (isLate) {
-                        statusBadgeText = lateMin > 0 ? `Terlambat (${lateMin}m)` : 'Terlambat';
-                        statusBadgeColor = 'text-amber-700 font-bold';
-                      }
+                  let formattedLate = `${lateMin}m`;
+                  if (lateMin >= 60) {
+                    const hours = Math.floor(lateMin / 60);
+                    const mins = lateMin % 60;
+                    formattedLate = mins > 0 ? `${hours}j ${mins}m` : `${hours}j`;
+                  }
 
-                      const locationText = isWfh
-                        ? 'Rumah / WFH'
-                        : isDinas
-                        ? 'Dinas Luar'
-                        : todayRecord.clockInLocationStatus === 'OUT_OF_RANGE'
-                        ? `Di Luar Kantor (${todayRecord.clockInDistanceMeter ? `${Math.round(todayRecord.clockInDistanceMeter)}m` : 'Luar Radius'})`
-                        : 'Di Kantor';
+                  const rawTime = (todayRecord.clockInTime || '').replace(/\s*WIB/i, '').trim();
+                  const timeParts = rawTime.split(':');
+                  const timeShort = timeParts.length >= 2 ? `${timeParts[0]}:${timeParts[1]}` : rawTime;
 
-                      return (
-                        <div className="flex items-center gap-1.5 flex-wrap text-[11px] sm:text-xs">
-                          <span className={statusBadgeColor}>{statusBadgeText}</span>
-                          <span className="text-slate-400 font-normal">&bull;</span>
-                          <span className="text-slate-700 font-medium">{locationText}</span>
+                  const locationText = isWfh
+                    ? 'Rumah / WFH'
+                    : isDinas
+                    ? 'Dinas Luar'
+                    : todayRecord.clockInLocationStatus === 'OUT_OF_RANGE'
+                    ? `Di Luar Kantor (${todayRecord.clockInDistanceMeter ? `${Math.round(todayRecord.clockInDistanceMeter)}m` : 'Luar Radius'})`
+                    : 'Di Kantor';
+
+                  let badgeIcon = <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />;
+                  let badgeBg = 'bg-emerald-100/90 text-emerald-800 border-emerald-300';
+                  let badgeText = 'Tepat Waktu';
+
+                  if (isLate) {
+                    badgeIcon = <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />;
+                    badgeBg = 'bg-amber-100/90 text-amber-800 border-amber-300';
+                    if (isWfh) {
+                      badgeText = lateMin > 0 ? `WFH • Terlambat ${formattedLate}` : 'WFH • Terlambat';
+                    } else if (isDinas) {
+                      badgeText = lateMin > 0 ? `Dinas • Terlambat ${formattedLate}` : 'Dinas • Terlambat';
+                    } else {
+                      badgeText = lateMin > 0 ? `Terlambat ${formattedLate}` : 'Terlambat';
+                    }
+                  } else if (isWfh) {
+                    badgeIcon = <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />;
+                    badgeBg = 'bg-indigo-100/90 text-indigo-800 border-indigo-300';
+                    badgeText = 'WFH Tepat Waktu';
+                  } else if (isDinas) {
+                    badgeIcon = <CheckCircle2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />;
+                    badgeBg = 'bg-purple-100/90 text-purple-800 border-purple-300';
+                    badgeText = 'Dinas Tepat Waktu';
+                  }
+
+                  const cardBgClass = isLate
+                    ? 'bg-amber-50/70 border-amber-200'
+                    : isWfh
+                    ? 'bg-indigo-50/70 border-indigo-200'
+                    : isDinas
+                    ? 'bg-purple-50/70 border-purple-200'
+                    : 'bg-emerald-50/70 border-emerald-200';
+
+                  return (
+                    <div className={`w-full py-2.5 px-3.5 sm:px-4 border rounded-2xl shadow-2xs transition-all ${cardBgClass}`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
+                        {/* Kolom Kiri: Presensi Masuk (Atas) & Lokasi (Bawah) */}
+                        <div className="min-w-0 text-left space-y-0.5">
+                          <h4 className="font-bold text-xs sm:text-sm text-slate-900 tracking-tight">
+                            Presensi Masuk ({timeShort} WIB)
+                          </h4>
+                          <div className="flex items-center gap-1 text-[11px] sm:text-xs text-slate-600 font-medium">
+                            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span className="truncate">{locationText}</span>
+                          </div>
                         </div>
-                      );
-                    })()}
-                  </div>
-                </div>
+
+                        {/* Kolom Kanan / Bawah pada mobile: Badge Status Keterlambatan / Tepat Waktu */}
+                        <div className="self-start sm:self-center shrink-0">
+                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-bold border shadow-2xs ${badgeBg}`}>
+                            {badgeIcon}
+                            <span>{badgeText}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
                 <Tooltip content="Buka modal presensi untuk presensi masuk kantor hari ini" position="top" className="w-full">
                   <button
@@ -558,19 +650,21 @@ export function NeoBrutalistDashboard({
                 <ClipboardList className="w-3.5 h-3.5 text-[#1E3A8A]" />
                 <span>Input Logbook ({formatIndonesianDate(selectedDate)})</span>
               </label>
-              {isExistingLog && (
-                <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                  Tersimpan
-                </span>
-              )}
             </div>
 
             <textarea
               id="logbook-textarea"
               value={logbookText}
               onChange={(e) => setLogbookText(e.target.value)}
-              placeholder="Tulis ringkasan aktivitas / tugas pekerjaan Anda untuk tanggal terpilih..."
-              className="w-full h-24 p-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent resize-none transition-all outline-none"
+              disabled={isOffSelectedDate}
+              placeholder={
+                isOffSelectedDate
+                  ? `Status tanggal ini OFF (${selectedDateApprovedLeave?.category === 'SICK' ? 'Sakit' : 'Cuti / Izin'}) — Tidak perlu mengisi logbook.`
+                  : "Tulis ringkasan aktivitas / tugas pekerjaan Anda untuk tanggal terpilih..."
+              }
+              className={`w-full h-24 p-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent resize-none transition-all outline-none ${
+                isOffSelectedDate ? 'opacity-60 cursor-not-allowed bg-slate-100 text-slate-500' : ''
+              }`}
             />
 
             <div className="space-y-2 mt-3">
@@ -580,7 +674,22 @@ export function NeoBrutalistDashboard({
                 </div>
               )}
 
-              {isExistingLog ? (
+              {isOffSelectedDate ? (
+                <Tooltip
+                  content={`Status tanggal ini OFF (${selectedDateApprovedLeave?.category === 'SICK' ? 'Sakit' : 'Cuti / Izin'}). Pengisian logbook dinonaktifkan.`}
+                  position="top"
+                  className="w-full"
+                >
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full py-2.5 px-4 bg-slate-100 text-slate-400 text-xs font-bold rounded-xl border border-slate-200 cursor-not-allowed select-none flex items-center justify-center gap-1.5 opacity-70"
+                  >
+                    <Check className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Simpan Logbook Tidak Aktif (OFF)</span>
+                  </button>
+                </Tooltip>
+              ) : isExistingLog ? (
                 <div className="grid grid-cols-2 gap-2.5 w-full">
                   <button
                     type="button"
@@ -593,9 +702,9 @@ export function NeoBrutalistDashboard({
                   <button
                     type="button"
                     onClick={handleSaveLogbook}
-                    className="w-full py-2.5 px-3 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full py-2.5 px-3 bg-blue-50 hover:bg-blue-100 active:scale-[0.98] text-[#1E3A8A] text-xs font-bold rounded-xl border border-blue-200 shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Check className="w-4 h-4 text-white shrink-0" />
+                    <Check className="w-4 h-4 text-[#1E3A8A] shrink-0" />
                     <span className="truncate">Simpan Perubahan</span>
                   </button>
                 </div>
@@ -603,9 +712,9 @@ export function NeoBrutalistDashboard({
                 <button
                   type="button"
                   onClick={handleSaveLogbook}
-                  className="w-full py-2.5 px-4 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full py-2.5 px-4 bg-blue-50 hover:bg-blue-100 active:scale-[0.98] text-[#1E3A8A] text-xs font-bold rounded-xl border border-blue-200 shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Check className="w-4 h-4 text-white shrink-0" />
+                  <Check className="w-4 h-4 text-[#1E3A8A] shrink-0" />
                   <span>Simpan Logbook</span>
                 </button>
               )}
@@ -867,41 +976,34 @@ export function NeoBrutalistDashboard({
                         return (
                           <div
                             key={task.id}
-                            onClick={() => setSelectedTaskForDetail(task)}
-                            className={`bg-white rounded-2xl p-5 border ${cardProcessBorder} shadow-2xs hover:shadow-md transition-all duration-200 cursor-pointer space-y-3.5 group`}
+                            onClick={() => {
+                              if (task.status === 'TODO') return;
+                              setSelectedTaskForDetail(task);
+                            }}
+                            className={`bg-white rounded-2xl p-5 border ${cardProcessBorder} shadow-2xs hover:shadow-md transition-all duration-200 ${
+                              task.status === 'TODO' ? 'cursor-default' : 'cursor-pointer'
+                            } space-y-3.5 group`}
                           >
-                            {/* Baris Atas: Priority Badge & 3 Dots Menu / Button Hapus jika Selesai */}
+                            {/* Baris Atas: Priority Badge & Button Hapus PIC / 3 Dots */}
                             <div className="flex items-center justify-between gap-2">
                               <div>
                                 {getPriorityBadge(task.priority)}
                               </div>
 
-                              {task.status === 'REVIEWED' ? (
+                              {isPIC ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setConfirmModal({
-                                      isOpen: true,
-                                      title: 'Hapus Tugas',
-                                      message: 'Apakah Anda yakin ingin menghapus tugas yang telah selesai ini?',
-                                      variant: 'danger',
-                                      confirmText: 'Ya, Hapus',
-                                      cancelText: 'Batal',
-                                      hideCancel: false,
-                                      onConfirm: () => {
-                                        AppStorage.deleteTask(task.id);
-                                        setTasksState(AppStorage.getTasks());
-                                        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
-                                      },
-                                    });
+                                    AppStorage.deleteTask(task.id);
+                                    setTasksState(AppStorage.getTasks());
                                   }}
                                   className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
-                                  title="Hapus Tugas Selesai"
+                                  title="Hapus Tugas"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
-                              ) : (
+                              ) : task.status !== 'TODO' ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -913,7 +1015,7 @@ export function NeoBrutalistDashboard({
                                 >
                                   <span className="text-base font-bold leading-none tracking-widest">&#8942;</span>
                                 </button>
-                              )}
+                              ) : null}
                             </div>
 
                             {/* Judul Tugas */}
@@ -999,7 +1101,7 @@ export function NeoBrutalistDashboard({
 
                             {/* Tombol Aksi Sesuai Flow Penugasan */}
                             <div className="pt-1 flex flex-wrap items-center gap-1.5 text-xs">
-                              {/* 1. TO-DO: Mulai Kerjakan */}
+                              {/* 1. TO-DO: Mulai Mengerjakan */}
                               {task.status === 'TODO' && (
                                 <button
                                   type="button"
@@ -1009,7 +1111,7 @@ export function NeoBrutalistDashboard({
                                   }}
                                   className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
                                 >
-                                  <span>Mulai Kerjakan</span>
+                                  <span>Mulai Mengerjakan</span>
                                   <ArrowRight className="w-3.5 h-3.5" />
                                 </button>
                               )}
@@ -1038,9 +1140,7 @@ export function NeoBrutalistDashboard({
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleUpdateTaskStatus(task.id, 'REVIEWED', {
-                                          reviewNotes: 'Penugasan Selesai (ACC oleh PIC)',
-                                        });
+                                        handleUpdateTaskStatus(task.id, 'REVIEWED');
                                       }}
                                       className="py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 font-bold rounded-xl text-center transition-all shadow-2xs cursor-pointer flex items-center justify-center gap-1"
                                       title="Setujui Hasil Kerja (ACC)"
@@ -1157,8 +1257,13 @@ export function NeoBrutalistDashboard({
                       return (
                         <tr
                           key={task.id}
-                          onClick={() => setSelectedTaskForDetail(task)}
-                          className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                          onClick={() => {
+                            if (task.status === 'TODO') return;
+                            setSelectedTaskForDetail(task);
+                          }}
+                          className={`hover:bg-slate-50/80 transition-colors ${
+                            task.status === 'TODO' ? 'cursor-default' : 'cursor-pointer'
+                          } group`}
                         >
                           <td className="py-3.5 px-4 max-w-[280px]">
                             <div className="font-bold text-slate-900 leading-snug group-hover:text-indigo-600 transition-colors">
@@ -1194,7 +1299,7 @@ export function NeoBrutalistDashboard({
                               {stageLabel}
                             </span>
                           </td>
-                          <td className="py-3 px-3.5 font-mono text-slate-700 text-xs whitespace-nowrap">
+                          <td className="py-3 px-3.5 text-slate-700 text-xs whitespace-nowrap">
                             {task.dueDate || '-'}
                           </td>
                         </tr>

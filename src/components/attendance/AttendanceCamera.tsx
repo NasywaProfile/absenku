@@ -173,7 +173,7 @@ export function AttendanceCamera({ onCapture, capturedPhoto, onRetake }: Attenda
                 Selfie Terverifikasi
               </div>
             )}
-            <div className="absolute bottom-2 right-3 text-[11px] text-white/80 bg-slate-900/80 px-2 py-0.5 rounded font-mono">
+            <div className="absolute bottom-2 right-3 text-[11px] text-white/80 bg-slate-900/80 px-2 py-0.5 rounded">
               {new Date().toLocaleTimeString('id-ID')} WIB
             </div>
           </div>

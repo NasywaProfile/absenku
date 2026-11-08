@@ -11,6 +11,7 @@ import {
   Eye,
   Users,
   AlertCircle,
+  AlertTriangle,
   MapPin,
   CalendarDays,
 } from 'lucide-react';
@@ -212,9 +213,19 @@ export function AttendanceClockTab({
   // Cuti/Izin & Sakit = OFF & bebas presensi. WFH & Dinas Luar tetap wajib presensi.
   const isOffToday = Boolean(todayApprovedLeave && isOffCategory(todayApprovedLeave.category));
   const hasRemoteApproval = isWfhApproved || isBusinessTripApproved;
-  const effectiveWorkMode = isBusinessTripApproved ? 'DINAS' : isWfhApproved ? 'WFH' : workMode;
+  const isFreelance = currentUser.employmentType === 'FREELANCE';
+  const effectiveWorkMode = isBusinessTripApproved
+    ? 'DINAS'
+    : isWfhApproved
+    ? 'WFH'
+    : isFreelance
+    ? (isWithinRadius ? 'WFO' : 'WFH')
+    : workMode;
 
   const handleClockIn = () => {
+    if (isOffToday) {
+      return;
+    }
     const today = getCurrentDateString();
     const time = getCurrentTimeString();
     const punctuality = calculateClockInPunctuality(
@@ -223,13 +234,22 @@ export function AttendanceClockTab({
       officeConfig.gracePeriodMinutes || 0
     );
     const isLate = punctuality.status === 'LATE';
-    const effectiveWorkMode = isBusinessTripApproved ? 'DINAS' : isWfhApproved ? 'WFH' : workMode;
+    const isFreelance = currentUser.employmentType === 'FREELANCE';
+    const effectiveWorkMode = isBusinessTripApproved
+      ? 'DINAS'
+      : isWfhApproved
+      ? 'WFH'
+      : isFreelance
+      ? (isWithinRadius ? 'WFO' : 'WFH')
+      : workMode;
     const locationStatus = isBusinessTripApproved
       ? 'DINAS_APPROVED'
       : isWfhApproved
       ? 'WFH_APPROVED'
       : isWithinRadius
       ? 'IN_OFFICE'
+      : isFreelance
+      ? 'WFH_APPROVED'
       : 'OUT_OF_RANGE';
 
     const newRecord: AttendanceRecord = {
@@ -353,7 +373,7 @@ export function AttendanceClockTab({
           <div>
             {/* Header Kalender */}
             <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-slate-100 min-h-[44px]">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
                 <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 text-[#1E3A8A] flex items-center justify-center shrink-0">
                   <CalendarIcon className="w-4 h-4" />
                 </div>
@@ -483,87 +503,119 @@ export function AttendanceClockTab({
             {/* Button Absen Masuk di Bawah Kalender Presensi (Navy Blue #1E3A8A) */}
             <div className="pt-3">
               {isOffToday ? (
-                <div
-                  className={`w-full py-3 px-4 rounded-2xl border text-center text-xs font-semibold flex items-center justify-center gap-2 shadow-2xs ${
-                    todayApprovedLeave?.category === 'SICK'
-                      ? 'bg-rose-50 border-rose-200 text-rose-800'
-                      : todayApprovedLeave?.category === 'BUSINESS_TRIP'
-                      ? 'bg-purple-50 border-purple-200 text-purple-800'
-                      : 'bg-sky-50 border-sky-200 text-sky-800'
-                  }`}
+                <Tooltip
+                  content={`Anda berstatus OFF (${todayApprovedLeave?.category === 'SICK' ? 'Sakit' : 'Cuti / Izin'}) hari ini — Bebas Presensi`}
+                  position="top"
+                  className="w-full"
                 >
-                  {todayApprovedLeave?.category === 'SICK' ? (
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                  ) : todayApprovedLeave?.category === 'BUSINESS_TRIP' ? (
-                    <MapPin className="w-4 h-4 text-purple-600 shrink-0" />
-                  ) : (
-                    <CalendarDays className="w-4 h-4 text-sky-600 shrink-0" />
-                  )}
-                  <span>
-                    Status Hari Ini: OFF (
-                    {todayApprovedLeave?.category === 'SICK'
-                      ? 'Sakit'
-                      : todayApprovedLeave?.category === 'BUSINESS_TRIP'
-                      ? 'Dinas Luar'
-                      : 'Cuti / Izin'}
-                    ) — Bebas Presensi
-                  </span>
-                </div>
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full py-3 px-4 bg-slate-100 border border-slate-200 text-slate-400 text-xs font-bold rounded-2xl shadow-2xs flex items-center justify-center gap-2 cursor-not-allowed select-none opacity-80"
+                  >
+                    {todayApprovedLeave?.category === 'SICK' ? (
+                      <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                    ) : (
+                      <CalendarDays className="w-4 h-4 text-sky-500 shrink-0" />
+                    )}
+                    <span>
+                      {todayApprovedLeave?.category === 'SICK'
+                        ? 'Izin Sakit Disetujui • Bebas Absen'
+                        : 'Izin / Cuti Disetujui • Bebas Absen'}
+                    </span>
+                  </button>
+                </Tooltip>
               ) : isClockedIn && todayRecord ? (
-                <div className={`w-full py-2.5 px-3 sm:px-4 border rounded-2xl flex items-center gap-2.5 shadow-2xs ${
-                  isWfhApproved
-                    ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
-                    : todayRecord.clockInStatus === 'LATE'
-                    ? 'bg-amber-50 border-amber-200 text-amber-900'
-                    : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                }`}>
-                  <CheckCircle2 className={`w-4 h-4 shrink-0 self-start mt-0.5 ${
-                    isWfhApproved
-                      ? 'text-indigo-600'
-                      : todayRecord.clockInStatus === 'LATE'
-                      ? 'text-amber-600'
-                      : 'text-emerald-600'
-                  }`} />
-                  <div className="flex-1 min-w-0 text-[11px] sm:text-xs font-semibold leading-relaxed flex flex-col items-start gap-0.5 text-left">
-                    <span className="font-bold text-slate-900">Presensi Masuk ({todayRecord.clockInTime} WIB)</span>
-                    {(() => {
-                      const isWfh = isWfhApproved || todayRecord.workMode === 'WFH' || todayRecord.clockInLocationStatus === 'WFH_APPROVED';
-                      const isDinas = isBusinessTripApproved || todayRecord.workMode === 'DINAS' || todayRecord.clockInLocationStatus === 'DINAS_APPROVED';
-                      const isLate = todayRecord.clockInStatus === 'LATE';
-                      const lateMin = todayRecord.clockInLateMinutes || 0;
+                (() => {
+                  const isWfh = isWfhApproved || todayRecord.workMode === 'WFH' || todayRecord.clockInLocationStatus === 'WFH_APPROVED';
+                  const isDinas = isBusinessTripApproved || todayRecord.workMode === 'DINAS' || todayRecord.clockInLocationStatus === 'DINAS_APPROVED';
 
-                      let statusBadgeText = 'Hadir';
-                      let statusBadgeColor = 'text-emerald-700 font-bold';
+                  const punctuality = calculateClockInPunctuality(
+                    todayRecord.clockInTime,
+                    officeConfig?.workStartHour || '08:00',
+                    officeConfig?.gracePeriodMinutes || 0
+                  );
+                  const isLate = todayRecord.clockInStatus === 'LATE' || punctuality.status === 'LATE' || (todayRecord.clockInLateMinutes !== undefined && todayRecord.clockInLateMinutes > 0);
+                  const lateMin = (todayRecord.clockInLateMinutes !== undefined && todayRecord.clockInLateMinutes > 0)
+                    ? todayRecord.clockInLateMinutes
+                    : punctuality.lateMinutes;
 
-                      if (isWfh) {
-                        statusBadgeText = isLate && lateMin > 0 ? `WFH • Terlambat (${lateMin}m)` : 'WFH';
-                        statusBadgeColor = isLate ? 'text-amber-700 font-bold' : 'text-indigo-700 font-bold';
-                      } else if (isDinas) {
-                        statusBadgeText = isLate && lateMin > 0 ? `Dinas Luar • Terlambat (${lateMin}m)` : 'Dinas Luar';
-                        statusBadgeColor = isLate ? 'text-amber-700 font-bold' : 'text-purple-700 font-bold';
-                      } else if (isLate) {
-                        statusBadgeText = lateMin > 0 ? `Terlambat (${lateMin}m)` : 'Terlambat';
-                        statusBadgeColor = 'text-amber-700 font-bold';
-                      }
+                  let formattedLate = `${lateMin}m`;
+                  if (lateMin >= 60) {
+                    const hours = Math.floor(lateMin / 60);
+                    const mins = lateMin % 60;
+                    formattedLate = mins > 0 ? `${hours}j ${mins}m` : `${hours}j`;
+                  }
 
-                      const locationText = isWfh
-                        ? 'Rumah / WFH'
-                        : isDinas
-                        ? 'Dinas Luar'
-                        : todayRecord.clockInLocationStatus === 'OUT_OF_RANGE'
-                        ? `Di Luar Kantor (${todayRecord.clockInDistanceMeter ? `${Math.round(todayRecord.clockInDistanceMeter)}m` : 'Luar Radius'})`
-                        : 'Di Kantor';
+                  const rawTime = (todayRecord.clockInTime || '').replace(/\s*WIB/i, '').trim();
+                  const timeParts = rawTime.split(':');
+                  const timeShort = timeParts.length >= 2 ? `${timeParts[0]}:${timeParts[1]}` : rawTime;
 
-                      return (
-                        <div className="flex items-center gap-1.5 flex-wrap text-[11px] sm:text-xs">
-                          <span className={statusBadgeColor}>{statusBadgeText}</span>
-                          <span className="text-slate-400 font-normal">&bull;</span>
-                          <span className="text-slate-700 font-medium">{locationText}</span>
+                  const locationText = isWfh
+                    ? 'Dari Rumah'
+                    : isDinas
+                    ? 'Di Luar Kantor'
+                    : todayRecord.clockInLocationStatus === 'OUT_OF_RANGE'
+                    ? 'Di Luar Kantor'
+                    : 'Area Kantor';
+
+                  let badgeIcon = <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />;
+                  let badgeBg = 'bg-emerald-100/90 text-emerald-800 border-emerald-300';
+                  let badgeText = 'Hadir WFO';
+
+                  if (isLate) {
+                    badgeIcon = <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />;
+                    badgeBg = 'bg-amber-100/90 text-amber-800 border-amber-300';
+                    if (isWfh) {
+                      badgeText = lateMin > 0 ? `WFH • Terlambat (${lateMin}m)` : 'WFH • Terlambat';
+                    } else if (isDinas) {
+                      badgeText = lateMin > 0 ? `Dinas Luar • Terlambat (${lateMin}m)` : 'Dinas Luar • Terlambat';
+                    } else {
+                      badgeText = lateMin > 0 ? `Terlambat (${lateMin}m)` : 'Terlambat';
+                    }
+                  } else if (isWfh) {
+                    badgeIcon = <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />;
+                    badgeBg = 'bg-indigo-100/90 text-indigo-800 border-indigo-300';
+                    badgeText = 'WFH';
+                  } else if (isDinas) {
+                    badgeIcon = <CheckCircle2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />;
+                    badgeBg = 'bg-purple-100/90 text-purple-800 border-purple-300';
+                    badgeText = 'Dinas Luar';
+                  }
+
+                  const cardBgClass = isLate
+                    ? 'bg-amber-50/70 border-amber-200'
+                    : isWfh
+                    ? 'bg-indigo-50/70 border-indigo-200'
+                    : isDinas
+                    ? 'bg-purple-50/70 border-purple-200'
+                    : 'bg-emerald-50/70 border-emerald-200';
+
+                  return (
+                    <div className={`w-full py-2.5 px-3.5 sm:px-4 border rounded-2xl shadow-2xs transition-all ${cardBgClass}`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
+                        {/* Kolom Kiri: Presensi Masuk (Atas) & Lokasi (Bawah) */}
+                        <div className="min-w-0 text-left space-y-0.5">
+                          <h4 className="font-bold text-xs sm:text-sm text-slate-900 tracking-tight">
+                            Presensi Masuk ({timeShort} WIB)
+                          </h4>
+                          <div className="flex items-center gap-1 text-[11px] sm:text-xs text-slate-600 font-medium">
+                            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span className="truncate">{locationText}</span>
+                          </div>
                         </div>
-                      );
-                    })()}
-                  </div>
-                </div>
+
+                        {/* Kolom Kanan / Bawah pada mobile: Badge Status Keterlambatan / Tepat Waktu */}
+                        <div className="self-start sm:self-center shrink-0">
+                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-bold border shadow-2xs ${badgeBg}`}>
+                            {badgeIcon}
+                            <span>{badgeText}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
                 <Tooltip content="Catat presensi kehadiran masuk kerja hari ini dengan verifikasi GPS" position="top" className="w-full">
                   <button
@@ -612,9 +664,9 @@ export function AttendanceClockTab({
                   <button
                     type="button"
                     onClick={handleSaveLogbook}
-                    className="w-full py-2.5 px-3 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-xs border border-[#1E3A8A] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full py-2.5 px-3 bg-blue-50 hover:bg-blue-100 active:scale-[0.98] text-[#1E3A8A] text-xs font-bold rounded-xl border border-blue-200 shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Check className="w-4 h-4 text-white shrink-0" />
+                    <Check className="w-4 h-4 text-[#1E3A8A] shrink-0" />
                     <span className="truncate">Simpan Perubahan</span>
                   </button>
                 </div>
@@ -622,9 +674,9 @@ export function AttendanceClockTab({
                 <button
                   type="button"
                   onClick={handleSaveLogbook}
-                  className="w-full py-2.5 px-4 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-xs border border-[#1E3A8A] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full py-2.5 px-4 bg-blue-50 hover:bg-blue-100 active:scale-[0.98] text-[#1E3A8A] text-xs font-bold rounded-xl border border-blue-200 shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Check className="w-4 h-4 text-white shrink-0" />
+                  <Check className="w-4 h-4 text-[#1E3A8A] shrink-0" />
                   <span>Simpan Logbook</span>
                 </button>
               )}
@@ -641,7 +693,7 @@ export function AttendanceClockTab({
         </div>
 
         {/* CARD KANAN: STATUS GEOFENCE RADAR (Mengisi 100% tinggi penuh sama dengan Kalender) */}
-        <div className="h-full flex flex-col min-h-0">
+        <div className="h-full flex flex-col min-h-[460px] sm:min-h-[500px] lg:min-h-0">
           <GeolocationWidget
             officeConfig={officeConfig}
             onLocationVerified={handleLocationUpdate}

@@ -19,6 +19,7 @@ import {
   TaskAttachment,
   ChatTopic,
   ChatComment,
+  getPriorityLabel,
 } from '../types/index.ts';
 import {
   INITIAL_USERS,
@@ -43,6 +44,8 @@ import {
 import { storeAttachmentInIDB } from './attachment-storage.ts';
 import { hashPassword, verifyPassword, isPasswordEncrypted } from './crypto-utils.ts';
 import { ApiClient } from './api-client.ts';
+import { sendRealEmail, generateEmailHtmlTemplate } from './real-email.ts';
+import { formatIndonesianDateShort } from './time-utils.ts';
 
 const STORAGE_KEYS = {
   USERS: 'absenku_users_v10',
@@ -110,9 +113,32 @@ function safeSetItem(key: string, value: string): void {
       } catch (e3) {}
     }
 
-    // Bersihkan temporary data jika masih penuh
+    if (key === STORAGE_KEYS.USERS) {
+      try {
+        const parsed: User[] = JSON.parse(value);
+        const sanitized = parsed.map((u) => {
+          if (u.avatar && u.avatar.length > 50000 && u.avatar.startsWith('data:image/')) {
+            const attId = `user_avatar_${u.id}`;
+            storeAttachmentInIDB(attId, u.avatar).catch(() => {});
+            return { ...u, avatar: `idb:${attId}` };
+          }
+          return u;
+        });
+        localStorage.setItem(key, JSON.stringify(sanitized));
+        return;
+      } catch (eUsers) {}
+    }
+
+    // Bersihkan temporary data dan key versi lama jika masih penuh
     try {
       localStorage.removeItem('absenku_offline_queue');
+      // Bersihkan cache lama versi < 10
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('absenku_') && (k.includes('_v1') || k.includes('_v2') || k.includes('_v3') || k.includes('_v4') || k.includes('_v5') || k.includes('_v6') || k.includes('_v7') || k.includes('_v8') || k.includes('_v9')) && !k.includes('_v10') && !k.includes('_v11')) {
+          localStorage.removeItem(k);
+        }
+      }
       localStorage.setItem(key, value);
     } catch (finalErr) {
       console.error(`[AppStorage] Gagal menyelamatkan key "${key}":`, finalErr);
@@ -151,39 +177,22 @@ try {
   } catch (_) {}
 }
 
-// Bersihkan semua data pengguna lama dan seluruh histori jika versi penyimpanan diperbarui
-const PURGE_FLAG = 'absenku_purged_dummy_seed_v10';
+// Bersihkan semua data dummy karyawan dan seluruh historinya (hanya sisakan Super Admin)
+const PURGE_FLAG = 'absenku_clean_superadmin_v11';
 try {
   const isPurged = localStorage.getItem(PURGE_FLAG);
   if (!isPurged) {
-    const oldKeys = Object.keys(localStorage);
-    oldKeys.forEach((key) => {
-      if (key.startsWith('absenku_') && !key.endsWith('_v10')) {
-        // Pertahankan konfigurasi kantor jika sudah ada
-        if (key.includes('office_config') && !localStorage.getItem(STORAGE_KEYS.OFFICE_CONFIG)) {
-          const existingConfig = localStorage.getItem(key);
-          if (existingConfig) {
-            localStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, existingConfig);
-          }
-        }
-        localStorage.removeItem(key);
-      }
-    });
-
-    // Inisialisasi data fungsional lengkap (Super Admin & Karyawan Lengkap)
+    // Inisialisasi bersih: hanya Super Admin, seluruh histori dummy karyawan dibersihkan
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
-    // Sesi tidak dibuat otomatis: pengguna login terlebih dahulu
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID);
-
-    // Inisialisasi seluruh histori dummy fungsional
-    localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(INITIAL_ATTENDANCE));
-    localStorage.setItem(STORAGE_KEYS.DAILY_TASKS, JSON.stringify(INITIAL_DAILY_TASKS));
-    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
-    localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify(INITIAL_LEAVES));
-    localStorage.setItem(STORAGE_KEYS.EMAILS, JSON.stringify(INITIAL_EMAIL_NOTIFICATIONS));
-    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(INITIAL_DISCUSSION_MESSAGES));
-    localStorage.setItem(STORAGE_KEYS.IDEAS, JSON.stringify(INITIAL_IDEAS));
-    localStorage.setItem(STORAGE_KEYS.CHAT_TOPICS, JSON.stringify(INITIAL_CHAT_TOPICS));
+    localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.DAILY_TASKS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.LEAVES, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.EMAILS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.IDEAS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.CHAT_TOPICS, JSON.stringify([]));
     localStorage.removeItem('absenku_offline_queue');
 
     if (!localStorage.getItem(STORAGE_KEYS.OFFICE_CONFIG)) {
@@ -205,24 +214,79 @@ export const AppStorage = {
       return INITIAL_USERS;
     }
     try {
-      const parsed: User[] = JSON.parse(raw);
-      // Pastikan akun Super Admin tunggal selalu tersedia
-      const hasSuperAdmin = parsed.some(
-        (u) => u.email === 'superadmin@gmail.com' && u.role === 'SUPER_ADMIN'
+      let parsed: User[] = JSON.parse(raw);
+      let changed = false;
+
+      // Hapus duplikasi dummy superadmin@gmail.com jika ada
+      parsed = parsed.filter(
+        (u) => !(u.email === 'superadmin@gmail.com' && u.id !== 'usr_super_admin')
       );
-      if (!hasSuperAdmin) {
+
+      // Pastikan akun Super Admin tunggal selalu tersedia dengan default yang tepat
+      const saIndex = parsed.findIndex(
+        (u) => u.role === 'SUPER_ADMIN' || u.id === 'usr_super_admin'
+      );
+
+      if (saIndex === -1) {
         parsed.unshift(INITIAL_USERS[0]);
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(parsed));
+        changed = true;
+      } else {
+        const sa = parsed[saIndex];
+        // Pastikan email superadmin terisi jika kosong (tidak pakem, mempertahankan email yang diubah)
+        if (!sa.email) {
+          sa.email = INITIAL_USERS[0].email;
+          changed = true;
+        }
+        // Pastikan password superadmin terisi
+        if (!sa.password) {
+          sa.password = 'SuperAdminabsenkuMantap';
+          changed = true;
+        }
+      }
+
+      // Sinkronkan joinDate setiap akun dengan tanggal pembuatan akun (registeredAt / id timestamp)
+      parsed = parsed.map((u) => {
+        let creationDate = '';
+        if (u.registeredAt && u.registeredAt.trim().length >= 10) {
+          creationDate = u.registeredAt.trim().substring(0, 10);
+        } else if (u.id && u.id.startsWith('usr_')) {
+          const ts = parseInt(u.id.replace('usr_', ''), 10);
+          if (!isNaN(ts) && ts > 1000000000000) {
+            const d = new Date(ts);
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            creationDate = `${y}-${m}-${day}`;
+          }
+        }
+
+        if (u.id !== 'usr_super_admin') {
+          if (creationDate) {
+            if (!u.joinDate || u.joinDate === '2024-01-01' || u.joinDate !== creationDate) {
+              u.joinDate = creationDate;
+              changed = true;
+            }
+            if (!u.registeredAt) {
+              u.registeredAt = `${creationDate} 08:00`;
+              changed = true;
+            }
+          }
+        }
+        return u;
+      });
+
+      if (changed) {
+        safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(parsed));
       }
       return parsed;
     } catch {
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+      safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
       return INITIAL_USERS;
     }
   },
 
   saveUsers(users: User[]): void {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(users));
   },
 
   getCurrentUserId(): string | null {
@@ -311,28 +375,30 @@ export const AppStorage = {
    * yang sama persis. Akun ADMIN / SUPER_ADMIN tidak dapat direset lewat jalur ini.
    * (Catatan: reset aman sepenuhnya memerlukan verifikasi email dari backend.)
    */
+  /**
+   * Reset Password Mandiri: Berdasarkan email terdaftar (dan verifikasi nama lengkap jika diisi).
+   * Mendukung reset password untuk seluruh akun terdaftar (Super Admin, Admin, dan Karyawan).
+   */
   resetPasswordSelfService(
     email: string,
-    fullName: string,
-    newPassword: string
+    fullName?: string,
+    newPassword?: string
   ): { success: boolean; message?: string } {
     if (!newPassword || newPassword.length < 6) {
       return { success: false, message: 'Password baru minimal terdiri dari 6 karakter.' };
     }
     const cleanEmail = email.trim().toLowerCase();
-    const cleanName = fullName.trim().toLowerCase();
+    const cleanName = (fullName || '').trim().toLowerCase();
     const users = this.getUsers();
     const matched = users.find(
-      (u) => u.email.toLowerCase() === cleanEmail && u.name.trim().toLowerCase() === cleanName
+      (u) => u.email.toLowerCase() === cleanEmail
     );
     if (!matched) {
-      return { success: false, message: 'Data karyawan tidak ditemukan. Pastikan email dan nama lengkap sesuai.' };
+      return { success: false, message: 'Data yang dimasukkan tidak cocok dengan akun terdaftar.' };
     }
-    if (matched.role !== 'EMPLOYEE') {
-      return {
-        success: false,
-        message: 'Reset password akun Admin / Super Admin tidak dapat dilakukan mandiri. Hubungi Super Admin.',
-      };
+    // Jika nama lengkap diberikan, pastikan sesuai dengan data akun
+    if (cleanName && cleanName.length > 0 && matched.name.trim().toLowerCase() !== cleanName) {
+      return { success: false, message: 'Data yang dimasukkan tidak cocok dengan akun terdaftar.' };
     }
     matched.password = hashPassword(newPassword.trim());
     this.updateUser(matched);
@@ -435,6 +501,15 @@ export const AppStorage = {
       return { success: false, message: 'Alamat email sudah terdaftar dalam sistem.' };
     }
 
+    const now = new Date();
+    const localYear = now.getFullYear();
+    const localMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const localDay = String(now.getDate()).padStart(2, '0');
+    const localDateStr = `${localYear}-${localMonth}-${localDay}`;
+    const localHours = String(now.getHours()).padStart(2, '0');
+    const localMinutes = String(now.getMinutes()).padStart(2, '0');
+    const localTimeStr = `${localDateStr} ${localHours}:${localMinutes}`;
+
     const newUser: User = {
       id: `usr_${Date.now()}`,
       name: data.name.trim(),
@@ -447,14 +522,14 @@ export const AppStorage = {
       position: data.position || 'Staf',
       avatar: `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 1000000)}?auto=format&fit=crop&w=256&q=80`,
       phone: data.phone || '',
-      joinDate: new Date().toISOString().substring(0, 10),
+      joinDate: localDateStr,
       leaveBalance: data.employmentType === 'PERMANENT' ? 12 : 6,
       bankName: data.bankName || 'BCA (Bank Central Asia)',
       bankAccountNumber: data.bankAccountNumber || '',
       bankAccountHolder: data.bankAccountHolder || data.name,
       emergencyContactName: data.emergencyContactName || '',
       emergencyContactPhone: data.emergencyContactPhone || '',
-      registeredAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      registeredAt: localTimeStr,
       isProfileComplete: true,
     };
 
@@ -470,20 +545,72 @@ export const AppStorage = {
       localStorage.setItem('absenku_pending_sample_dismissed', 'true');
     }
     const users = this.getUsers();
+    let approvedUser: User | null = null;
+
     const updated = users.map((u) => {
       if (u.id === userId) {
-        return {
+        if (u.status === 'ACTIVE') {
+          return u;
+        }
+        const joinDate = u.joinDate || u.registeredAt?.substring(0, 10) || new Date().toISOString().substring(0, 10);
+        const resolvedRole = role || u.role || 'EMPLOYEE';
+        approvedUser = {
           ...u,
+          joinDate,
           status: 'ACTIVE' as const,
-          role: role || u.role || 'EMPLOYEE',
+          role: resolvedRole,
           approvedBy: approverName,
           approvedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
         };
+        return approvedUser;
       }
       return u;
     });
+
+    if (!approvedUser) {
+      return;
+    }
+
     this.saveUsers(updated);
     ApiClient.approveUser(userId).catch(() => {});
+
+    // Kirim notifikasi email ke pendaftar yang akunnya baru disetujui / diverifikasi
+    try {
+      const targetUser = approvedUser as User;
+      if (targetUser && targetUser.email) {
+        const approvalTime = targetUser.approvedAt || new Date().toISOString().replace('T', ' ').substring(0, 16);
+        const roleText =
+          targetUser.role === 'SUPER_ADMIN'
+            ? 'Superadmin'
+            : targetUser.role === 'ADMIN'
+            ? 'Admin'
+            : 'Karyawan';
+
+        const emailNotification: EmailNotification = {
+          id: `email_acc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          toEmail: targetUser.email,
+          toName: targetUser.name,
+          fromName: approverName || 'Administrator in-Time',
+          fromEmail: 'admin@intime.id',
+          subject: `Akun Terverifikasi: Selamat Datang di in-Time, ${targetUser.name}!`,
+          employeeName: targetUser.name,
+          employmentType: targetUser.employmentType,
+          category: 'ACCOUNT_VERIFIED',
+          notificationType: 'ACCOUNT',
+          dateRange: approvalTime,
+          reason: `Pendaftaran akun Anda telah diverifikasi dan disetujui dengan hak akses ${roleText}.`,
+          notes: 'Kabar baik! Pendaftaran akun Anda di sistem in-Time telah resmi disetujui dan diverifikasi. Akun Anda saat ini sudah aktif dan dapat langsung digunakan untuk presensi dan manajemen tugas.',
+          directApprovalLink: '/login',
+          sentAt: approvalTime,
+          read: false,
+          recipientRole: targetUser.role,
+        };
+
+        this.addEmailNotification(emailNotification);
+      }
+    } catch (err) {
+      console.warn('Gagal memicu email verifikasi akun:', err);
+    }
   },
 
   // Penolakan / Penghapusan Registrasi Akun Baru
@@ -643,6 +770,26 @@ export const AppStorage = {
       (r) => !(r.userId === curUserId && r.date === today)
     );
     this.saveAttendanceRecords(records);
+  },
+
+  deleteAttendanceByDate(date: string, userId?: string): void {
+    const curUserId = userId || this.getCurrentUserId();
+    const records = this.getAttendanceRecords().filter(
+      (r) => !(r.date === date && (!curUserId || r.userId === curUserId))
+    );
+    this.saveAttendanceRecords(records);
+
+    // Bersihkan juga dari antrean offline jika ada
+    try {
+      const queueRaw = localStorage.getItem('absenku_offline_queue');
+      if (queueRaw) {
+        const queue = JSON.parse(queueRaw);
+        const filteredQueue = queue.filter(
+          (item: any) => !(item.type === 'ATTENDANCE' && item.data?.date === date && (!curUserId || item.data?.userId === curUserId))
+        );
+        localStorage.setItem('absenku_offline_queue', JSON.stringify(filteredQueue));
+      }
+    } catch (e) {}
   },
 
   clearAllAttendance(): void {
@@ -844,14 +991,55 @@ export const AppStorage = {
       // Pastikan nama dan avatar assignee selalu sinkron dengan data profil user
       return parsed.map((t) => {
         const matched = allUsers.find((u) => u.id === t.assignedTo);
-        if (matched) {
-          return {
-            ...t,
-            assignedName: matched.name,
-            assignedAvatar: matched.avatar,
-          };
-        }
-        return t;
+        const filteredActivities = (t.activities || [])
+          .filter((act) => {
+            if (act.type === 'STARTED' || /mulai mengerjakan tugas ini/i.test(act.notes || '')) {
+              return false;
+            }
+            if (
+              !act.attachments?.length &&
+              (act.notes === 'Hasil preview tugas dilampirkan untuk ditinjau oleh PIC.' ||
+                act.notes === 'Tugas dikembalikan ke proses pengerjaan untuk direvisi.' ||
+                act.notes === 'Penugasan Selesai (ACC oleh PIC)' ||
+                act.notes === 'Mohon disempurnakan kembali sesuai catatan arahan dari PIC.' ||
+                act.notes === 'Catatan arahan dari PIC.' ||
+                /Tugas dikirimkan oleh .* untuk ditinjau oleh PIC\./i.test(act.notes || '') ||
+                /Tugas telah ditinjau dan disetujui \(ACC\) oleh PIC .* Penugasan Selesai\./i.test(act.notes || ''))
+            ) {
+              return false;
+            }
+            return true;
+          })
+          .map((act) => {
+            let cleanNotes = act.notes || '';
+            const subMatch = cleanNotes.match(/^Hasil pengerjaan dikirimkan oleh [^:]+:\s*"?(.*?)"?$/s);
+            if (subMatch) cleanNotes = subMatch[1];
+            const revMatch = cleanNotes.match(/^Instruksi Revisi dari PIC \([^)]+\):\s*"?(.*?)"?$/s);
+            if (revMatch) cleanNotes = revMatch[1];
+            const appMatch = cleanNotes.match(/^Disetujui oleh PIC \([^)]+\):\s*"?(.*?)"?$/s);
+            if (appMatch) cleanNotes = appMatch[1];
+            return {
+              ...act,
+              notes: cleanNotes,
+            };
+          });
+
+        // Pastikan task.attachments hanya berisi lampiran awal dari PIC saat penugasan dibuat
+        const initialTaskAttachments = (t.attachments || []).filter(
+          (a) => a.stage === 'TODO' || !a.stage || a.uploadedBy === t.createdBy
+        );
+
+        return {
+          ...t,
+          attachments: initialTaskAttachments,
+          activities: filteredActivities,
+          ...(matched
+            ? {
+                assignedName: matched.name,
+                assignedAvatar: matched.avatar,
+              }
+            : {}),
+        };
       });
     } catch {
       return [];
@@ -883,7 +1071,428 @@ export const AppStorage = {
     };
     tasks.unshift(newTask);
     this.saveTasks(tasks);
+
+    // Otomatis kirim notifikasi email penugasan ke karyawan & admin/PIC
+    try {
+      const curUser = this.getCurrentUser();
+      this.sendTaskEmailNotifications({
+        type: 'ASSIGNED',
+        task: newTask,
+        actor: {
+          id: curUser?.id || newTask.createdBy || 'usr_super_admin',
+          name: curUser?.name || 'Super Admin',
+          email: curUser?.email || 'nasywadavina384@gmail.com',
+          role: curUser?.role || 'SUPER_ADMIN',
+        },
+        notes: newTask.description,
+        attachments: newTask.attachments,
+      });
+    } catch (err) {
+      console.warn('Gagal memicu pengiriman notifikasi email penugasan:', err);
+    }
+
     return newTask;
+  },
+
+  updateTask(taskId: string, updates: Partial<TaskItem>): TaskItem | null {
+    const tasks = this.getTasks();
+    let updatedTask: TaskItem | null = null;
+    const oldTask = tasks.find((t) => t.id === taskId);
+
+    const updated = tasks.map((t) => {
+      if (t.id === taskId) {
+        updatedTask = {
+          ...t,
+          ...updates,
+          updatedAt: new Date().toISOString().substring(0, 10),
+        };
+        return updatedTask;
+      }
+      return t;
+    });
+
+    if (updatedTask) {
+      this.saveTasks(updated);
+
+      // Jika ada perubahan penugasan (assignee), kirim email penugasan baru
+      if (oldTask && updates.assignedTo && updates.assignedTo !== oldTask.assignedTo) {
+        try {
+          const curUser = this.getCurrentUser();
+          this.sendTaskEmailNotifications({
+            type: 'ASSIGNED',
+            task: updatedTask,
+            actor: {
+              id: curUser?.id || (updatedTask as TaskItem).createdBy || 'usr_super_admin',
+              name: curUser?.name || 'Super Admin',
+              email: curUser?.email || 'nasywadavina384@gmail.com',
+              role: curUser?.role || 'SUPER_ADMIN',
+            },
+            notes: (updatedTask as TaskItem).description,
+          });
+        } catch (err) {
+          console.warn('Gagal memicu email perubahan penugasan:', err);
+        }
+      }
+    }
+
+    return updatedTask;
+  },
+
+  // Trigger Pengiriman Notifikasi Email Otomatis untuk Setiap Proses Penugasan
+  sendTaskEmailNotifications(params: {
+    type: 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED' | 'REVISION' | 'APPROVED';
+    task: TaskItem;
+    actor: { id: string; name: string; email?: string; role?: string };
+    notes?: string;
+    attachments?: TaskAttachment[];
+  }): void {
+    const { type, task, actor, notes, attachments } = params;
+    const users = this.getUsers();
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+    // Dapatkan data PIC / Pembuat Tugas
+    const picUser =
+      users.find((u) => u.id === task.createdBy) ||
+      users.find((u) => u.role === 'SUPER_ADMIN') ||
+      users.find((u) => u.role === 'ADMIN') || {
+        id: 'usr_super_admin',
+        name: 'Super Admin',
+        email: 'nasywadavina384@gmail.com',
+        role: 'SUPER_ADMIN' as const,
+      };
+
+    // Kumpulkan seluruh data karyawan yang ditugaskan
+    const assigneeIds = new Set<string>();
+    if (task.assignedTo) assigneeIds.add(task.assignedTo);
+    if (Array.isArray(task.assignees)) {
+      task.assignees.forEach((a) => a.id && assigneeIds.add(a.id));
+    }
+
+    let assignedUsers = users.filter((u) => assigneeIds.has(u.id));
+    if (assignedUsers.length === 0) {
+      // Cari kecocokan berdasarkan nama jika ID tidak cocok
+      assignedUsers = users.filter(
+        (u) =>
+          (u.name && task.assignedName && u.name.toLowerCase() === task.assignedName.toLowerCase()) ||
+          task.assignees?.some((a) => a.name && u.name.toLowerCase() === a.name.toLowerCase())
+      );
+    }
+
+    if (assignedUsers.length === 0) {
+      // Ambil user karyawan nyata pertama yang ada di sistem
+      const realEmployee = users.find((u) => u.role === 'EMPLOYEE');
+      if (realEmployee) {
+        assignedUsers = [realEmployee];
+      } else {
+        assignedUsers = [
+          {
+            id: task.assignedTo || 'usr_emp_01',
+            name: task.assignedName || 'Karyawan Pelaksana',
+            email: 'nasywadavina384@gmail.com',
+            role: 'EMPLOYEE' as const,
+            status: 'ACTIVE' as const,
+            employmentType: 'PERMANENT' as const,
+            department: 'Operasional',
+            position: 'Staf',
+            avatar: task.assignedAvatar || '',
+            phone: '',
+            joinDate: '',
+            leaveBalance: 12,
+          },
+        ];
+      }
+    }
+
+    const priorityLabel = getPriorityLabel(task.priority);
+    const attachmentNames =
+      attachments && attachments.length > 0
+        ? attachments.map((a) => a.name).join(', ')
+        : task.attachments && task.attachments.length > 0
+        ? task.attachments.map((a) => a.name).join(', ')
+        : undefined;
+
+    switch (type) {
+      case 'ASSIGNED': {
+        // 1. Notifikasi ke SEMUA Karyawan yang Ditugaskan
+        assignedUsers.forEach((employee) => {
+          this.addEmailNotification({
+            id: `email_task_assign_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            toEmail: employee.email,
+            toName: employee.name,
+            fromName: `${actor.name} (${actor.role === 'SUPER_ADMIN' ? 'Super Admin' : actor.role === 'ADMIN' ? 'Admin' : 'PIC'})`,
+            fromEmail: actor.email || picUser.email,
+            subject: `Penugasan Baru: ${task.title}`,
+            category: 'TASK_ASSIGNED',
+            notificationType: 'TASK',
+            employeeName: employee.name,
+            employmentType: employee.employmentType,
+            dateRange: task.dueDate ? `Batas Waktu: ${task.dueDate}` : undefined,
+            reason: task.description,
+            attachmentName: attachmentNames,
+            directApprovalLink: '#tasks_my',
+            sentAt: nowStr,
+            read: false,
+            taskId: task.id,
+            taskTitle: task.title,
+            taskPriority: priorityLabel,
+            dueDate: task.dueDate,
+            picName: picUser.name,
+            picEmail: picUser.email,
+            notes: task.description,
+            recipientRole: 'EMPLOYEE',
+          });
+        });
+
+        // 2. Notifikasi Konfirmasi / Arsip ke Admin / Super Admin / PIC yang Memberikan Tugas
+        this.addEmailNotification({
+          id: `email_task_pic_confirm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          toEmail: picUser.email,
+          toName: picUser.name,
+          fromName: 'Sistem in-Time Notifier',
+          fromEmail: 'system@in-time.id',
+          subject: `Konfirmasi Penugasan: ${task.title}`,
+          category: 'TASK_ASSIGNED',
+          notificationType: 'TASK',
+          employeeName: assignedUsers.map((e) => e.name).join(', '),
+          employmentType: assignedUsers[0]?.employmentType,
+          dateRange: task.dueDate ? `Batas Waktu: ${task.dueDate}` : undefined,
+          reason: task.description,
+          attachmentName: attachmentNames,
+          directApprovalLink: '#tasks_team',
+          sentAt: nowStr,
+          read: false,
+          taskId: task.id,
+          taskTitle: task.title,
+          taskPriority: priorityLabel,
+          dueDate: task.dueDate,
+          picName: picUser.name,
+          picEmail: picUser.email,
+          notes: task.description,
+          recipientRole: picUser.role as any,
+        });
+        break;
+      }
+
+      case 'IN_PROGRESS': {
+        // 1. Notifikasi ke Pelaksana (Karyawan)
+        assignedUsers.forEach((employee) => {
+          this.addEmailNotification({
+            id: `email_task_start_emp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            toEmail: employee.email,
+            toName: employee.name,
+            fromName: `${picUser.name} (PIC)`,
+            fromEmail: picUser.email,
+            subject: `Pemberitahuan Pengerjaan: ${task.title} - Dalam Proses`,
+            category: 'TASK_IN_PROGRESS',
+            notificationType: 'TASK',
+            employeeName: employee.name,
+            employmentType: employee.employmentType,
+            dateRange: task.dueDate ? `Batas Waktu: ${task.dueDate}` : undefined,
+            reason: `Tugas "${task.title}" telah dipindahkan ke status pengerjaan aktif (In Progress).`,
+            directApprovalLink: '#tasks_my',
+            sentAt: nowStr,
+            read: false,
+            taskId: task.id,
+            taskTitle: task.title,
+            taskPriority: priorityLabel,
+            dueDate: task.dueDate,
+            picName: picUser.name,
+            picEmail: picUser.email,
+            notes: task.description,
+            recipientRole: 'EMPLOYEE',
+          });
+        });
+
+        // 2. Notifikasi ke PIC saat pengerjaan tugas dimulai oleh karyawan
+        this.addEmailNotification({
+          id: `email_task_start_pic_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          toEmail: picUser.email,
+          toName: picUser.name,
+          fromName: `${actor.name} (Karyawan)`,
+          fromEmail: actor.email,
+          subject: `Pengerjaan Dimulai: ${actor.name} - ${task.title}`,
+          category: 'TASK_IN_PROGRESS',
+          notificationType: 'TASK',
+          employeeName: actor.name,
+          dateRange: task.dueDate ? `Batas Waktu: ${task.dueDate}` : undefined,
+          reason: `Karyawan telah memulai proses pengerjaan aktif untuk tugas "${task.title}".`,
+          directApprovalLink: '#tasks_team',
+          sentAt: nowStr,
+          read: false,
+          taskId: task.id,
+          taskTitle: task.title,
+          taskPriority: priorityLabel,
+          dueDate: task.dueDate,
+          picName: picUser.name,
+          recipientRole: picUser.role as any,
+        });
+        break;
+      }
+
+      case 'SUBMITTED': {
+        // 1. Notifikasi ke Admin / PIC bahwa tugas telah dikumpulkan untuk direview
+        this.addEmailNotification({
+          id: `email_task_submit_pic_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          toEmail: picUser.email,
+          toName: picUser.name,
+          fromName: `${actor.name} (Karyawan)`,
+          fromEmail: actor.email,
+          subject: `Pengumpulan Tugas: ${actor.name} - ${task.title}`,
+          category: 'TASK_SUBMITTED',
+          notificationType: 'TASK',
+          employeeName: actor.name,
+          dateRange: task.dueDate ? `Batas Waktu: ${task.dueDate}` : undefined,
+          reason: notes || 'Hasil pengerjaan tugas telah dikirimkan dan menunggu peninjauan/ACC dari PIC.',
+          attachmentName: attachmentNames,
+          directApprovalLink: '#tasks_team',
+          sentAt: nowStr,
+          read: false,
+          taskId: task.id,
+          taskTitle: task.title,
+          taskPriority: priorityLabel,
+          dueDate: task.dueDate,
+          picName: picUser.name,
+          notes: notes,
+          recipientRole: picUser.role as any,
+        });
+
+        // 2. Notifikasi Konfirmasi Pengumpulan ke Karyawan
+        this.addEmailNotification({
+          id: `email_task_submit_emp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          toEmail: actor.email || assignedUsers[0]?.email || 'karyawan@in-time.id',
+          toName: actor.name,
+          fromName: 'Sistem in-Time Notifier',
+          fromEmail: 'system@in-time.id',
+          subject: `Konfirmasi Pengumpulan Tugas: ${task.title}`,
+          category: 'TASK_SUBMITTED',
+          notificationType: 'TASK',
+          employeeName: actor.name,
+          dateRange: task.dueDate ? `Batas Waktu: ${task.dueDate}` : undefined,
+          reason: notes || 'Hasil pengerjaan tugas telah berhasil diteruskan ke PIC untuk ditinjau.',
+          attachmentName: attachmentNames,
+          directApprovalLink: '#tasks_my',
+          sentAt: nowStr,
+          read: false,
+          taskId: task.id,
+          taskTitle: task.title,
+          taskPriority: priorityLabel,
+          dueDate: task.dueDate,
+          picName: picUser.name,
+          notes: notes,
+          recipientRole: 'EMPLOYEE',
+        });
+        break;
+      }
+
+      case 'REVISION': {
+        // 1. Notifikasi Catatan Revisi ke Karyawan yang Ditugaskan
+        assignedUsers.forEach((employee) => {
+          this.addEmailNotification({
+            id: `email_task_rev_emp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            toEmail: employee.email,
+            toName: employee.name,
+            fromName: `${actor.name} (${actor.role === 'SUPER_ADMIN' ? 'Super Admin' : actor.role === 'ADMIN' ? 'Admin' : 'PIC'})`,
+            fromEmail: actor.email || picUser.email,
+            subject: `Permintaan Revisi Tugas: ${task.title}`,
+            category: 'TASK_REVISION',
+            notificationType: 'TASK',
+            employeeName: employee.name,
+            employmentType: employee.employmentType,
+            dateRange: task.dueDate ? `Batas Waktu: ${task.dueDate}` : undefined,
+            reason: notes || 'Terdapat perbaikan yang perlu disesuaikan pada tugas ini.',
+            attachmentName: attachmentNames,
+            directApprovalLink: '#tasks_my',
+            sentAt: nowStr,
+            read: false,
+            taskId: task.id,
+            taskTitle: task.title,
+            taskPriority: priorityLabel,
+            dueDate: task.dueDate,
+            picName: picUser.name,
+            notes: notes,
+            recipientRole: 'EMPLOYEE',
+          });
+        });
+
+        // 2. Notifikasi Konfirmasi ke PIC
+        this.addEmailNotification({
+          id: `email_task_rev_pic_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          toEmail: picUser.email,
+          toName: picUser.name,
+          fromName: 'Sistem in-Time Notifier',
+          fromEmail: 'system@in-time.id',
+          subject: `Konfirmasi Instruksi Revisi: ${task.title}`,
+          category: 'TASK_REVISION',
+          notificationType: 'TASK',
+          employeeName: assignedUsers.map((e) => e.name).join(', '),
+          dateRange: task.dueDate ? `Batas Waktu: ${task.dueDate}` : undefined,
+          reason: notes || 'Instruksi revisi telah tercatat.',
+          directApprovalLink: '#tasks_team',
+          sentAt: nowStr,
+          read: false,
+          taskId: task.id,
+          taskTitle: task.title,
+          picName: picUser.name,
+          notes: notes,
+          recipientRole: picUser.role as any,
+        });
+        break;
+      }
+
+      case 'APPROVED': {
+        // 1. Notifikasi ACC / Selesai ke Karyawan
+        assignedUsers.forEach((employee) => {
+          this.addEmailNotification({
+            id: `email_task_acc_emp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            toEmail: employee.email,
+            toName: employee.name,
+            fromName: `${actor.name} (${actor.role === 'SUPER_ADMIN' ? 'Super Admin' : actor.role === 'ADMIN' ? 'Admin' : 'PIC'})`,
+            fromEmail: actor.email || picUser.email,
+            subject: `Pemberitahuan Tugas Selesai: ${task.title}`,
+            category: 'TASK_APPROVED',
+            notificationType: 'TASK',
+            employeeName: employee.name,
+            employmentType: employee.employmentType,
+            dateRange: task.dueDate ? `Batas Waktu: ${task.dueDate}` : undefined,
+            reason: notes || 'Tugas telah ditinjau dan disetujui (ACC) oleh PIC. Penugasan Selesai.',
+            directApprovalLink: '#tasks_my',
+            sentAt: nowStr,
+            read: false,
+            taskId: task.id,
+            taskTitle: task.title,
+            taskPriority: priorityLabel,
+            dueDate: task.dueDate,
+            picName: picUser.name,
+            notes: notes,
+            recipientRole: 'EMPLOYEE',
+          });
+        });
+
+        // 2. Notifikasi Penyelesaian Tugas ke PIC
+        this.addEmailNotification({
+          id: `email_task_acc_pic_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          toEmail: picUser.email,
+          toName: picUser.name,
+          fromName: 'Sistem in-Time Notifier',
+          fromEmail: 'system@in-time.id',
+          subject: `Konfirmasi Penyelesaian Tugas: ${task.title}`,
+          category: 'TASK_APPROVED',
+          notificationType: 'TASK',
+          employeeName: assignedUsers.map((e) => e.name).join(', '),
+          dateRange: task.dueDate ? `Batas Waktu: ${task.dueDate}` : undefined,
+          reason: notes || 'Tugas telah disetujui dan ditandai selesai.',
+          directApprovalLink: '#tasks_team',
+          sentAt: nowStr,
+          read: false,
+          taskId: task.id,
+          taskTitle: task.title,
+          picName: picUser.name,
+          notes: notes,
+          recipientRole: picUser.role as any,
+        });
+        break;
+      }
+    }
   },
 
   updateTaskStatus(
@@ -897,6 +1506,11 @@ export const AppStorage = {
     }
   ): void {
     const tasks = this.getTasks();
+    const existingTask = tasks.find((t) => t.id === taskId);
+    const oldStatusTarget: TaskStatus | undefined = existingTask?.status;
+    let updatedTargetTask: TaskItem | null = null;
+    let actorUser: any = null;
+
     const updated = tasks.map((t) => {
       if (t.id === taskId) {
         const oldStatus = t.status;
@@ -910,6 +1524,7 @@ export const AppStorage = {
           name: 'Sistem',
           role: 'ADMIN',
         };
+        actorUser = user;
 
         const now = new Date();
         const dateStr = now.toISOString().substring(0, 10);
@@ -920,50 +1535,99 @@ export const AppStorage = {
         let activityNotes = '';
 
         if (status === 'IN_PROGRESS' && oldStatus === 'TODO') {
-          activityType = 'STARTED';
-          activityNotes = `${user.name} mulai mengerjakan tugas ini.`;
+          // Ketika mulai mengerjakan tugas, JANGAN buat template chat room
+          activityNotes = '';
         } else if (status === 'IN_PROGRESS' && (oldStatus === 'DONE' || details?.reviewNotes)) {
           activityType = 'REVISION_REQUESTED';
-          activityNotes = details?.reviewNotes
-            ? `Instruksi Revisi dari PIC (${user.name}): "${details.reviewNotes}"`
-            : `Tugas dikembalikan ke proses pengerjaan untuk direvisi.`;
+          // PURE dari yang diketikkan, tanpa wrapper template
+          activityNotes = (details?.reviewNotes || '').trim();
         } else if (status === 'DONE') {
           activityType = 'SUBMITTED';
-          activityNotes = details?.submissionNotes
-            ? `Hasil pengerjaan dikirimkan oleh ${user.name}: "${details.submissionNotes}"`
-            : `Tugas dikirimkan oleh ${user.name} untuk ditinjau oleh PIC.`;
+          // PURE dari yang diketikkan, tanpa wrapper template
+          activityNotes = (details?.submissionNotes || '').trim();
         } else if (status === 'REVIEWED') {
           activityType = 'APPROVED';
-          activityNotes = details?.reviewNotes
-            ? `Disetujui oleh PIC (${user.name}): "${details.reviewNotes}"`
-            : `Tugas telah ditinjau dan disetujui (ACC) oleh PIC (${user.name}). Penugasan Selesai.`;
+          // PURE dari yang diketikkan, tanpa wrapper template
+          activityNotes = (details?.reviewNotes || '').trim();
         }
 
-        const newActivity: TaskActivity = {
-          id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          type: activityType,
-          userId: user.id,
-          userName: user.name,
-          userRole: user.role,
-          userAvatar: user.avatar,
-          timestamp: timestampStr,
-          notes: activityNotes,
-          attachments: newAttachments,
-        };
+        // HANYA buat pesan activity chat jika pengguna benar-benar mengetikkan pesan atau mengunggah lampiran!
+        const newActivities = [...currentActivities];
+        if (activityNotes || newAttachments.length > 0) {
+          const newActivity: TaskActivity = {
+            id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            type: activityType,
+            userId: user.id,
+            userName: user.name,
+            userRole: user.role,
+            userAvatar: user.avatar,
+            timestamp: timestampStr,
+            notes: activityNotes,
+            attachments: newAttachments,
+          };
+          newActivities.push(newActivity);
+        }
 
-        return {
+        const resTask: TaskItem = {
           ...t,
           status,
           updatedAt: dateStr,
-          attachments: updatedAttachments,
-          activities: [...currentActivities, newActivity],
+          attachments: currentAttachments, // Hanya lampiran penugasan awal dari PIC! Berkas chat tetap berada di room chat
+          activities: newActivities,
           ...(details?.reviewNotes !== undefined ? { reviewNotes: details.reviewNotes } : {}),
           ...(details?.submissionNotes !== undefined ? { submissionNotes: details.submissionNotes } : {}),
         };
+        updatedTargetTask = resTask;
+        return resTask;
       }
       return t;
     });
+
     this.saveTasks(updated);
+
+    // Memicu notifikasi email otomatis untuk setiap proses penugasan (pengerjaan, submit, revisi, ACC)
+    if (updatedTargetTask) {
+      try {
+        const cur = this.getCurrentUser();
+        const actor = {
+          id: actorUser?.id || cur?.id || 'usr_super_admin',
+          name: actorUser?.name || cur?.name || 'Super Admin',
+          email: actorUser?.email || cur?.email || 'nasywadavina384@gmail.com',
+          role: actorUser?.role || cur?.role || 'SUPER_ADMIN',
+        };
+        if (status === 'IN_PROGRESS' && oldStatusTarget === 'TODO') {
+          this.sendTaskEmailNotifications({
+            type: 'IN_PROGRESS',
+            task: updatedTargetTask,
+            actor,
+          });
+        } else if (status === 'IN_PROGRESS' && (oldStatusTarget === 'DONE' || details?.reviewNotes)) {
+          this.sendTaskEmailNotifications({
+            type: 'REVISION',
+            task: updatedTargetTask,
+            actor,
+            notes: details?.reviewNotes,
+          });
+        } else if (status === 'DONE') {
+          this.sendTaskEmailNotifications({
+            type: 'SUBMITTED',
+            task: updatedTargetTask,
+            actor,
+            notes: details?.submissionNotes,
+            attachments: details?.newAttachments,
+          });
+        } else if (status === 'REVIEWED') {
+          this.sendTaskEmailNotifications({
+            type: 'APPROVED',
+            task: updatedTargetTask,
+            actor,
+            notes: details?.reviewNotes,
+          });
+        }
+      } catch (err) {
+        console.warn('Gagal memicu email status penugasan:', err);
+      }
+    }
   },
 
   addTaskActivity(taskId: string, activityData: Omit<TaskActivity, 'id' | 'timestamp'>): void {
@@ -1146,6 +1810,9 @@ export const AppStorage = {
       return l;
     });
     safeSetItem(STORAGE_KEYS.LEAVES, JSON.stringify(sanitized));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('absenku:leaves_updated'));
+    }
   },
 
   submitLeaveRequest(
@@ -1222,7 +1889,7 @@ export const AppStorage = {
       attachment_type: newLeave.attachmentType,
     }).catch(() => {});
 
-    // TRIGGER EMAIL NOTIFIKASI OTOMATIS KE ADMIN
+    // TRIGGER EMAIL NOTIFIKASI OTOMATIS KE SEMUA ADMIN & SUPER ADMIN (WEB & EMAIL ASLI)
     const categoryLabels: Record<LeaveCategory, string> = {
       LEAVE: 'Izin / Cuti',
       WFH: 'Work From Home (WFH)',
@@ -1230,21 +1897,35 @@ export const AppStorage = {
       BUSINESS_TRIP: 'Dinas Luar',
     };
 
-    this.addEmailNotification({
-      id: `email_${Date.now()}`,
-      toEmail: 'admin@kantor.id',
-      toName: 'Sarah Amelia (HR Admin)',
-      fromName: 'Sistem Absenku Notifier',
-      subject: `[Pengajuan Izin] ${user.name} mengajukan ${categoryLabels[data.category]}`,
-      employeeName: user.name,
-      employmentType: user.employmentType,
-      category: data.category,
-      dateRange: `${data.startDate} s/d ${data.endDate} (${data.totalDays} Hari)`,
-      reason: data.reason,
-      attachmentName: data.attachmentName,
-      directApprovalLink: '#leaves',
-      sentAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      read: false,
+    const adminUsers = this.getUsers().filter(
+      (u) => (u.role === 'SUPER_ADMIN' || u.role === 'ADMIN') && u.status === 'ACTIVE'
+    );
+    const targetAdmins =
+      adminUsers.length > 0
+        ? adminUsers
+        : [{ id: 'usr_super_admin', email: 'nasywadavina384@gmail.com', name: 'Super Admin', role: 'SUPER_ADMIN' as const, employmentType: 'PERMANENT' as const }];
+
+    targetAdmins.forEach((admin) => {
+      this.addEmailNotification({
+        id: `email_leave_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        toEmail: admin.email,
+        toName: admin.name,
+        fromName: `${user.name} (Pengajuan Izin)`,
+        fromEmail: user.email,
+        subject: `Pengajuan Izin: ${user.name} - ${categoryLabels[data.category]}`,
+        employeeName: user.name,
+        employmentType: user.employmentType,
+        category: data.category,
+        notificationType: 'LEAVE',
+        recipientRole: admin.role,
+        dateRange: `${data.startDate} s/d ${data.endDate} (${data.totalDays} Hari)`,
+        reason: data.reason,
+        notes: `Pengajuan ${categoryLabels[data.category]} dari ${user.name} memerlukan persetujuan Administrator.`,
+        attachmentName: data.attachmentName,
+        directApprovalLink: '#leaves_approval',
+        sentAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        read: false,
+      });
     });
 
     return newLeave;
@@ -1338,6 +2019,29 @@ export const AppStorage = {
     if (approvedLeave) {
       this.reconcileRemoteRecords({ id: approvedLeave.userId, name: approvedLeave.userName });
       ApiClient.approveLeave(leaveId).catch(() => {});
+
+      // Kirim email notifikasi persetujuan ke email karyawan pemohon izin
+      const targetUser = this.getUsers().find((u) => u.id === approvedLeave?.userId);
+      const empEmail = targetUser?.email || 'nasywadavina384@gmail.com';
+      const categoryLabel =
+        approvedLeave.category === 'BUSINESS_TRIP'
+          ? 'Dinas Luar'
+          : LEAVE_CATEGORY_LABEL[approvedLeave.category] || approvedLeave.category;
+      this.addEmailNotification({
+        id: `email_leave_app_${Date.now()}`,
+        toEmail: empEmail,
+        toName: approvedLeave.userName,
+        fromName: `${reviewerName} (PIC / Admin)`,
+        subject: `Pengajuan Disetujui: ${categoryLabel} - ${approvedLeave.userName}`,
+        employeeName: approvedLeave.userName,
+        category: categoryLabel,
+        dateRange: `${approvedLeave.startDate} s/d ${approvedLeave.endDate} (${approvedLeave.totalDays} Hari)`,
+        reason: approvedLeave.reason,
+        notes: `Pengajuan telah resmi disetujui oleh ${reviewerName}.`,
+        directApprovalLink: '#leaves',
+        sentAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        read: false,
+      });
     }
   },
 
@@ -1362,6 +2066,29 @@ export const AppStorage = {
     if (rejectedLeave) {
       this.reconcileRemoteRecords({ id: rejectedLeave.userId, name: rejectedLeave.userName });
       ApiClient.rejectLeave(leaveId, reason).catch(() => {});
+
+      // Kirim email notifikasi penolakan ke email karyawan pemohon izin
+      const targetUser = this.getUsers().find((u) => u.id === rejectedLeave?.userId);
+      const empEmail = targetUser?.email || 'nasywadavina384@gmail.com';
+      const categoryLabel =
+        rejectedLeave.category === 'BUSINESS_TRIP'
+          ? 'Dinas Luar'
+          : LEAVE_CATEGORY_LABEL[rejectedLeave.category] || rejectedLeave.category;
+      this.addEmailNotification({
+        id: `email_leave_rej_${Date.now()}`,
+        toEmail: empEmail,
+        toName: rejectedLeave.userName,
+        fromName: `${reviewerName} (PIC / Admin)`,
+        subject: `Pemberitahuan Penolakan Pengajuan: ${categoryLabel} - ${rejectedLeave.userName}`,
+        employeeName: rejectedLeave.userName,
+        category: categoryLabel,
+        dateRange: `${rejectedLeave.startDate} s/d ${rejectedLeave.endDate} (${rejectedLeave.totalDays} Hari)`,
+        reason: rejectedLeave.reason,
+        notes: `Catatan Penolakan: ${reason} (Ditinjau oleh ${reviewerName})`,
+        directApprovalLink: '#leaves',
+        sentAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        read: false,
+      });
     }
   },
 
@@ -1469,22 +2196,335 @@ export const AppStorage = {
       return INITIAL_EMAIL_NOTIFICATIONS;
     }
     try {
-      return JSON.parse(raw);
+      const list: EmailNotification[] = JSON.parse(raw);
+      return list.map((e) => ({
+        ...e,
+        subject: (e.subject || '').replace(/BUSINESS_TRIP/g, 'Dinas Luar'),
+        category: e.category === 'BUSINESS_TRIP' ? 'Dinas Luar' : e.category,
+      }));
     } catch {
       return INITIAL_EMAIL_NOTIFICATIONS;
     }
   },
 
   addEmailNotification(notification: EmailNotification): void {
+    const cleanSubject = (notification.subject || '')
+      .replace(/BUSINESS_TRIP/g, 'Dinas Luar')
+      .replace(/business_trip/gi, 'Dinas Luar');
+    const cleanCategory =
+      notification.category === 'BUSINESS_TRIP'
+        ? 'Dinas Luar'
+        : notification.category === 'LEAVE'
+        ? 'Cuti / Izin'
+        : notification.category === 'SICK'
+        ? 'Sakit'
+        : notification.category;
+
+    const sanitizedNotification: EmailNotification = {
+      ...notification,
+      subject: cleanSubject,
+      category: cleanCategory,
+    };
+
     const emails = this.getEmailNotifications();
-    emails.unshift(notification);
+    emails.unshift(sanitizedNotification);
     localStorage.setItem(STORAGE_KEYS.EMAILS, JSON.stringify(emails));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(
+        new CustomEvent('absenku:email_notification', { detail: sanitizedNotification })
+      );
+    }
+
+    // DISPATCH REAL EMAIL VIA NODEMAILER (GMAIL SMTP)
+    try {
+      const users = this.getUsers();
+      let rawTo = sanitizedNotification.toEmail?.trim();
+
+      // Jika alamat email dummy / contoh yang tidak bisa menerima email asli:
+      if (
+        !rawTo ||
+        !rawTo.includes('@') ||
+        rawTo.toLowerCase() === 'superadmin@gmail.com' ||
+        rawTo.toLowerCase().endsWith('@kantor.id') ||
+        rawTo.toLowerCase().endsWith('@absenku.id')
+      ) {
+        // Coba cari dari nama / ID user di biodata diri yang sudah diinputkan
+        const matchedUser =
+          users.find((u) => u.name?.toLowerCase() === sanitizedNotification.toName?.toLowerCase()) ||
+          users.find((u) => u.name?.toLowerCase() === sanitizedNotification.employeeName?.toLowerCase());
+
+        if (
+          matchedUser &&
+          matchedUser.email &&
+          matchedUser.email.includes('@') &&
+          matchedUser.email.toLowerCase() !== 'superadmin@gmail.com' &&
+          !matchedUser.email.toLowerCase().endsWith('@kantor.id') &&
+          !matchedUser.email.toLowerCase().endsWith('@absenku.id')
+        ) {
+          rawTo = matchedUser.email.trim();
+        } else {
+          // Bedakan peran penerima agar email Pelaksana dan PIC tidak tertukar
+          if (sanitizedNotification.recipientRole === 'EMPLOYEE') {
+            const realEmp = users.find(
+              (u) =>
+                u.role === 'EMPLOYEE' &&
+                u.email &&
+                u.email.includes('@') &&
+                !u.email.toLowerCase().endsWith('@kantor.id') &&
+                !u.email.toLowerCase().endsWith('@absenku.id')
+            );
+            rawTo = realEmp?.email || 'nasywadavina384@gmail.com';
+          } else {
+            const realPic = users.find(
+              (u) =>
+                (u.role === 'SUPER_ADMIN' || u.role === 'ADMIN') &&
+                u.email &&
+                u.email.includes('@') &&
+                u.email.toLowerCase() !== 'superadmin@gmail.com'
+            );
+            rawTo = realPic?.email || 'nasywadavina384@gmail.com';
+          }
+        }
+      }
+
+      const recipientEmail = rawTo;
+
+      const isTaskEmail =
+        sanitizedNotification.notificationType === 'TASK' ||
+        Boolean(sanitizedNotification.taskId) ||
+        (sanitizedNotification.category && sanitizedNotification.category.startsWith('TASK_'));
+
+      const isAccountEmail =
+        sanitizedNotification.notificationType === 'ACCOUNT' ||
+        sanitizedNotification.category === 'ACCOUNT_VERIFIED';
+
+      const isPelaksana = sanitizedNotification.recipientRole === 'EMPLOYEE';
+
+      const fields: Array<{ label: string; value: string }> = [];
+      let emailIntro = sanitizedNotification.notes || 'Pemberitahuan aktivitas terbaru di sistem in-Time:';
+      let actionText = 'Buka Aplikasi in-Time';
+      let actionUrl = typeof window !== 'undefined' && window.location ? window.location.origin : '';
+      let footerNote = '';
+
+      if (isAccountEmail) {
+        actionText = 'Masuk ke Aplikasi in-Time';
+        emailIntro =
+          sanitizedNotification.notes ||
+          'Kabar baik! Pendaftaran akun Anda di sistem in-Time telah resmi disetujui dan diverifikasi. Akun Anda saat ini sudah aktif dan dapat langsung digunakan untuk presensi dan manajemen tugas.';
+        footerNote = '';
+
+        if (sanitizedNotification.employeeName) {
+          fields.push({ label: 'Nama Pengguna', value: sanitizedNotification.employeeName });
+        }
+        if (sanitizedNotification.toEmail) {
+          fields.push({ label: 'Email Terdaftar', value: sanitizedNotification.toEmail });
+        }
+        const roleLabel =
+          sanitizedNotification.recipientRole === 'SUPER_ADMIN'
+            ? 'Superadmin'
+            : sanitizedNotification.recipientRole === 'ADMIN'
+            ? 'Admin'
+            : 'Karyawan';
+        fields.push({ label: 'Hak Akses / Peran', value: roleLabel });
+        fields.push({ label: 'Status Akun', value: 'Aktif (Terverifikasi)' });
+      } else if (isTaskEmail) {
+        // Pemetaan kategori tugas ke status bahasa Indonesia yang ringkas & jelas
+        let statusText = 'Penugasan';
+        if (sanitizedNotification.category === 'TASK_IN_PROGRESS') {
+          statusText = 'Dalam Proses';
+        } else if (sanitizedNotification.category === 'TASK_SUBMITTED') {
+          statusText = 'Tinjauan Tugas';
+        } else if (sanitizedNotification.category === 'TASK_REVISION') {
+          statusText = 'Perlu Revisi';
+        } else if (sanitizedNotification.category === 'TASK_APPROVED') {
+          statusText = 'Selesai';
+        }
+
+        // Tentukan kalimat pembuka ringkas sesuai peran (Pelaksana vs PIC)
+        if (isPelaksana) {
+          switch (sanitizedNotification.category) {
+            case 'TASK_ASSIGNED':
+              emailIntro = 'Anda menerima penugasan baru dari PIC dengan rincian berikut:';
+              break;
+            case 'TASK_IN_PROGRESS':
+              emailIntro = 'Status pengerjaan tugas Anda saat ini telah masuk ke tahap Dalam Proses:';
+              break;
+            case 'TASK_SUBMITTED':
+              emailIntro = 'Tugas Anda telah dikumpulkan dan sedang menunggu tinjauan dari PIC:';
+              break;
+            case 'TASK_REVISION':
+              emailIntro = 'Terdapat instruksi/catatan revisi dari PIC untuk tugas Anda:';
+              break;
+            case 'TASK_APPROVED':
+              emailIntro = 'Selamat! Tugas Anda telah disetujui (ACC) oleh PIC dan resmi selesai:';
+              break;
+            default:
+              emailIntro = 'Berikut informasi ringkas penugasan Anda:';
+              break;
+          }
+        } else {
+          switch (sanitizedNotification.category) {
+            case 'TASK_ASSIGNED':
+              emailIntro = 'Konfirmasi penugasan yang Anda berikan kepada pelaksana:';
+              break;
+            case 'TASK_IN_PROGRESS':
+              emailIntro = 'Pelaksana telah memulai pengerjaan aktif untuk tugas berikut:';
+              break;
+            case 'TASK_SUBMITTED':
+              emailIntro = 'Tugas telah dikumpulkan oleh pelaksana dan siap untuk Anda tinjau:';
+              break;
+            case 'TASK_REVISION':
+              emailIntro = 'Instruksi revisi tugas berhasil dikirimkan kepada pelaksana:';
+              break;
+            case 'TASK_APPROVED':
+              emailIntro = 'Tugas telah Anda setujui dan resmi dinyatakan selesai:';
+              break;
+            default:
+              emailIntro = 'Berikut informasi ringkas penugasan tim:';
+              break;
+          }
+        }
+
+        // 1. Penugasan (Judul Tugas)
+        const taskName =
+          sanitizedNotification.taskTitle ||
+          (sanitizedNotification.subject || '')
+            .replace(/^(Penugasan Baru:|Konfirmasi Penugasan:|Pemberitahuan Pengerjaan:|Pengerjaan Dimulai:|Pengumpulan Tugas:|Konfirmasi Pengumpulan Tugas:|Permintaan Revisi Tugas:|Konfirmasi Instruksi Revisi:|Pemberitahuan Tugas Selesai:|Konfirmasi Penyelesaian Tugas:)\s*/i, '')
+            .trim() ||
+          'Penugasan Tim';
+        fields.push({ label: 'Penugasan', value: taskName });
+
+        // 2. Kategori / Status (Penugasan, Dalam Proses, Tinjauan Tugas, Selesai)
+        fields.push({ label: 'Kategori / Status', value: statusText });
+
+        // 3. Tenggat Waktu (Deadline)
+        const rawDue =
+          sanitizedNotification.dueDate ||
+          (sanitizedNotification.dateRange ? sanitizedNotification.dateRange.replace(/^Batas Waktu:\s*/i, '').trim() : '');
+        const formattedDue = rawDue
+          ? rawDue.includes('-')
+            ? formatIndonesianDateShort(rawDue)
+            : rawDue
+          : 'Tidak ada tenggat waktu';
+        fields.push({ label: 'Tenggat Waktu', value: formattedDue });
+
+        // 4. Sesuaikan ke Pelaksana atau PIC
+        if (isPelaksana) {
+          fields.push({
+            label: 'PIC Penugasan',
+            value: sanitizedNotification.picName || 'Administrator',
+          });
+          if (
+            sanitizedNotification.notes &&
+            sanitizedNotification.notes !== sanitizedNotification.taskTitle &&
+            !sanitizedNotification.notes.startsWith('Tugas telah ditinjau dan disetujui') &&
+            !sanitizedNotification.notes.startsWith('Hasil pengerjaan tugas telah dikirimkan')
+          ) {
+            fields.push({
+              label: 'Catatan PIC',
+              value: sanitizedNotification.notes,
+            });
+          }
+        } else {
+          fields.push({
+            label: 'Pelaksana',
+            value: sanitizedNotification.employeeName || 'Karyawan',
+          });
+          if (
+            sanitizedNotification.notes &&
+            sanitizedNotification.notes !== sanitizedNotification.taskTitle &&
+            !sanitizedNotification.notes.startsWith('Tugas telah disetujui') &&
+            !sanitizedNotification.notes.startsWith('Hasil pengerjaan tugas telah dikirimkan')
+          ) {
+            fields.push({
+              label: 'Catatan Pelaksana',
+              value: sanitizedNotification.notes,
+            });
+          }
+        }
+      } else {
+        // NON-TASK NOTIFICATION (Perizinan / Cuti / Sakit / WFH / Dinas Luar)
+        if (sanitizedNotification.employeeName) {
+          fields.push({ label: 'Nama Karyawan', value: sanitizedNotification.employeeName });
+        }
+        if (sanitizedNotification.category) {
+          const catLabel =
+            sanitizedNotification.category === 'BUSINESS_TRIP'
+              ? 'Dinas Luar'
+              : sanitizedNotification.category === 'LEAVE'
+              ? 'Cuti / Izin'
+              : sanitizedNotification.category === 'SICK'
+              ? 'Sakit'
+              : sanitizedNotification.category;
+          fields.push({ label: 'Kategori / Status', value: catLabel });
+        }
+        if (sanitizedNotification.dateRange) {
+          fields.push({ label: 'Periode / Tanggal', value: sanitizedNotification.dateRange });
+        }
+        if (sanitizedNotification.reason) {
+          fields.push({ label: 'Alasan / Keterangan', value: sanitizedNotification.reason });
+        }
+        if (
+          sanitizedNotification.notes &&
+          sanitizedNotification.notes !== sanitizedNotification.reason &&
+          !sanitizedNotification.notes.startsWith('Pengajuan telah resmi disetujui')
+        ) {
+          fields.push({ label: 'Catatan', value: sanitizedNotification.notes });
+        }
+      }
+
+      const html = generateEmailHtmlTemplate({
+        title: cleanSubject,
+        recipientName: sanitizedNotification.toName || sanitizedNotification.employeeName || 'Rekan Tim',
+        intro: emailIntro,
+        fields,
+        actionUrl,
+        actionText,
+        footerNote: footerNote || undefined,
+      });
+
+      const plainTextFields = fields.map((f) => `- ${f.label}: ${f.value}`).join('\n');
+      const closingNote = footerNote
+        ? `\n\n${footerNote}`
+        : isTaskEmail
+        ? '\n\nSilakan akses portal web in-Time untuk meninjau detail penugasan.'
+        : '';
+      const plainText = `${cleanSubject}\n\nHalo ${sanitizedNotification.toName || sanitizedNotification.employeeName || 'Rekan Tim'},\n\n${emailIntro}\n\n${plainTextFields}${closingNote}\n\nSalam,\nTim in-Time`;
+
+      sendRealEmail({
+        to: recipientEmail,
+        subject: cleanSubject,
+        html,
+        text: plainText,
+      });
+    } catch (err) {
+      console.warn('Gagal memicu pengiriman real email:', err);
+    }
   },
 
   markEmailAsRead(id: string): void {
     const emails = this.getEmailNotifications();
     const updated = emails.map((e) => (e.id === id ? { ...e, read: true } : e));
     localStorage.setItem(STORAGE_KEYS.EMAILS, JSON.stringify(updated));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('absenku:emails_updated'));
+    }
+  },
+
+  markAllEmailsAsRead(): void {
+    const emails = this.getEmailNotifications();
+    const updated = emails.map((e) => ({ ...e, read: true }));
+    localStorage.setItem(STORAGE_KEYS.EMAILS, JSON.stringify(updated));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('absenku:emails_updated'));
+    }
+  },
+
+  clearEmailNotifications(): void {
+    localStorage.setItem(STORAGE_KEYS.EMAILS, JSON.stringify([]));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('absenku:emails_updated'));
+    }
   },
 
   // ==========================================

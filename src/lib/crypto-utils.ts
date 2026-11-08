@@ -1,5 +1,5 @@
 /**
- * Cryptographic Utility for Absenku
+ * Cryptographic Utility for in-Time
  * Provides secure password hashing (with salt & multi-round SHA-256)
  * and reversible encryption for sensitive personal employee data (NIK, Bank Account, etc.)
  */

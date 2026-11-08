@@ -73,7 +73,7 @@ export function generateIDCardDataUrl({
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 36px "Plus Jakarta Sans", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('absenku', width / 2, 70);
+    ctx.fillText('in-Time', width / 2, 70);
 
     ctx.fillStyle = '#93C5FD';
     ctx.font = '600 16px "Plus Jakarta Sans", sans-serif';
@@ -164,7 +164,7 @@ export function generateIDCardDataUrl({
 
       // 6. Footer Section: QR Code Placeholder & Security Hologram Effect
       ctx.fillStyle = '#0F172A';
-      ctx.font = 'bold 14px monospace';
+      ctx.font = 'bold 14px "Plus Jakarta Sans", sans-serif';
       ctx.fillText(`ID: #${isGuest ? 'GUEST-001' : 'PASS-2026'}`, width / 2, 675);
 
       // Fake QR Code Block
@@ -197,7 +197,7 @@ export function generateIDCardDataUrl({
       // Security Pass Text
       ctx.fillStyle = '#94A3B8';
       ctx.font = '500 12px "Plus Jakarta Sans", sans-serif';
-      ctx.fillText('OFFICIAL DIGITAL PASS • ABSENKU', width / 2, 860);
+      ctx.fillText('OFFICIAL DIGITAL PASS • IN-TIME', width / 2, 860);
 
       resolve(canvas.toDataURL('image/png'));
     };

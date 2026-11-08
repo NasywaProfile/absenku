@@ -54,6 +54,7 @@ export function MyTasks({
         currentUser={currentUser}
         userRole={userRole}
         onRefresh={onRefresh}
+        isMyTasks={true}
       />
     </div>
   );

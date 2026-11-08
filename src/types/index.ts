@@ -134,22 +134,43 @@ export interface DailyTaskLog {
   notes?: string;
 }
 
-// Simulasi Notifikasi Email Otomatis ke Admin saat User Submit Izin
+// Simulasi Notifikasi Email Otomatis ke Admin saat User Submit Izin & Penugasan Tugas
+export type TaskEmailCategory =
+  | 'TASK_ASSIGNED'
+  | 'TASK_IN_PROGRESS'
+  | 'TASK_SUBMITTED'
+  | 'TASK_REVISION'
+  | 'TASK_APPROVED';
+
+export type EmailNotificationCategory = LeaveCategory | TaskEmailCategory | string;
+
 export interface EmailNotification {
   id: string;
   toEmail: string;
   toName: string;
   fromName: string;
+  fromEmail?: string;
   subject: string;
   employeeName: string;
-  employmentType: EmploymentType;
-  category: LeaveCategory;
-  dateRange: string;
-  reason: string;
+  employmentType?: EmploymentType;
+  category: EmailNotificationCategory;
+  dateRange?: string;
+  reason?: string;
   attachmentName?: string;
   directApprovalLink: string;
   sentAt: string;
   read: boolean;
+
+  // Detail Spesifikasi Penugasan Tugas & Verifikasi Akun
+  notificationType?: 'LEAVE' | 'TASK' | 'ACCOUNT';
+  taskId?: string;
+  taskTitle?: string;
+  taskPriority?: TaskPriority | string;
+  dueDate?: string;
+  picName?: string;
+  picEmail?: string;
+  notes?: string;
+  recipientRole?: 'EMPLOYEE' | 'ADMIN' | 'SUPER_ADMIN';
 }
 
 // Fitur Kolaborasi: Room Discussion

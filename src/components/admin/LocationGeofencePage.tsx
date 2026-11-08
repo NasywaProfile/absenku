@@ -474,7 +474,7 @@ export function LocationGeofencePage({
                   onChange={(e) =>
                     setConfig({ ...config, latitude: parseFloat(e.target.value) || 0 })
                   }
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-900 font-bold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
@@ -490,7 +490,7 @@ export function LocationGeofencePage({
                   onChange={(e) =>
                     setConfig({ ...config, longitude: parseFloat(e.target.value) || 0 })
                   }
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-900 font-bold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             </div>
@@ -532,7 +532,7 @@ export function LocationGeofencePage({
                 <label className="font-semibold text-slate-700">
                   Batas Radius Geofence (Meter)
                 </label>
-                <span className="font-mono font-bold text-xs bg-blue-50 text-[#1E3A8A] px-3 py-1 rounded-lg border border-blue-200">
+                <span className="font-bold text-xs bg-blue-50 text-[#1E3A8A] px-3 py-1 rounded-lg border border-blue-200">
                   {config.geofenceRadiusMeter} Meter
                 </span>
               </div>
