@@ -650,6 +650,7 @@ export const AppStorage = {
       return u;
     });
     this.saveUsers(updated);
+    ApiClient.updateUserRole(userId, newRole).catch(() => {});
   },
 
   // Promosi Tipe Karyawan: Magang -> Freelance -> Kontrak -> Tetap

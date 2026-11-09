@@ -227,12 +227,14 @@ export function AdminEmployeeManagement({
 
   const handleApprove = (userId: string) => {
     const chosenRole = selectedApprovalRoles[userId] || 'EMPLOYEE';
-    AppStorage.approveRegistration(userId, currentUser.name, chosenRole);
-    if (onUpdateRole) {
-      onUpdateRole(userId, chosenRole);
-    }
     if (onApproveRegistration) {
       onApproveRegistration(userId, chosenRole);
+    } else {
+      AppStorage.approveRegistration(userId, currentUser.name, chosenRole);
+      AppStorage.updateUserRole(userId, chosenRole);
+      if (onUpdateRole) {
+        onUpdateRole(userId, chosenRole);
+      }
     }
     if (onUpdateUser) {
       const allFresh = AppStorage.getUsers();

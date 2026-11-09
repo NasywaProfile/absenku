@@ -370,7 +370,7 @@ export default function App() {
     loadData();
   };
 
-  const handleUpdateEmployeeRole = (userId: string, newRole: UserRole) => {
+  const handleUpdateEmployeeRole = async (userId: string, newRole: UserRole) => {
     AppStorage.updateUserRole(userId, newRole);
     if (currentUser && currentUser.id === userId) {
       const updatedUser: User = { ...currentUser, role: newRole };
@@ -378,7 +378,17 @@ export default function App() {
       setCurrentUser(updatedUser);
       setSessionUser(updatedUser);
     }
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+    );
     loadData();
+
+    try {
+      await ApiClient.updateUserRole(userId, newRole);
+    } catch (err) {
+      console.warn('Gagal update role ke backend:', err);
+    }
+    syncWithBackend();
   };
 
   // Handler Logout
@@ -513,13 +523,23 @@ export default function App() {
   };
 
   // Handler ACC Pendaftaran Akun Baru oleh Admin / Super Admin
-  const handleApproveRegistration = (userId: string, targetRole?: UserRole) => {
+  const handleApproveRegistration = async (userId: string, targetRole?: UserRole) => {
     if (!currentUser) return;
-    AppStorage.approveRegistration(userId, currentUser.name, targetRole);
-    if (targetRole) {
-      AppStorage.updateUserRole(userId, targetRole);
-    }
+    const finalRole = targetRole || 'EMPLOYEE';
+    AppStorage.approveRegistration(userId, currentUser.name, finalRole);
+    AppStorage.updateUserRole(userId, finalRole);
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, status: 'ACTIVE', role: finalRole } : u))
+    );
     loadData();
+
+    try {
+      await ApiClient.approveUser(userId, finalRole);
+      await ApiClient.updateUserRole(userId, finalRole);
+    } catch (err) {
+      console.warn('Gagal sinkron approval akun ke server:', err);
+    }
+    syncWithBackend();
   };
 
   const handleRejectRegistration = async (userId: string) => {
@@ -829,6 +849,7 @@ export default function App() {
                 onNavigateTab={(tab) => setActiveTab(tab)}
                 onOpenSettingsModal={() => setShowSettingsModal(true)}
                 onUpdateUser={handleUpdateEmployee}
+                onUpdateRole={handleUpdateEmployeeRole}
                 onUpdateAttendanceRecord={handleUpdateAttendanceRecord}
                 onRefreshData={loadData}
               />

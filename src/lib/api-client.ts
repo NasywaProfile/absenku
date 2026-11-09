@@ -166,10 +166,32 @@ export const ApiClient = {
   },
 
   async approveUser(userId: string, role?: string) {
-    return this.request(`/users/${userId}/approve`, {
-      method: 'POST',
-      body: JSON.stringify({ role, peran: role }),
-    });
+    const targetRole = role || 'EMPLOYEE';
+    try {
+      return await this.request(`/users/${userId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ role: targetRole, peran: targetRole }),
+      });
+    } catch {
+      return await this.request(`/users/${userId}/approve/direct`, {
+        method: 'POST',
+        body: JSON.stringify({ role: targetRole, peran: targetRole }),
+      }).catch(() => null);
+    }
+  },
+
+  async updateUserRole(userId: string, role: string) {
+    try {
+      return await this.request(`/users/${userId}/role`, {
+        method: 'POST',
+        body: JSON.stringify({ role, peran: role }),
+      });
+    } catch {
+      return await this.request(`/users/${userId}/role`, {
+        method: 'PUT',
+        body: JSON.stringify({ role, peran: role }),
+      }).catch(() => null);
+    }
   },
 
   async rejectUser(userId: string, reason?: string) {
