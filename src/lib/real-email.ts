@@ -10,6 +10,10 @@ export interface RealEmailPayload {
   text?: string;
 }
 
+const API_BASE =
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) ||
+  '/api';
+
 export async function sendRealEmail(payload: RealEmailPayload): Promise<boolean> {
   if (!payload.to || !payload.to.includes('@')) {
     console.warn('[RealEmail] Alamat email tujuan tidak valid:', payload.to);
@@ -17,9 +21,11 @@ export async function sendRealEmail(payload: RealEmailPayload): Promise<boolean>
   }
 
   try {
-    const response = await fetch('/api/send-email', {
+    const targetUrl = API_BASE.endsWith('/') ? `${API_BASE}send-email` : `${API_BASE}/send-email`;
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
+        'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -32,7 +38,7 @@ export async function sendRealEmail(payload: RealEmailPayload): Promise<boolean>
     }
 
     const result = await response.json().catch(() => null);
-    console.log('[RealEmail] Berhasil terkirim ke Gmail:', payload.to, result?.messageId);
+    console.log('[RealEmail] Berhasil terkirim:', payload.to, result?.message || result?.messageId);
     return true;
   } catch (error) {
     console.warn('[RealEmail] Network error saat dispatch email:', error);
