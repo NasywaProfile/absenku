@@ -254,6 +254,11 @@ export default function App() {
         const mergedTasks = [...localTasks];
         for (const st of serverTasks) {
           const idx = mergedTasks.findIndex((t) => t.id === st.id);
+          const existingTask = idx >= 0 ? mergedTasks[idx] : null;
+          const serverAttachments = Array.isArray(st.attachments) && st.attachments.length > 0
+            ? st.attachments
+            : (Array.isArray(st.lampiran) && st.lampiran.length > 0 ? st.lampiran : []);
+
           const mappedTask: TaskItem = {
             id: st.id,
             title: st.title || st.judul_tugas || '',
@@ -264,15 +269,15 @@ export default function App() {
             assignedName: st.assigned_name || st.nama_petugas || '',
             assignedAvatar: st.assigned_avatar || st.foto_petugas || '',
             tags: Array.isArray(st.tags) ? st.tags : [],
-            assignees: Array.isArray(st.assignees) ? st.assignees : [],
+            assignees: Array.isArray(st.assignees) ? st.assignees : (st.daftar_anggota || []),
             dueDate: st.due_date || st.tenggat_waktu || '',
             createdBy: st.created_by || st.dibuat_oleh || 'usr_super_admin',
-            createdAt: st.created_at || '',
-            updatedAt: st.updated_at || '',
-            activities: Array.isArray(st.activities) ? st.activities : [],
-            attachments: Array.isArray(st.attachments) ? st.attachments : [],
-            reviewNotes: st.review_notes,
-            submissionNotes: st.submission_notes,
+            createdAt: st.created_at || (existingTask?.createdAt || ''),
+            updatedAt: st.updated_at || (existingTask?.updatedAt || ''),
+            activities: Array.isArray(st.activities) && st.activities.length > 0 ? st.activities : (existingTask?.activities || []),
+            attachments: serverAttachments.length > 0 ? serverAttachments : (existingTask?.attachments || []),
+            reviewNotes: st.review_notes || existingTask?.reviewNotes,
+            submissionNotes: st.submission_notes || existingTask?.submissionNotes,
           };
           if (idx >= 0) {
             mergedTasks[idx] = { ...mergedTasks[idx], ...mappedTask };

@@ -1156,7 +1156,13 @@ export const AppStorage = {
       status: newTask.status,
       priority: newTask.priority,
       assigned_to: newTask.assignedTo,
+      assigned_name: newTask.assignedName,
+      assigned_avatar: newTask.assignedAvatar,
+      assignees: newTask.assignees,
       due_date: newTask.dueDate,
+      attachments: newTask.attachments || [],
+      lampiran: newTask.attachments || [],
+      created_by: newTask.createdBy,
     }).catch(() => {});
 
     // Otomatis kirim notifikasi email penugasan ke karyawan & admin/PIC
@@ -1200,7 +1206,11 @@ export const AppStorage = {
 
     if (updatedTask) {
       this.saveTasks(updated);
-      ApiClient.updateKanbanTask(taskId, updates).catch(() => {});
+      ApiClient.updateKanbanTask(taskId, {
+        ...updates,
+        attachments: (updatedTask as TaskItem).attachments || [],
+        lampiran: (updatedTask as TaskItem).attachments || [],
+      }).catch(() => {});
 
       // Jika ada perubahan penugasan (assignee), kirim email penugasan baru
       if (oldTask && updates.assignedTo && updates.assignedTo !== oldTask.assignedTo) {
@@ -1677,6 +1687,8 @@ export const AppStorage = {
       status,
       review_notes: details?.reviewNotes,
       submission_notes: details?.submissionNotes,
+      attachments: (updatedTargetTask as TaskItem | null)?.attachments || [],
+      lampiran: (updatedTargetTask as TaskItem | null)?.attachments || [],
     }).catch(() => {});
 
     // Memicu notifikasi email otomatis untuk setiap proses penugasan (pengerjaan, submit, revisi, ACC)
