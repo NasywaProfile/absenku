@@ -220,16 +220,37 @@ export async function uploadHybridFile(
   }
 
   // -------------------------------------------------------------
-  // KASUS 3: DOKUMEN (PDF, Word, Excel, ZIP) -> Kirim ke VPS Backend
+  // KASUS 3: DOKUMEN (PDF, Word, Excel, ZIP) -> Upload ke Cloudinary (raw) atau VPS
   // -------------------------------------------------------------
   if (category === 'document') {
+    // 1. Coba upload langsung ke Cloudinary sebagai raw file (resmi didukung & HTTPS publik)
     try {
-      // Coba kirim ke endpoint backend VPS Express (jika backend aktif)
+      const cloudRes = await uploadToCloudinary(file, {
+        folder,
+        resourceType: 'raw',
+      });
+
+      return {
+        url: cloudRes.url,
+        name: file.name,
+        size: cloudRes.bytes || file.size,
+        type: file.type || 'application/octet-stream',
+        category: 'document',
+        storage: 'cloudinary',
+        publicId: cloudRes.publicId,
+      };
+    } catch (cloudErr) {
+      console.warn('Gagal upload dokumen ke Cloudinary, mencoba server backend:', cloudErr);
+    }
+
+    // 2. Coba upload ke server backend VPS /api/upload
+    try {
       const formData = new FormData();
       formData.append('document', file);
+      formData.append('file', file);
       formData.append('category', 'document');
 
-      const response = await fetch('/api/upload/document', {
+      const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
@@ -245,31 +266,26 @@ export async function uploadHybridFile(
           storage: 'vps',
         };
       }
-      throw new Error(`Server VPS upload returned ${response.status}`);
     } catch (vpsErr) {
-      console.info('Backend VPS belum aktif atau offline, menyimpan berkas sebagai data URL/Blob:', vpsErr);
-      
-      // Fallback untuk mode development / demo tanpa backend aktif:
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target?.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      // Simpan berkas besar ke IndexedDB (kapasitas ratusan MB/GB) agar tidak melebihi kuota 5 MB localStorage
-      const attId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      await storeAttachmentInIDB(attId, dataUrl);
-
-      return {
-        url: `idb:${attId}`,
-        name: file.name,
-        size: file.size,
-        type: file.type || 'application/octet-stream',
-        category: 'document',
-        storage: 'local_fallback',
-      };
+      console.warn('Server backend upload gagal:', vpsErr);
     }
+
+    // 3. Fallback jika offline (Data URL)
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    return {
+      url: dataUrl,
+      name: file.name,
+      size: file.size,
+      type: file.type || 'application/octet-stream',
+      category: 'document',
+      storage: 'local_fallback',
+    };
   }
 
   throw new Error('Kategori file tidak didukung.');

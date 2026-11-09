@@ -522,6 +522,12 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
         t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (t.shortNotes && t.shortNotes.toLowerCase().includes(searchTerm.toLowerCase()));
       return matchesStatus && matchesTeammate && matchesCreatedBy && matchesCreatedDate && matchesSearch;
+    }).sort((a, b) => {
+      // Topik terbaru otomatis berada di urutan paling atas
+      const timeA = a.updatedAt || a.createdAt || '';
+      const timeB = b.updatedAt || b.createdAt || '';
+      if (timeA !== timeB) return timeB.localeCompare(timeA);
+      return (b.id || '').localeCompare(a.id || '');
     });
   }, [topics, statusFilter, teammateFilter, createdByFilter, createdDateCustom, searchTerm, currentUser, users, isAdminOrSuperAdmin]);
 

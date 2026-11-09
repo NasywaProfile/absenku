@@ -686,6 +686,12 @@ export function KanbanBoard({
       matchesCreatedDate &&
       matchesDeadlineDate
     );
+  }).sort((a, b) => {
+    // Tugas terbaru otomatis urutan paling atas
+    const timeA = a.createdAt || '';
+    const timeB = b.createdAt || '';
+    if (timeA !== timeB) return timeB.localeCompare(timeA);
+    return (b.id || '').localeCompare(a.id || '');
   });
 
   const getPriorityBadge = (priority: TaskPriority) => {

@@ -277,6 +277,65 @@ export const AppStorage = {
         return u;
       });
 
+      // Deduplikasi ketat: jika suatu akun sudah ACTIVE, hapus duplikat atau status PENDING_APPROVAL untuk email/nama yang sama
+      const activeEmails = new Set<string>();
+      const activeNames = new Set<string>();
+      for (const u of parsed) {
+        if (u.status === 'ACTIVE') {
+          if (u.email) activeEmails.add(u.email.trim().toLowerCase());
+          if (u.name) activeNames.add(u.name.trim().toLowerCase());
+        }
+      }
+
+      const deduped: User[] = [];
+      const seenEmails = new Set<string>();
+      const seenNames = new Set<string>();
+      const seenIds = new Set<string>();
+
+      // Utamakan akun ACTIVE
+      const sorted = [...parsed].sort((a, b) => {
+        if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
+        if (a.status !== 'ACTIVE' && b.status === 'ACTIVE') return 1;
+        return 0;
+      });
+
+      for (const u of sorted) {
+        const uId = u.id;
+        const uEmail = u.email ? u.email.trim().toLowerCase() : '';
+        const uName = u.name ? u.name.trim().toLowerCase() : '';
+
+        // Jika u berstatus PENDING_APPROVAL tapi sudah ada akun ACTIVE dengan email atau nama yang sama, hapus
+        if (u.status === 'PENDING_APPROVAL') {
+          if (uEmail && activeEmails.has(uEmail)) {
+            changed = true;
+            continue;
+          }
+          if (uName && activeNames.has(uName)) {
+            changed = true;
+            continue;
+          }
+        }
+
+        if (uId && seenIds.has(uId)) {
+          changed = true;
+          continue;
+        }
+        if (uEmail && seenEmails.has(uEmail)) {
+          changed = true;
+          continue;
+        }
+        if (uName && seenNames.has(uName)) {
+          changed = true;
+          continue;
+        }
+
+        if (uId) seenIds.add(uId);
+        if (uEmail) seenEmails.add(uEmail);
+        if (uName) seenNames.add(uName);
+        deduped.push(u);
+      }
+      parsed = deduped;
+
       if (changed) {
         safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(parsed));
       }
@@ -1116,6 +1175,11 @@ export const AppStorage = {
               }
             : {}),
         };
+      }).sort((a, b) => {
+        const timeA = a.createdAt || '';
+        const timeB = b.createdAt || '';
+        if (timeA !== timeB) return timeB.localeCompare(timeA);
+        return (b.id || '').localeCompare(a.id || '');
       });
     } catch {
       return [];
@@ -2841,7 +2905,12 @@ export const AppStorage = {
       if (hasUpdate) {
         localStorage.setItem(STORAGE_KEYS.CHAT_TOPICS, JSON.stringify(updated));
       }
-      return updated;
+      return updated.sort((a, b) => {
+        const timeA = a.updatedAt || a.createdAt || '';
+        const timeB = b.updatedAt || b.createdAt || '';
+        if (timeA !== timeB) return timeB.localeCompare(timeA);
+        return (b.id || '').localeCompare(a.id || '');
+      });
     } catch {
       return INITIAL_CHAT_TOPICS;
     }

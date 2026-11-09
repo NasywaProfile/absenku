@@ -203,20 +203,38 @@ export function AdminEmployeeManagement({
   };
 
   const pendingUsers = React.useMemo(() => {
+    const activeEmails = new Set<string>();
+    const activeNames = new Set<string>();
+    const activeIds = new Set<string>();
+
+    (users || []).forEach((u) => {
+      if (u.status === 'ACTIVE') {
+        if (u.id) activeIds.add(u.id);
+        if (u.email) activeEmails.add(u.email.toLowerCase().trim());
+        if (u.name) activeNames.add(u.name.toLowerCase().trim());
+      }
+    });
+
+    if (currentUser?.id) activeIds.add(currentUser.id);
+    if (currentUser?.email) activeEmails.add(currentUser.email.toLowerCase().trim());
+    if (currentUser?.name) activeNames.add(currentUser.name.toLowerCase().trim());
+
     return users
-      .filter(
-        (u) =>
-          u.status === 'PENDING_APPROVAL' &&
-          u.id !== currentUser.id &&
-          u.email?.toLowerCase().trim() !== currentUser.email?.toLowerCase().trim() &&
-          u.name?.toLowerCase().trim() !== currentUser.name?.toLowerCase().trim()
-      )
+      .filter((u) => {
+        if (u.status !== 'PENDING_APPROVAL') return false;
+        if (u.id && activeIds.has(u.id)) return false;
+        const uEmail = u.email?.toLowerCase().trim();
+        const uName = u.name?.toLowerCase().trim();
+        if (uEmail && activeEmails.has(uEmail)) return false;
+        if (uName && activeNames.has(uName)) return false;
+        return true;
+      })
       .sort((a, b) => {
         const dateA = a.registeredAt || a.id || '';
         const dateB = b.registeredAt || b.id || '';
         return dateB.localeCompare(dateA);
       });
-  }, [users, currentUser.id, currentUser.email, currentUser.name]);
+  }, [users, currentUser]);
   const [activeSubTab, setActiveSubTab] = useState<'EMPLOYEES' | 'APPROVALS'>(
     initialSubTab || 'EMPLOYEES'
   );

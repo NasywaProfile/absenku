@@ -45,15 +45,27 @@ export default function App() {
   // Muat state dari persistent local storage
   const loadData = useCallback(() => {
     const loadedUsers = AppStorage.getUsers();
-    // Deduplikasi users agar tidak ada nama/akun dobel di seluruh tampilan
+    // Deduplikasi users: utamakan akun ACTIVE agar jika ada antrean pending lama dengan nama/email sama langsung tertimpa
+    const sorted = [...loadedUsers].sort((a, b) => {
+      if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
+      if (a.status !== 'ACTIVE' && b.status === 'ACTIVE') return 1;
+      return 0;
+    });
     const dedupedUsers: User[] = [];
     const seen = new Set<string>();
-    for (const u of loadedUsers) {
-      const key = (u.email ? u.email.trim().toLowerCase() : u.id);
-      if (!seen.has(key)) {
-        seen.add(key);
-        dedupedUsers.push(u);
-      }
+    const seenNames = new Set<string>();
+    for (const u of sorted) {
+      const emailKey = u.email ? u.email.trim().toLowerCase() : '';
+      const nameKey = u.name ? u.name.trim().toLowerCase() : '';
+      const idKey = u.id;
+      if (emailKey && seen.has(emailKey)) continue;
+      if (nameKey && seenNames.has(nameKey)) continue;
+      if (idKey && seen.has(idKey)) continue;
+
+      if (emailKey) seen.add(emailKey);
+      if (nameKey) seenNames.add(nameKey);
+      if (idKey) seen.add(idKey);
+      dedupedUsers.push(u);
     }
     const curUser = AppStorage.getCurrentUser();
     const loadedConfig = AppStorage.getOfficeConfig();
@@ -302,6 +314,12 @@ export default function App() {
             mergedTasks.push(mappedTask);
           }
         }
+        mergedTasks.sort((a, b) => {
+          const timeA = a.createdAt || '';
+          const timeB = b.createdAt || '';
+          if (timeA !== timeB) return timeB.localeCompare(timeA);
+          return (b.id || '').localeCompare(a.id || '');
+        });
         AppStorage.saveTasks(mergedTasks);
         setTasks(mergedTasks);
       }
@@ -351,6 +369,12 @@ export default function App() {
             mergedTopics.push(mappedTopic);
           }
         }
+        mergedTopics.sort((a, b) => {
+          const timeA = a.updatedAt || a.createdAt || '';
+          const timeB = b.updatedAt || b.createdAt || '';
+          if (timeA !== timeB) return timeB.localeCompare(timeA);
+          return (b.id || '').localeCompare(a.id || '');
+        });
         AppStorage.saveChatTopics(mergedTopics);
         window.dispatchEvent(new CustomEvent('absenku:chat_updated'));
       }
