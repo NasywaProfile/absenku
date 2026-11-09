@@ -41,7 +41,8 @@ export default async function handler(req: any, res: any) {
     const brevoApiKey = process.env.BREVO_API_KEY;
     const smtpUser = process.env.SMTP_USER || '';
     const smtpPass = process.env.SMTP_PASS || '';
-    const fromName = process.env.SMTP_FROM_NAME || 'in-Time Notifikasi';
+    const rawFromName = process.env.SMTP_FROM_NAME || process.env.MAIL_FROM_NAME || 'in-Time';
+    const fromName = (!rawFromName || rawFromName.toLowerCase() === 'laravel') ? 'in-Time' : rawFromName;
 
     // 1. OPSI UTAMA: RESEND REST API (Sangat Direkomendasikan untuk Production dengan Custom Domain)
     const isSandbox = !process.env.RESEND_FROM_EMAIL || process.env.RESEND_FROM_EMAIL === 'onboarding@resend.dev';
