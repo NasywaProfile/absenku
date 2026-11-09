@@ -1128,32 +1128,40 @@ export function KanbanBoard({
                             <div className="border-t border-slate-100 pt-2" />
 
                             {/* Footer: Assignee (Kiri) & Deadline Date (Kanan) */}
-                            <div className="flex items-center justify-between gap-2 text-xs">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                {task.assignedAvatar ? (
-                                  <img
-                                    src={task.assignedAvatar}
-                                    alt={task.assignedName || 'Karyawan'}
-                                    className="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0 shadow-2xs"
-                                    title={`Ditugaskan ke: ${task.assignedName}`}
-                                  />
-                                ) : (
-                                  <div
-                                    className="w-6 h-6 rounded-full bg-blue-100 text-[#1E3A8A] font-extrabold text-[10px] flex items-center justify-center border border-blue-200 shrink-0 shadow-2xs"
-                                    title={`Ditugaskan ke: ${task.assignedName}`}
-                                  >
-                                    {(task.assignedName || 'K').substring(0, 2).toUpperCase()}
-                                  </div>
-                                )}
-                                <span className="text-[11px] font-semibold text-slate-700 truncate max-w-[120px]" title={task.assignedName}>
-                                  {task.assignedName || 'Belum ditugaskan'}
-                                </span>
-                              </div>
+                            {(() => {
+                              const assignedPerson = users.find((u) => u.id === task.assignedTo);
+                              const assignedDisplayName = assignedPerson?.name || task.assignedName || 'Belum ditugaskan';
+                              const assignedDisplayAvatar = assignedPerson?.avatar || task.assignedAvatar;
 
-                              <span className="text-xs text-slate-400 font-normal shrink-0">
-                                {task.dueDate}
-                              </span>
-                            </div>
+                              return (
+                                <div className="flex items-center justify-between gap-2 text-xs">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    {assignedDisplayAvatar ? (
+                                      <img
+                                        src={assignedDisplayAvatar}
+                                        alt={assignedDisplayName}
+                                        className="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0 shadow-2xs"
+                                        title={`Ditugaskan ke: ${assignedDisplayName}`}
+                                      />
+                                    ) : (
+                                      <div
+                                        className="w-6 h-6 rounded-full bg-blue-100 text-[#1E3A8A] font-extrabold text-[10px] flex items-center justify-center border border-blue-200 shrink-0 shadow-2xs"
+                                        title={`Ditugaskan ke: ${assignedDisplayName}`}
+                                      >
+                                        {(assignedDisplayName || 'K').substring(0, 2).toUpperCase()}
+                                      </div>
+                                    )}
+                                    <span className="text-[11px] font-semibold text-slate-700 truncate max-w-[120px]" title={assignedDisplayName}>
+                                      {assignedDisplayName}
+                                    </span>
+                                  </div>
+
+                                  <span className="text-xs text-slate-400 font-normal shrink-0">
+                                    {task.dueDate}
+                                  </span>
+                                </div>
+                              );
+                            })()}
 
                             {/* Tombol Aksi Sesuai Flow Penugasan ke PIC */}
                             <div className="pt-1 flex flex-wrap items-center gap-1.5 text-xs">

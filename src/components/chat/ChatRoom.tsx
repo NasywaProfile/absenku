@@ -83,8 +83,12 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
           const merged = [...localTopics];
           for (const st of serverTopics) {
             const idx = merged.findIndex((t) => t.id === st.id);
-            const mappedComments: ChatComment[] = Array.isArray(st.comments)
-              ? st.comments.map((c: any) => ({
+            const rawComments = Array.isArray(st.comments) && st.comments.length > 0
+              ? st.comments
+              : (Array.isArray(st.messages) ? st.messages : (st.comments || []));
+
+            const mappedComments: ChatComment[] = Array.isArray(rawComments) && rawComments.length > 0
+              ? rawComments.map((c: any) => ({
                   id: c.id,
                   topicId: c.topicId || c.topik_id || st.id,
                   userId: c.userId || c.pengguna_id || '',
@@ -92,7 +96,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
                   userAvatar: c.userAvatar || c.foto_pengirim || '',
                   userRole: c.userRole || c.peran_pengirim || 'EMPLOYEE',
                   timestamp: c.timestamp || c.waktu_kirim || '',
-                  notes: c.notes || c.isi_pesan || '',
+                  notes: c.notes || c.isi_pesan || c.content || '',
                   attachments: Array.isArray(c.attachments) ? c.attachments : (Array.isArray(c.lampiran) ? c.lampiran : []),
                   type: 'COMMENT' as const,
                 }))
@@ -396,8 +400,10 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
 
     return topics.filter((t) => {
       const tagged = Array.isArray(t.taggedTeammateIds) ? t.taggedTeammateIds : [];
-      // Access Control: Topik HANYA masuk ke akun jika pengguna terdaftar di Assignees (taggedTeammateIds) atau pembuat
+      // Access Control: Admin/Superadmin memiliki akses pemantauan penuh, topik umum tanpa tag terbuka untuk semua, atau khusus akun yang ditandai / pembuat
       const isAssignee = Boolean(
+        isAdminOrSuperAdmin ||
+        tagged.length === 0 ||
         (currentUser?.id && tagged.includes(currentUser.id)) ||
         (currentUser?.id && t.createdBy === currentUser.id) ||
         (currentNameLower &&

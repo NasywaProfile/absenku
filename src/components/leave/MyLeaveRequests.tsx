@@ -79,6 +79,7 @@ export function MyLeaveRequests({
   const [attachmentData, setAttachmentData] = useState<string | undefined>();
   const [attachmentType, setAttachmentType] = useState<string | undefined>();
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [fileAlert, setFileAlert] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [emailDispatchedToast, setEmailDispatchedToast] = useState(false);
@@ -154,7 +155,9 @@ export function MyLeaveRequests({
     e.preventDefault();
     if (!reason.trim()) return;
     if (liveConflict) return;
+    if (isSubmitting) return;
 
+    setIsSubmitting(true);
     try {
       AppStorage.submitLeaveRequest(currentUser, {
         category,
@@ -167,10 +170,12 @@ export function MyLeaveRequests({
         attachmentType,
       });
     } catch (err: any) {
+      setIsSubmitting(false);
       setSubmitError(err?.message || 'Pengajuan gagal dikirim.');
       return;
     }
 
+    setIsSubmitting(false);
     setSubmitError(null);
     setShowModal(false);
     setReason('');
@@ -1098,11 +1103,11 @@ export function MyLeaveRequests({
               <div className="px-6 py-4 border-t border-slate-100 bg-white flex items-center justify-end shrink-0">
                 <button
                   type="submit"
-                  disabled={isUploadingAttachment || !!liveConflict}
+                  disabled={isSubmitting || isUploadingAttachment || !!liveConflict}
                   className="px-6 py-2.5 bg-[#1E3A8A] hover:bg-[#172554] text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  {isUploadingAttachment && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>{isUploadingAttachment ? 'Mengunggah Lampiran...' : 'Kirim Pengajuan'}</span>
+                  {(isSubmitting || isUploadingAttachment) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isUploadingAttachment ? 'Mengunggah Lampiran...' : isSubmitting ? 'Mengirim Pengajuan...' : 'Kirim Pengajuan'}</span>
                 </button>
               </div>
             </form>

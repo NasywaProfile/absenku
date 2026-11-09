@@ -786,6 +786,7 @@ export const AppStorage = {
     // Kirim presensi ke Laravel Backend & MySQL
     ApiClient.clockIn({
       id: newRecord.id,
+      date: newRecord.date,
       clock_in_time: newRecord.clockInTime,
       clock_in_lat: newRecord.clockInLat,
       clock_in_lng: newRecord.clockInLng,
@@ -1906,6 +1907,14 @@ export const AppStorage = {
           conflict.endDate !== conflict.startDate ? ` s/d ${conflict.endDate}` : ''
         }) yang ${conflictStatus}. Batalkan pengajuan tersebut atau pilih tanggal lain.`
       );
+    }
+
+    // Cegah duplikasi perizinan pending yang persis sama
+    const duplicate = leaves.find(
+      (l) => l.userId === user.id && l.startDate === data.startDate && l.endDate === data.endDate && l.category === data.category && l.status === 'PENDING'
+    );
+    if (duplicate) {
+      return duplicate;
     }
 
     const id = `leave_${Date.now()}`;

@@ -197,6 +197,8 @@ export const ApiClient = {
   },
 
   async clockIn(data: {
+    id?: string;
+    date?: string;
     clock_in_time: string;
     clock_in_lat?: number | null;
     clock_in_lng?: number | null;
