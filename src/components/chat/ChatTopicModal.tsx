@@ -33,6 +33,7 @@ import {
   User as UserType,
   UserRole,
   TaskAttachment,
+  safeParseJsonArray,
 } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
 import {
@@ -135,14 +136,35 @@ export function ChatTopicModal({
 
   const commentsEndRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
+  const currentTopicIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setActiveTopic(topic);
-    setIsAttachmentsExpanded(false);
-    setShowCommentAddLink(false);
-    setShowDirectTopicLink(false);
-    setCommentAttachments([]);
-    setCommentText('');
+    if (!topic) {
+      currentTopicIdRef.current = null;
+      return;
+    }
+
+    // Hanya reset teks ketikan jika BERGANTI TOPIK (id berbeda)
+    // Jangan hapus commentText saat background sync 2 detik berjalan!
+    if (currentTopicIdRef.current !== topic.id) {
+      currentTopicIdRef.current = topic.id;
+      setActiveTopic(topic);
+      setIsAttachmentsExpanded(false);
+      setShowCommentAddLink(false);
+      setShowDirectTopicLink(false);
+      setCommentAttachments([]);
+      setCommentText('');
+    } else {
+      // Pertahankan apa yang sedang diketik user, hanya perbarui metadata/komentar baru
+      setActiveTopic((prev) => {
+        if (!prev) return topic;
+        return {
+          ...prev,
+          ...topic,
+          comments: topic.comments || prev.comments,
+        };
+      });
+    }
   }, [topic]);
 
   useEffect(() => {
@@ -275,64 +297,78 @@ export function ChatTopicModal({
   // Send comment
   const handleSendComment = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!activeTopic) return;
     if (!commentText.trim() && commentAttachments.length === 0) return;
 
+    const textToSend = commentText.trim();
+    const attachmentsToSend = [...commentAttachments];
+
     // Detect @mentions
-    const textLower = commentText.toLowerCase();
-    const mentionedUsers = users.filter((u) => {
-      const fullNameLower = u.name.toLowerCase();
-      const firstNameLower = u.name.split(' ')[0].toLowerCase();
+    const textLower = textToSend.toLowerCase();
+    const mentionedUsers = (users || []).filter((u) => {
+      const fullNameLower = (u.name || '').toLowerCase();
+      const firstNameLower = (u.name || '').split(' ')[0].toLowerCase();
       return (
-        textLower.includes(`@${fullNameLower}`) ||
-        textLower.includes(`@${firstNameLower}`) ||
-        textLower.includes(`@${u.id.toLowerCase()}`)
+        Boolean(fullNameLower && textLower.includes(`@${fullNameLower}`)) ||
+        Boolean(firstNameLower && textLower.includes(`@${firstNameLower}`)) ||
+        Boolean(u.id && textLower.includes(`@${u.id.toLowerCase()}`))
       );
     });
 
-    const genericMatches = commentText.match(/@([a-zA-Z0-9_\u00C0-\u017F]+)/g) || [];
+    const genericMatches = textToSend.match(/@([a-zA-Z0-9_\u00C0-\u017F]+)/g) || [];
     const genericMentions = genericMatches.map((m) => m.substring(1));
     const allMentionLabels = Array.from(
       new Set([...mentionedUsers.map((u) => u.name), ...genericMentions])
     );
 
+    const existingTagged = safeParseJsonArray(
+      activeTopic.taggedTeammateIds ?? (activeTopic as any).id_anggota_ditandai ?? (activeTopic as any).tagged_teammate_ids
+    );
+
     const newlyTaggedIds = mentionedUsers
       .map((u) => u.id)
-      .filter((id) => !activeTopic.taggedTeammateIds.includes(id));
+      .filter((id) => id && !existingTagged.includes(id));
 
     let updatedTopic: ChatTopic = activeTopic;
     if (newlyTaggedIds.length > 0) {
       updatedTopic = {
         ...activeTopic,
-        taggedTeammateIds: [...activeTopic.taggedTeammateIds, ...newlyTaggedIds],
+        taggedTeammateIds: [...existingTagged, ...newlyTaggedIds],
       };
       AppStorage.updateChatTopic(updatedTopic);
     }
 
-    const newComment = AppStorage.addTopicComment(activeTopic.id, {
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userAvatar: currentUser.avatar,
-      userRole: currentUser.role,
-      notes: commentText.trim(),
-      attachments: commentAttachments,
-      mentions: allMentionLabels,
-      type: 'COMMENT',
-    });
+    try {
+      const newComment = AppStorage.addTopicComment(activeTopic.id, {
+        userId: currentUser?.id || 'usr_super_admin',
+        userName: currentUser?.name || 'Pengguna',
+        userAvatar: currentUser?.avatar || '',
+        userRole: currentUser?.role || 'EMPLOYEE',
+        notes: textToSend,
+        attachments: attachmentsToSend,
+        mentions: allMentionLabels,
+        type: 'COMMENT',
+      });
 
-    const refreshedTopic: ChatTopic = {
-      ...updatedTopic,
-      comments: [...(updatedTopic.comments || []), newComment],
-    };
+      const refreshedTopic: ChatTopic = {
+        ...updatedTopic,
+        comments: [...(updatedTopic.comments || []), newComment],
+      };
 
-    setActiveTopic(refreshedTopic);
-    setCommentText('');
-    setCommentAttachments([]);
-    setShowMentionDropdown(false);
-    if (onTopicUpdated) onTopicUpdated(refreshedTopic);
+      setActiveTopic(refreshedTopic);
+      setCommentText('');
+      setCommentAttachments([]);
+      setShowMentionDropdown(false);
+      if (onTopicUpdated) onTopicUpdated(refreshedTopic);
 
-    setTimeout(() => {
-      commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+      window.dispatchEvent(new CustomEvent('absenku:chat_updated'));
+
+      setTimeout(() => {
+        commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    } catch (err) {
+      console.error('Gagal mengirim komentar:', err);
+    }
   };
 
   const handleDeleteComment = (commentId: string) => {
@@ -347,21 +383,39 @@ export function ChatTopicModal({
     }
   };
 
-  // Open Tagged Members Modal
+  // Open Tagged Members Modal (Hapus dummy "Rekan Tim" agar hanya user asli yang ditampilkan)
   const handleOpenTaggedMembersModal = (topicItem: ChatTopic, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const taggedIds = topicItem.taggedTeammateIds || [];
-    const members: TeamMemberItem[] = taggedIds.map((uid) => {
-      const u = users.find((user) => user.id === uid);
-      return {
-        id: uid,
-        name: u?.name || 'Rekan Tim',
-        avatar: u?.avatar,
-        role: u?.role === 'ADMIN' ? 'Administrator' : u?.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Karyawan',
-        department: u?.department || (u?.role === 'ADMIN' ? 'Administrator' : 'Karyawan'),
+    const rawTagged = safeParseJsonArray(
+      topicItem.taggedTeammateIds ?? (topicItem as any).id_anggota_ditandai ?? (topicItem as any).tagged_teammate_ids
+    );
+    const members: TeamMemberItem[] = [];
+    const seen = new Set<string>();
+
+    rawTagged.forEach((uid) => {
+      if (!uid) return;
+      const cleanUid = String(uid).trim().toLowerCase();
+      const u = (users || []).find((user) => 
+        (user.id && user.id.toLowerCase() === cleanUid) ||
+        (user.name && user.name.toLowerCase().trim() === cleanUid) ||
+        (user.email && user.email.toLowerCase().trim() === cleanUid)
+      );
+      // Hapus data dummy: Jangan tampilkan jika user tidak ada di sistem atau bernama "Rekan Tim"
+      if (!u || u.name === 'Rekan Tim') return;
+
+      const dedupeKey = u.email ? u.email.toLowerCase().trim() : u.id;
+      if (seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+
+      members.push({
+        id: u.id,
+        name: u.name,
+        avatar: u.avatar,
+        role: u.role === 'ADMIN' ? 'Administrator' : u.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Karyawan',
+        department: u.department || (u.role === 'ADMIN' ? 'Administrator' : 'Karyawan'),
         statusBadge: 'Ditag',
         statusColor: 'blue',
-      };
+      });
     });
 
     setTaggedMembersModalData({
@@ -372,9 +426,17 @@ export function ChatTopicModal({
     });
   };
 
-  // Render User Avatars Stack
+  // Render User Avatars Stack (Hapus dummy agar tidak render avatar kosong)
   const renderTeammateAvatars = (taggedIds: string[]) => {
-    const taggedUsers = users.filter((u) => taggedIds.includes(u.id));
+    const rawTagged = safeParseJsonArray(taggedIds);
+    const cleanLower = rawTagged.map((id) => String(id).toLowerCase().trim());
+    const taggedUsers = (users || []).filter((u) => 
+      u.name !== 'Rekan Tim' && (
+        (u.id && cleanLower.includes(u.id.toLowerCase())) ||
+        (u.name && cleanLower.includes(u.name.toLowerCase().trim())) ||
+        (u.email && cleanLower.includes(u.email.toLowerCase().trim()))
+      )
+    );
     if (taggedUsers.length === 0) {
       return <span className="text-xs text-slate-400 font-medium">-</span>;
     }

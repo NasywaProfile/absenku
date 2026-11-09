@@ -2983,29 +2983,56 @@ export const AppStorage = {
 
   addTopicComment(topicId: string, commentData: Omit<ChatComment, 'id' | 'topicId' | 'timestamp'>): ChatComment {
     const topics = this.getChatTopics();
-    const topic = topics.find((t) => t.id === topicId);
-    if (!topic) throw new Error('Topic not found');
+    const targetIdStr = String(topicId);
+    let topic = topics.find((t) => String(t.id) === targetIdStr);
 
     const now = new Date();
     const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const newComment: ChatComment = {
       ...commentData,
       id: `comm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      topicId,
+      topicId: targetIdStr,
       timestamp: timeStr,
     };
 
-    topic.comments.push(newComment);
-    topic.updatedAt = timeStr;
+    if (!topic) {
+      // Fallback: buat topic container jika tidak ditemukan di storage lokal agar tidak melempar error crash
+      topic = {
+        id: targetIdStr,
+        title: 'Topik Obrolan',
+        status: 'NEED_COMMENTS',
+        taggedTeammateIds: [],
+        files: [],
+        links: [],
+        images: [],
+        shortNotes: '',
+        longNotes: '',
+        createdBy: commentData.userId,
+        createdByName: commentData.userName,
+        createdByAvatar: commentData.userAvatar,
+        comments: [newComment],
+        createdAt: timeStr,
+        updatedAt: timeStr,
+      };
+      topics.unshift(topic);
+    } else {
+      if (!Array.isArray(topic.comments)) topic.comments = [];
+      topic.comments.push(newComment);
+      topic.updatedAt = timeStr;
+    }
+
     this.saveChatTopics(topics);
 
     ApiClient.sendChatMessage({
       id: newComment.id,
-      topic_id: topicId,
+      topic_id: targetIdStr,
       user_id: newComment.userId,
       user_name: newComment.userName,
+      user_avatar: newComment.userAvatar,
+      user_role: newComment.userRole,
       content: newComment.notes || (newComment as any).content || '',
       notes: newComment.notes || '',
+      attachments: newComment.attachments || [],
     }).catch(() => {});
 
     return newComment;

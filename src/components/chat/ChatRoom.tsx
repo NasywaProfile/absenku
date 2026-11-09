@@ -792,18 +792,36 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
 
   const handleOpenTaggedMembersModal = (topic: ChatTopic, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const taggedIds = topic.taggedTeammateIds || [];
-    const members: TeamMemberItem[] = taggedIds.map((uid) => {
-      const u = users.find((user) => user.id === uid);
-      return {
-        id: uid,
-        name: u?.name || 'Rekan Tim',
-        avatar: u?.avatar,
-        role: u?.role === 'ADMIN' ? 'Administrator' : u?.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Karyawan',
-        department: u?.department || (u?.role === 'ADMIN' ? 'Administrator' : 'Karyawan'),
+    const rawTagged = safeParseJsonArray(
+      topic.taggedTeammateIds ?? (topic as any).id_anggota_ditandai ?? (topic as any).tagged_teammate_ids
+    );
+    const members: TeamMemberItem[] = [];
+    const seen = new Set<string>();
+
+    rawTagged.forEach((uid) => {
+      if (!uid) return;
+      const cleanUid = String(uid).trim().toLowerCase();
+      const u = (users || []).find((user) => 
+        (user.id && user.id.toLowerCase() === cleanUid) ||
+        (user.name && user.name.toLowerCase().trim() === cleanUid) ||
+        (user.email && user.email.toLowerCase().trim() === cleanUid)
+      );
+      // Hapus data dummy: Jangan tampilkan jika user tidak ada di sistem atau bernama "Rekan Tim"
+      if (!u || u.name === 'Rekan Tim') return;
+
+      const dedupeKey = u.email ? u.email.toLowerCase().trim() : u.id;
+      if (seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+
+      members.push({
+        id: u.id,
+        name: u.name,
+        avatar: u.avatar,
+        role: u.role === 'ADMIN' ? 'Administrator' : u.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Karyawan',
+        department: u.department || (u.role === 'ADMIN' ? 'Administrator' : 'Karyawan'),
         statusBadge: 'Ditag',
         statusColor: 'blue',
-      };
+      });
     });
 
     setTaggedMembersModalData({
@@ -814,9 +832,17 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
     });
   };
 
-  // Render User Avatars Stack
+  // Render User Avatars Stack (Hapus dummy agar tidak render avatar kosong)
   const renderTeammateAvatars = (taggedIds: string[]) => {
-    const taggedUsers = users.filter((u) => taggedIds.includes(u.id));
+    const rawTagged = safeParseJsonArray(taggedIds);
+    const cleanLower = rawTagged.map((id) => String(id).toLowerCase().trim());
+    const taggedUsers = (users || []).filter((u) => 
+      u.name !== 'Rekan Tim' && (
+        (u.id && cleanLower.includes(u.id.toLowerCase())) ||
+        (u.name && cleanLower.includes(u.name.toLowerCase().trim())) ||
+        (u.email && cleanLower.includes(u.email.toLowerCase().trim()))
+      )
+    );
     if (taggedUsers.length === 0) {
       return <span className="text-xs text-slate-400 font-medium">-</span>;
     }
