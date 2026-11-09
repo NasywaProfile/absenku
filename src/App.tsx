@@ -166,6 +166,53 @@ export default function App() {
         AppStorage.saveAttendanceRecords(mergedAtt);
         setRecords(mergedAtt);
       }
+
+      // 4. Ambil data tugas Kanban dari server
+      const serverTasks = await ApiClient.getKanbanTasks().catch(() => null);
+      if (Array.isArray(serverTasks) && serverTasks.length > 0) {
+        const localTasks = AppStorage.getTasks();
+        const mergedTasks = [...localTasks];
+        for (const st of serverTasks) {
+          const idx = mergedTasks.findIndex((t) => t.id === st.id);
+          const mappedTask: TaskItem = {
+            id: st.id,
+            title: st.title || st.judul_tugas || '',
+            description: st.description || st.deskripsi || '',
+            status: st.status || st.status_tugas || 'TODO',
+            priority: st.priority || st.prioritas || 'MEDIUM',
+            assignedTo: st.assigned_to || st.ditugaskan_ke,
+            dueDate: st.due_date || st.tenggat_waktu,
+            createdBy: st.created_by || st.dibuat_oleh,
+            createdAt: st.created_at || '',
+            updatedAt: st.updated_at || '',
+          };
+          if (idx >= 0) {
+            mergedTasks[idx] = { ...mergedTasks[idx], ...mappedTask };
+          } else {
+            mergedTasks.push(mappedTask);
+          }
+        }
+        AppStorage.saveTasks(mergedTasks);
+        setTasks(mergedTasks);
+      }
+
+      // 5. Ambil konfigurasi kantor dari server
+      const serverConfig = await ApiClient.getOfficeConfig().catch(() => null);
+      if (serverConfig && (serverConfig.name || serverConfig.nama_kantor)) {
+        const mappedCfg: OfficeConfig = {
+          name: serverConfig.name || serverConfig.nama_kantor,
+          address: serverConfig.address || serverConfig.alamat_kantor,
+          latitude: serverConfig.latitude,
+          longitude: serverConfig.longitude,
+          geofenceRadiusMeter: serverConfig.geofence_radius_meter || serverConfig.radius_geofence_meter,
+          workStartHour: serverConfig.work_start_hour || serverConfig.jam_masuk,
+          workEndHour: serverConfig.work_end_hour || serverConfig.jam_pulang,
+          gracePeriodMinutes: serverConfig.grace_period_minutes || serverConfig.toleransi_keterlambatan_menit,
+          isGeofenceActive: serverConfig.is_geofence_active ?? serverConfig.status_geofence_aktif ?? true,
+        };
+        AppStorage.updateOfficeConfig(mappedCfg);
+        setOfficeConfig(mappedCfg);
+      }
     } catch {
       // offline / abaikan jika jaringan tidak stabil
     }

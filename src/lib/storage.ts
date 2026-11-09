@@ -693,6 +693,7 @@ export const AppStorage = {
     });
     if (updatedUser) {
       this.saveUsers(nextUsers);
+      ApiClient.updateProfile(updates).catch(() => {});
     }
     return updatedUser;
   },
@@ -961,6 +962,13 @@ export const AppStorage = {
 
     this.saveDailyTasks(all);
 
+    // Kirim logbook harian ke API backend MySQL
+    ApiClient.saveDailyLog({
+      date,
+      tasks,
+      notes,
+    }).catch(() => {});
+
     // Sinkronkan juga ringkasan task ke absensi tanggal tersebut jika ada
     const records = this.getAttendanceRecords();
     const attRecord = records.find((r) => r.userId === user.id && r.date === date);
@@ -1087,6 +1095,17 @@ export const AppStorage = {
     tasks.unshift(newTask);
     this.saveTasks(tasks);
 
+    // Kirim tugas baru ke API backend MySQL
+    ApiClient.createKanbanTask({
+      id: newTask.id,
+      title: newTask.title,
+      description: newTask.description,
+      status: newTask.status,
+      priority: newTask.priority,
+      assigned_to: newTask.assignedTo,
+      due_date: newTask.dueDate,
+    }).catch(() => {});
+
     // Otomatis kirim notifikasi email penugasan ke karyawan & admin/PIC
     try {
       const curUser = this.getCurrentUser();
@@ -1128,6 +1147,7 @@ export const AppStorage = {
 
     if (updatedTask) {
       this.saveTasks(updated);
+      ApiClient.updateKanbanTask(taskId, updates).catch(() => {});
 
       // Jika ada perubahan penugasan (assignee), kirim email penugasan baru
       if (oldTask && updates.assignedTo && updates.assignedTo !== oldTask.assignedTo) {
@@ -1600,6 +1620,12 @@ export const AppStorage = {
 
     this.saveTasks(updated);
 
+    ApiClient.updateKanbanTask(taskId, {
+      status,
+      review_notes: details?.reviewNotes,
+      submission_notes: details?.submissionNotes,
+    }).catch(() => {});
+
     // Memicu notifikasi email otomatis untuk setiap proses penugasan (pengerjaan, submit, revisi, ACC)
     if (updatedTargetTask) {
       try {
@@ -1670,6 +1696,7 @@ export const AppStorage = {
     const tasks = this.getTasks();
     const updated = tasks.filter((t) => t.id !== taskId);
     this.saveTasks(updated);
+    ApiClient.deleteKanbanTask(taskId).catch(() => {});
   },
 
   deleteTaskActivity(taskId: string, activityId: string): void {
@@ -2763,6 +2790,16 @@ export const AppStorage = {
     };
     topics.unshift(newTopic);
     this.saveChatTopics(topics);
+
+    ApiClient.createChatTopic({
+      id: newTopic.id,
+      title: newTopic.title,
+      description: newTopic.description,
+      channel: newTopic.channel,
+      author_id: newTopic.authorId,
+      author_name: newTopic.authorName,
+    }).catch(() => {});
+
     return newTopic;
   },
 
@@ -2800,6 +2837,14 @@ export const AppStorage = {
     topic.comments.push(newComment);
     topic.updatedAt = timeStr;
     this.saveChatTopics(topics);
+
+    ApiClient.sendChatMessage({
+      topic_id: topicId,
+      user_id: newComment.userId,
+      user_name: newComment.userName,
+      content: newComment.content,
+    }).catch(() => {});
+
     return newComment;
   },
 
