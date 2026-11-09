@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Check } from 'lucide-react';
 import { User } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
+import { ApiClient } from '../../lib/api-client.ts';
 
 interface PendingApprovalScreenProps {
   currentUser: User;
@@ -17,28 +18,65 @@ export function PendingApprovalScreen({
 }: PendingApprovalScreenProps) {
   const [isVerifiedSuccess, setIsVerifiedSuccess] = useState(false);
 
-  // Polling status akun setiap 1.5 detik
+  // Polling status akun setiap 2 detik (Realtime sinkron server & local)
   useEffect(() => {
     if (isVerifiedSuccess) return;
 
-    const checkStatus = () => {
+    let isMounted = true;
+
+    const checkStatus = async () => {
+      // 1. Cek di local storage
       const allUsers = AppStorage.getUsers();
-      const freshUser = allUsers.find((u) => u.id === currentUser.id);
+      const freshUser = allUsers.find(
+        (u) => u.id === currentUser.id || u.email?.toLowerCase() === currentUser.email?.toLowerCase()
+      );
 
       if (freshUser && freshUser.status === 'ACTIVE') {
+        if (!isMounted) return;
         setIsVerifiedSuccess(true);
         AppStorage.setSessionUser(freshUser.id);
         setTimeout(() => {
-          onApproved(freshUser);
+          if (isMounted) onApproved(freshUser);
         }, 800);
-      } else if (!freshUser && onLogout) {
-        onLogout();
+        return;
+      }
+
+      // 2. Cek langsung ke server database MySQL VPS
+      try {
+        const serverStatus = await ApiClient.checkUserStatus(currentUser.id, currentUser.email).catch(() => null);
+        if (serverStatus && isMounted) {
+          if (serverStatus.status === 'ACTIVE') {
+            const activeUser: User = {
+              ...(freshUser || currentUser),
+              status: 'ACTIVE',
+              isProfileComplete: true,
+              role: (serverStatus.role || currentUser.role || 'EMPLOYEE') as any,
+            };
+            AppStorage.updateUser(activeUser);
+            AppStorage.setSessionUser(activeUser.id);
+            setIsVerifiedSuccess(true);
+            setTimeout(() => {
+              if (isMounted) onApproved(activeUser);
+            }, 800);
+            return;
+          } else if (serverStatus.status === 'REJECTED') {
+            AppStorage.rejectRegistration(currentUser.id);
+            if (onLogout) onLogout();
+            return;
+          }
+        }
+      } catch {
+        // network silent
       }
     };
 
-    const intervalId = setInterval(checkStatus, 1500);
-    return () => clearInterval(intervalId);
-  }, [currentUser.id, onApproved, onLogout, isVerifiedSuccess]);
+    checkStatus();
+    const intervalId = setInterval(checkStatus, 2000);
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [currentUser, onApproved, onLogout, isVerifiedSuccess]);
 
   return (
     <div className="fixed inset-0 w-screen h-screen overflow-hidden bg-white flex flex-col justify-between p-6 sm:p-10 select-none z-50">

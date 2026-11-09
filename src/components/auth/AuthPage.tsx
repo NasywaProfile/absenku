@@ -158,6 +158,9 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
       });
 
       if (regRes && regRes.user) {
+        if (regRes.token) {
+          ApiClient.setToken(regRes.token);
+        }
         const now = new Date();
         const localYear = now.getFullYear();
         const localMonth = String(now.getMonth() + 1).padStart(2, '0');

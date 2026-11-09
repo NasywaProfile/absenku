@@ -126,6 +126,21 @@ export const ApiClient = {
     }
   },
 
+  async checkUserStatus(id?: string, email?: string) {
+    const params = new URLSearchParams();
+    if (id) params.set('id', id);
+    if (email) params.set('email', email);
+    return this.request<{
+      id: string;
+      name: string;
+      email: string;
+      status: string;
+      role: string;
+      profil_lengkap: boolean;
+      user: any;
+    }>(`/user-status?${params.toString()}`);
+  },
+
   async logout() {
     try {
       await this.request('/logout', { method: 'POST' });

@@ -94,17 +94,21 @@ export default function App() {
             department: su.department || su.divisi || 'Operasional',
             position: su.position || su.jabatan || 'Staf',
             avatar: su.avatar || su.foto_profil || '',
-            phone: su.phone || su.nomor_telepon || '',
-            joinDate: su.join_date || su.tanggal_bergabung || '',
-            leaveBalance: su.leave_balance ?? su.sisa_cuti ?? 12,
-            bankName: su.bank_name || su.nama_bank || '',
-            bankAccountNumber: su.bank_account_number || su.nomor_rekening || '',
-            bankAccountHolder: su.bank_account_holder || su.nama_pemilik_rekening || '',
-            emergencyContactName: su.emergency_contact_name || su.nama_kontak_darurat || '',
-            emergencyContactPhone: su.emergency_contact_phone || su.nomor_kontak_darurat || '',
-            address: su.address || su.alamat || '',
-            registeredAt: su.registered_at || su.waktu_daftar || '',
-            isProfileComplete: Boolean(su.is_profile_complete ?? su.profil_lengkap),
+            phone: su.phone || su.nomor_telepon || (idx >= 0 ? mergedUsers[idx].phone : '') || '',
+            joinDate: su.join_date || su.tanggal_bergabung || (idx >= 0 ? mergedUsers[idx].joinDate : '') || '',
+            leaveBalance: su.leave_balance ?? su.sisa_cuti ?? (idx >= 0 ? mergedUsers[idx].leaveBalance : 12),
+            bankName: su.bank_name || su.nama_bank || (idx >= 0 ? mergedUsers[idx].bankName : '') || '',
+            bankAccountNumber: su.bank_account_number || su.nomor_rekening || (idx >= 0 ? mergedUsers[idx].bankAccountNumber : '') || '',
+            bankAccountHolder: su.bank_account_holder || su.nama_pemilik_rekening || (idx >= 0 ? mergedUsers[idx].bankAccountHolder : '') || '',
+            emergencyContactName: su.emergency_contact_name || su.nama_kontak_darurat || (idx >= 0 ? mergedUsers[idx].emergencyContactName : '') || '',
+            emergencyContactPhone: su.emergency_contact_phone || su.nomor_kontak_darurat || (idx >= 0 ? mergedUsers[idx].emergencyContactPhone : '') || '',
+            address: su.address || su.alamat || (idx >= 0 ? mergedUsers[idx].address : '') || '',
+            registeredAt: su.registered_at || su.waktu_daftar || (idx >= 0 ? mergedUsers[idx].registeredAt : '') || '',
+            isProfileComplete: Boolean(
+              su.is_profile_complete ??
+              su.profil_lengkap ??
+              (idx >= 0 ? mergedUsers[idx].isProfileComplete : false)
+            ),
           };
           if (idx >= 0) {
             mergedUsers[idx] = { ...mergedUsers[idx], ...mappedUser };
@@ -519,23 +523,42 @@ export default function App() {
   };
 
   // Handler Pengisian Wajib Data Diri Karyawan Baru
-  const handleCompleteProfile = (updatedUser: User) => {
+  const handleCompleteProfile = async (updatedUser: User) => {
     AppStorage.updateUser(updatedUser);
-    ApiClient.updateProfile({
-      name: updatedUser.name,
-      phone: updatedUser.phone,
-      address: updatedUser.address,
-      bank_name: updatedUser.bankName,
-      bank_account_number: updatedUser.bankAccountNumber,
-      bank_account_holder: updatedUser.bankAccountHolder,
-      emergency_contact_name: updatedUser.emergencyContactName,
-      emergency_contact_phone: updatedUser.emergencyContactPhone,
-      is_profile_complete: true,
-      profil_lengkap: true,
-    }).catch(() => {});
     setCurrentUser(updatedUser);
     setSessionUser(updatedUser);
+
+    try {
+      await ApiClient.updateProfile({
+        id: updatedUser.id,
+        user_id: updatedUser.id,
+        email: updatedUser.email,
+        current_email: updatedUser.email,
+        name: updatedUser.name,
+        nama: updatedUser.name,
+        phone: updatedUser.phone,
+        nomor_telepon: updatedUser.phone,
+        address: updatedUser.address,
+        alamat: updatedUser.address,
+        bank_name: updatedUser.bankName,
+        nama_bank: updatedUser.bankName,
+        bank_account_number: updatedUser.bankAccountNumber,
+        nomor_rekening: updatedUser.bankAccountNumber,
+        bank_account_holder: updatedUser.bankAccountHolder,
+        nama_pemilik_rekening: updatedUser.bankAccountHolder,
+        emergency_contact_name: updatedUser.emergencyContactName,
+        nama_kontak_darurat: updatedUser.emergencyContactName,
+        emergency_contact_phone: updatedUser.emergencyContactPhone,
+        nomor_kontak_darurat: updatedUser.emergencyContactPhone,
+        is_profile_complete: true,
+        profil_lengkap: true,
+      });
+    } catch (err) {
+      console.warn('Gagal update biodata ke server:', err);
+    }
+
     loadData();
+    syncWithBackend();
   };
 
   // Auto-detect pergantian hari (00.01 Pagi / lewat tengah malam) untuk mereset tombol presensi masuk otomatis
@@ -681,16 +704,11 @@ export default function App() {
 
   const isAdmin = currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN';
 
-  // Karyawan belum melengkapi biodata jika:
-  // - Role-nya adalah EMPLOYEE
-  // - DAN (isProfileComplete !== true ATAU belum ada nomor whatsapp ATAU belum ada alamat)
-  // Ini memastikan akun yang sudah dibuat dan masuk kembali TETAP MEMUNCULKAN POPUP
-  // sampai biodatanya benar-benar diisi dan disimpan!
+  // Karyawan diarahkan ke form onboarding biodata HANYA jika akun belum aktif dan belum pernah mengisi biodata
   const isEmployeeProfileIncomplete =
     !isAdmin &&
-    (currentUser.isProfileComplete !== true ||
-      !currentUser.phone ||
-      !currentUser.address);
+    currentUser.status !== 'ACTIVE' &&
+    currentUser.isProfileComplete !== true;
 
   // 1. JIKA KARYAWAN BELUM MELENGKAPI BIODATA DIRI: TAMPILKAN HALAMAN BIODATA DIRI SEBAGAI HALAMAN UTAMA
   if (isEmployeeProfileIncomplete) {
