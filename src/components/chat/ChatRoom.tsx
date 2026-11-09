@@ -1285,63 +1285,38 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
                     )}
                   </div>
 
-                  {/* Badge Info Pembuat Tugas: Otomatis Masuk */}
-                  <div className="flex items-center gap-2.5 p-2.5 bg-blue-50/80 border border-blue-200/90 rounded-xl text-xs text-[#1E3A8A] shadow-2xs">
-                    {currentUser.avatar ? (
-                      <img src={currentUser.avatar} alt={currentUser.name} className="w-6 h-6 rounded-full object-cover border border-blue-300 shrink-0" />
-                    ) : (
-                      <div className="w-6 h-6 rounded-full bg-[#1E3A8A] text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                        {currentUser.name.charAt(0)}
-                      </div>
-                    )}
-                    <p className="text-xs leading-snug">
-                      <strong className="font-bold">{currentUser.name}</strong> <span className="text-blue-700/80 font-medium">(Anda) otomatis diikutsertakan sebagai pembuat tugas/topik.</span>
-                    </p>
-                  </div>
-
                   {/* Chips Anggota Tim Terpilih */}
-                  <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-50/80 rounded-xl border border-slate-200/80">
-                    {/* Chip Pembuat Tugas (Auto-Included) */}
-                    <span className="inline-flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 bg-blue-100/90 border border-blue-300 text-[#1E3A8A] rounded-lg text-xs font-bold shadow-2xs">
-                      {currentUser.avatar ? (
-                        <img src={currentUser.avatar} alt={currentUser.name} className="w-4 h-4 rounded-full object-cover" />
-                      ) : (
-                        <span className="w-4 h-4 rounded-full bg-[#1E3A8A] text-white font-extrabold text-[9px] flex items-center justify-center">
-                          {currentUser.name.charAt(0)}
-                        </span>
-                      )}
-                      <span className="truncate max-w-[140px]">{currentUser.name} (Pembuat)</span>
-                    </span>
-
-                    {/* Chips Rekan Tim Tambahan yang Dipilih */}
-                    {newTaggedIds.map((uid) => {
-                      const u = users.find((usr) => usr.id === uid);
-                      if (!u) return null;
-                      return (
-                        <span
-                          key={uid}
-                          className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 bg-white border border-blue-200 text-[#1E3A8A] rounded-lg text-xs font-semibold shadow-2xs animate-fadeIn"
-                        >
-                          {u.avatar ? (
-                            <img src={u.avatar} alt={u.name} className="w-4 h-4 rounded-full object-cover" />
-                          ) : (
-                            <span className="w-4 h-4 rounded-full bg-blue-100 text-[#1E3A8A] font-extrabold text-[9px] flex items-center justify-center">
-                              {u.name.charAt(0)}
-                            </span>
-                          )}
-                          <span className="truncate max-w-[120px]">{u.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => setNewTaggedIds((prev) => prev.filter((id) => id !== uid))}
-                            className="text-slate-400 hover:text-rose-600 rounded-sm p-0.5 cursor-pointer transition-colors"
-                            title={`Hapus ${u.name}`}
+                  {newTaggedIds.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-50/80 rounded-xl border border-slate-200/80">
+                      {newTaggedIds.map((uid) => {
+                        const u = users.find((usr) => usr.id === uid);
+                        if (!u) return null;
+                        return (
+                          <span
+                            key={uid}
+                            className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 bg-white border border-blue-200 text-[#1E3A8A] rounded-lg text-xs font-semibold shadow-2xs animate-fadeIn"
                           >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
+                            {u.avatar ? (
+                              <img src={u.avatar} alt={u.name} className="w-4 h-4 rounded-full object-cover" />
+                            ) : (
+                              <span className="w-4 h-4 rounded-full bg-blue-100 text-[#1E3A8A] font-extrabold text-[9px] flex items-center justify-center">
+                                {u.name.charAt(0)}
+                              </span>
+                            )}
+                            <span className="truncate max-w-[120px]">{u.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => setNewTaggedIds((prev) => prev.filter((id) => id !== uid))}
+                              className="text-slate-400 hover:text-rose-600 rounded-sm p-0.5 cursor-pointer transition-colors"
+                              title={`Hapus ${u.name}`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {/* Search Input Anggota Tim */}
                   <div className="relative">
