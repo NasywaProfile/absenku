@@ -550,7 +550,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
   }, [filteredTopics, currentPage]);
 
   // Handle Create Topic
-  const handleCreateTopic = (e: React.FormEvent) => {
+  const handleCreateTopic = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
 
@@ -571,7 +571,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
 
     const finalTaggedIds = Array.from(new Set(taggedIdentifiers));
 
-    AppStorage.addChatTopic({
+    const newTopic = AppStorage.addChatTopic({
       title: newTitle.trim(),
       status: newStatus,
       taggedTeammateIds: finalTaggedIds,
@@ -583,6 +583,26 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
       createdByAvatar: currentUser.avatar,
     });
 
+    // Kirim sinkronisasi langsung ke MySQL backend
+    try {
+      await ApiClient.createChatTopic({
+        id: newTopic.id,
+        title: newTopic.title,
+        status: newTopic.status,
+        shortNotes: newTopic.shortNotes,
+        longNotes: newTopic.longNotes,
+        taggedTeammateIds: newTopic.taggedTeammateIds,
+        files: newTopic.files,
+        links: newTopic.links,
+        images: newTopic.images,
+        createdBy: newTopic.createdBy,
+        createdByName: newTopic.createdByName,
+        createdByAvatar: newTopic.createdByAvatar,
+      });
+    } catch (err) {
+      console.warn('Sinkronisasi topik chat ke server gagal, tersimpan lokal:', err);
+    }
+
     setNewTitle('');
     setNewStatus('NEED_COMMENTS');
     setNewTaggedIds([]);
@@ -592,6 +612,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
     setCreateTopicMemberSearch('');
     setShowCreateModal(false);
     reloadTopics();
+    window.dispatchEvent(new CustomEvent('absenku:chat_updated'));
   };
 
   const handleCommentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
