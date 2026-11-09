@@ -397,6 +397,18 @@ export default function App() {
   // Handler Pengisian Wajib Data Diri Karyawan Baru
   const handleCompleteProfile = (updatedUser: User) => {
     AppStorage.updateUser(updatedUser);
+    ApiClient.updateProfile({
+      name: updatedUser.name,
+      phone: updatedUser.phone,
+      address: updatedUser.address,
+      bank_name: updatedUser.bankName,
+      bank_account_number: updatedUser.bankAccountNumber,
+      bank_account_holder: updatedUser.bankAccountHolder,
+      emergency_contact_name: updatedUser.emergencyContactName,
+      emergency_contact_phone: updatedUser.emergencyContactPhone,
+      is_profile_complete: true,
+      profil_lengkap: true,
+    }).catch(() => {});
     setCurrentUser(updatedUser);
     setSessionUser(updatedUser);
     loadData();
