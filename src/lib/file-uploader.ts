@@ -220,57 +220,50 @@ export async function uploadHybridFile(
   }
 
   // -------------------------------------------------------------
-  // KASUS 3: DOKUMEN (PDF, Word, Excel, ZIP) -> Upload ke Cloudinary (raw) atau VPS
+  // KASUS 3: DOKUMEN (PDF, Word, Excel, ZIP) -> Upload ke VPS Backend Storage
+  // (Cloudinary default memblokir delivery PDF raw dengan 401 ACL failure)
   // -------------------------------------------------------------
   if (category === 'document') {
-    // 1. Coba upload langsung ke Cloudinary sebagai raw file (resmi didukung & HTTPS publik)
-    try {
-      const cloudRes = await uploadToCloudinary(file, {
-        folder,
-        resourceType: 'raw',
-      });
+    // 1. Upload ke server backend VPS /api/upload (tersimpan permanen di disk publik tanpa limit ACL)
+    const uploadEndpoints = [
+      (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL
+        ? `${(import.meta as any).env.VITE_API_URL}/upload`
+        : null),
+      '/api/upload',
+      'https://in-time.duckdns.org/api/upload',
+    ].filter(Boolean) as string[];
 
-      return {
-        url: cloudRes.url,
-        name: file.name,
-        size: cloudRes.bytes || file.size,
-        type: file.type || 'application/octet-stream',
-        category: 'document',
-        storage: 'cloudinary',
-        publicId: cloudRes.publicId,
-      };
-    } catch (cloudErr) {
-      console.warn('Gagal upload dokumen ke Cloudinary, mencoba server backend:', cloudErr);
-    }
+    for (const endpoint of uploadEndpoints) {
+      try {
+        const formData = new FormData();
+        formData.append('document', file);
+        formData.append('file', file);
+        formData.append('category', 'document');
 
-    // 2. Coba upload ke server backend VPS /api/upload
-    try {
-      const formData = new FormData();
-      formData.append('document', file);
-      formData.append('file', file);
-      formData.append('category', 'document');
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          body: formData,
+        });
 
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        return {
-          url: data.url,
-          name: file.name,
-          size: file.size,
-          type: file.type || 'application/octet-stream',
-          category: 'document',
-          storage: 'vps',
-        };
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.url) {
+            return {
+              url: data.url,
+              name: file.name,
+              size: file.size,
+              type: file.type || 'application/octet-stream',
+              category: 'document',
+              storage: 'vps',
+            };
+          }
+        }
+      } catch (vpsErr) {
+        console.warn(`Upload dokumen ke ${endpoint} gagal:`, vpsErr);
       }
-    } catch (vpsErr) {
-      console.warn('Server backend upload gagal:', vpsErr);
     }
 
-    // 3. Fallback jika offline (Data URL)
+    // 2. Fallback jika offline (Data URL)
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target?.result as string);
