@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   User as UserIcon,
   ChevronDown,
+  Trash2,
 } from 'lucide-react';
 import { LeaveRequest, LeaveCategory, User } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
@@ -30,12 +31,14 @@ import { LeaveRequestIllustration } from '../common/Illustrations.tsx';
 import { Tooltip } from '../ui/tooltip.tsx';
 import { SimpleProfileModal, SimpleProfileData } from '../common/SimpleProfileModal.tsx';
 import { openAttachmentDirectly } from '../../lib/open-media.ts';
+import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 
 interface TeamLeaveApprovalsProps {
   currentUser: User;
   leaves?: LeaveRequest[];
   leaveRequests?: LeaveRequest[];
   onRefresh?: () => void;
+  onDelete?: (id: string) => void;
 }
 
 export function TeamLeaveApprovals({
@@ -43,6 +46,7 @@ export function TeamLeaveApprovals({
   leaves: propLeaves,
   leaveRequests: propLeaveRequests,
   onRefresh,
+  onDelete,
 }: TeamLeaveApprovalsProps) {
   const leaves = propLeaves || propLeaveRequests || AppStorage.getLeaveRequests();
 
@@ -59,7 +63,8 @@ export function TeamLeaveApprovals({
 
   const hasActiveFilters = filterCategory !== 'ALL' || filterStatus !== 'ALL' || specificDateFilter !== '';
 
-  // Reject Dialog
+  // Delete & Reject Dialogs
+  const [deleteTarget, setDeleteTarget] = useState<LeaveRequest | null>(null);
   const [isRejectModalFullScreen, setIsRejectModalFullScreen] = useState(false);
   const [rejectDialog, setRejectDialog] = useState<{
     isOpen: boolean;
@@ -117,6 +122,17 @@ export function TeamLeaveApprovals({
         currentUser.name
       );
       setRejectDialog({ isOpen: false, leaveId: '', userName: '', reason: '' });
+      notifyUpdated();
+    }
+  };
+
+  const handleDelete = () => {
+    if (deleteTarget) {
+      AppStorage.deleteLeaveRequest(deleteTarget.id);
+      if (onDelete) {
+        onDelete(deleteTarget.id);
+      }
+      setDeleteTarget(null);
       notifyUpdated();
     }
   };
@@ -372,7 +388,7 @@ export function TeamLeaveApprovals({
                 <th className="py-3 px-3.5 font-bold">Kategori</th>
                 <th className="py-3 px-3.5 font-bold">Periode &amp; Durasi</th>
                 <th className="py-3 px-3.5 font-bold">Alasan &amp; Bukti</th>
-                <th className="py-3 px-3.5 font-bold text-center">Status</th>
+                <th className="py-3 px-3.5 font-bold text-center">Status &amp; Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -456,43 +472,54 @@ export function TeamLeaveApprovals({
                         )}
                       </td>
                       <td className="py-3.5 px-3.5 text-center whitespace-nowrap">
-                        {isApproved ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#DCFCE7] text-[#15803D] border border-[#86EFAC]/70 shadow-2xs">
-                            <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                            <span>Disetujui</span>
-                          </span>
-                        ) : isRejected ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#FFE4E6] text-[#E11D48] border border-[#FDA4AF]/70 shadow-2xs">
-                            <X className="w-3.5 h-3.5 stroke-[2.5]" />
-                            <span>Ditolak</span>
-                          </span>
-                        ) : (
-                          <div className="inline-flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={() => handleApprove(req.id)}
-                              className="w-8 h-8 rounded-xl bg-[#DCFCE7] hover:bg-[#BBF7D0] text-[#15803D] border border-[#86EFAC] font-bold transition-all cursor-pointer flex items-center justify-center shadow-2xs active:scale-95"
-                              title="Setujui Permohonan (Centang Pastel)"
-                            >
-                              <Check className="w-4 h-4 stroke-[2.5]" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRejectDialog({
-                                  isOpen: true,
-                                  leaveId: req.id,
-                                  userName: req.userName,
-                                  reason: '',
-                                });
-                              }}
-                              className="w-8 h-8 rounded-xl bg-[#FFE4E6] hover:bg-[#FECDD3] text-[#E11D48] border border-[#FDA4AF] font-bold transition-all cursor-pointer flex items-center justify-center shadow-2xs active:scale-95"
-                              title="Tolak Permohonan (Silang Pastel)"
-                            >
-                              <X className="w-4 h-4 stroke-[2.5]" />
-                            </button>
-                          </div>
-                        )}
+                        <div className="inline-flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {isApproved ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#DCFCE7] text-[#15803D] border border-[#86EFAC]/70 shadow-2xs">
+                              <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                              <span>Disetujui</span>
+                            </span>
+                          ) : isRejected ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#FFE4E6] text-[#E11D48] border border-[#FDA4AF]/70 shadow-2xs">
+                              <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                              <span>Ditolak</span>
+                            </span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApprove(req.id)}
+                                className="w-8 h-8 rounded-xl bg-[#DCFCE7] hover:bg-[#BBF7D0] text-[#15803D] border border-[#86EFAC] font-bold transition-all cursor-pointer flex items-center justify-center shadow-2xs active:scale-95"
+                                title="Setujui Permohonan"
+                              >
+                                <Check className="w-4 h-4 stroke-[2.5]" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRejectDialog({
+                                    isOpen: true,
+                                    leaveId: req.id,
+                                    userName: req.userName,
+                                    reason: '',
+                                  });
+                                }}
+                                className="w-8 h-8 rounded-xl bg-[#FFE4E6] hover:bg-[#FECDD3] text-[#E11D48] border border-[#FDA4AF] font-bold transition-all cursor-pointer flex items-center justify-center shadow-2xs active:scale-95"
+                                title="Tolak Permohonan"
+                              >
+                                <X className="w-4 h-4 stroke-[2.5]" />
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(req)}
+                            className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition-all cursor-pointer flex items-center justify-center shadow-2xs active:scale-95"
+                            title="Hapus Pengajuan Izin"
+                            aria-label="Hapus Pengajuan Izin"
+                          >
+                            <Trash2 className="w-4 h-4 stroke-[2]" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -594,6 +621,22 @@ export function TeamLeaveApprovals({
         isOpen={!!simpleProfilePopup}
         onClose={() => setSimpleProfilePopup(null)}
         profile={simpleProfilePopup}
+      />
+
+      {/* Dialog Konfirmasi Hapus Pengajuan Izin */}
+      <ModernConfirmDialog
+        isOpen={!!deleteTarget}
+        title="Hapus Pengajuan Izin"
+        message={
+          deleteTarget
+            ? `Apakah Anda yakin ingin menghapus data perizinan ${categoryLabels[deleteTarget.category] || deleteTarget.category} dari "${deleteTarget.userName}" (${formatShortDate(deleteTarget.startDate)} s/d ${formatShortDate(deleteTarget.endDate)})? Data yang dihapus tidak dapat dipulihkan.`
+            : ''
+        }
+        variant="danger"
+        confirmText="Hapus Pengajuan"
+        cancelText="Batal"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   );

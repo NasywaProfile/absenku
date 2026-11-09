@@ -482,6 +482,17 @@ export default function App() {
     loadData();
   };
 
+  const handleDeleteLeave = async (leaveId: string) => {
+    AppStorage.deleteLeaveRequest(leaveId);
+    loadData();
+    try {
+      await ApiClient.deleteLeave(leaveId);
+    } catch (e) {
+      console.warn('Gagal menghapus izin dari server:', e);
+    }
+    syncWithBackend();
+  };
+
   // Handler ACC Review Tugas oleh Admin
   const handleApproveTask = (taskId: string, reviewNotes: string) => {
     AppStorage.updateTaskStatus(taskId, 'REVIEWED', { reviewNotes });
@@ -832,6 +843,7 @@ export default function App() {
                 currentUser={currentUser}
                 leaves={leaves}
                 onRefresh={loadData}
+                onDelete={handleDeleteLeave}
               />
             )}
 
