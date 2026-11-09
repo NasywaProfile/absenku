@@ -421,7 +421,7 @@ export function ChatTopicModal({
     setTaggedMembersModalData({
       isOpen: true,
       title: 'Rekan Tim yang Ditag',
-      subtitle: `Topik: "${topicItem.title}" • ${members.length} Rekan Ditag`,
+      subtitle: `Topik: "${topicItem.title}"`,
       members,
     });
   };

@@ -288,7 +288,7 @@ export default function App() {
         const validLocalTasks = localTasks.filter((t) => {
           const tId = String(t.id);
           if (deletedIds.has(tId)) return false;
-          if (serverTasks.length > 0 && !serverTaskIds.has(tId)) {
+          if (!serverTaskIds.has(tId)) {
             const isVeryRecent =
               t.id.startsWith('task_') &&
               Date.now() - parseInt(t.id.split('_')[1] || '0', 10) < 10000;

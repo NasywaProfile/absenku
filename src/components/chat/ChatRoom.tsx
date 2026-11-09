@@ -827,7 +827,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
     setTaggedMembersModalData({
       isOpen: true,
       title: 'Rekan Tim yang Ditag',
-      subtitle: `Topik: "${topic.title}" • ${members.length} Rekan Ditag`,
+      subtitle: `Topik: "${topic.title}"`,
       members,
     });
   };
