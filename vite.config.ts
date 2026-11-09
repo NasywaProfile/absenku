@@ -37,7 +37,7 @@ const emailApiPlugin = (): Plugin => ({
           const brevoApiKey = process.env.BREVO_API_KEY;
           const smtpUser = process.env.SMTP_USER || '';
           const smtpPass = process.env.SMTP_PASS || '';
-          const fromName = process.env.SMTP_FROM_NAME || 'in-Time Notifikasi';
+          const fromName = 'in-Time';
 
           // 1. Opsi Utama: Resend REST API (Deliverability tertinggi saat domain resmi terverifikasi)
           // Catatan: Jika domain masih sandbox 'onboarding@resend.dev', Resend membatasi penerima hanya ke pemilik akun.
