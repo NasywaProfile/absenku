@@ -80,6 +80,7 @@ export function AdminEmployeeManagement({
   const [newDept, setNewDept] = useState('Teknologi & Engineering');
   const [newPosition, setNewPosition] = useState('Software Engineer');
   const [newType, setNewType] = useState<EmploymentType>('CONTRACT');
+  const [newRole, setNewRole] = useState<UserRole>('EMPLOYEE');
   const [newBankName, setNewBankName] = useState('BCA (Bank Central Asia)');
   const [newBankAccount, setNewBankAccount] = useState('');
   const [newEmergencyName, setNewEmergencyName] = useState('');
@@ -153,7 +154,8 @@ export function AdminEmployeeManagement({
         phone: newPhone,
       });
       if (apiRes && apiRes.user) {
-        await ApiClient.approveUser(apiRes.user.id).catch(() => {});
+        await ApiClient.approveUser(apiRes.user.id, newRole).catch(() => {});
+        await ApiClient.updateUserRole(apiRes.user.id, newRole).catch(() => {});
       }
     } catch (err) {
       console.warn('Gagal mendaftarkan karyawan ke server backend, menggunakan penyimpanan lokal:', err);
@@ -176,14 +178,18 @@ export function AdminEmployeeManagement({
     });
 
     if (res.success && res.user) {
-      // Auto-approve if created directly from Admin panel
-      AppStorage.approveRegistration(res.user.id, currentUser.name);
-      onAddUser(res.user);
+      // Auto-approve if created directly from Admin panel with chosen role
+      AppStorage.approveRegistration(res.user.id, currentUser.name, newRole);
+      AppStorage.updateUserRole(res.user.id, newRole);
+      if (onUpdateRole) onUpdateRole(res.user.id, newRole);
+      const updatedUser = AppStorage.getUserById(res.user.id) || { ...res.user, role: newRole, status: 'ACTIVE' as const };
+      onAddUser(updatedUser);
       setShowAddModal(false);
       setNewName('');
       setNewEmail('');
       setNewPassword('Absenku123!');
       setNewPhone('');
+      setNewRole('EMPLOYEE');
       setNewBankAccount('');
       setNewEmergencyName('');
       setNewEmergencyPhone('');
@@ -226,7 +232,8 @@ export function AdminEmployeeManagement({
   }, [initialSubTab]);
 
   const handleApprove = (userId: string) => {
-    const chosenRole = selectedApprovalRoles[userId] || 'EMPLOYEE';
+    const targetUser = users.find((u) => u.id === userId);
+    const chosenRole = selectedApprovalRoles[userId] || targetUser?.role || 'EMPLOYEE';
     if (onApproveRegistration) {
       onApproveRegistration(userId, chosenRole);
     } else {
@@ -791,6 +798,23 @@ export function AdminEmployeeManagement({
                 </div>
                 <div>
                   <label className="block font-bold text-slate-800 mb-1">
+                    Peran / Role Akun
+                  </label>
+                  <select
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value as UserRole)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 font-bold"
+                  >
+                    <option value="EMPLOYEE">Karyawan</option>
+                    <option value="ADMIN">Admin</option>
+                    <option value="SUPER_ADMIN">Superadmin</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
                     Divisi / Departemen
                   </label>
                   <input
@@ -801,19 +825,18 @@ export function AdminEmployeeManagement({
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-800 mb-1">
-                  Jabatan / Posisi
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newPosition}
-                  onChange={(e) => setNewPosition(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900"
-                />
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    Jabatan / Posisi
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newPosition}
+                    onChange={(e) => setNewPosition(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900"
+                  />
+                </div>
               </div>
 
               {/* Data Finansial */}
