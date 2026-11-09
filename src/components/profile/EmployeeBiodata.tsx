@@ -536,16 +536,6 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
 
       {/* MIDDLE & BOTTOM SECTION: Kolom Form dengan Card */}
       <div className="w-full bg-white border border-slate-200/90 rounded-2xl sm:rounded-3xl shadow-sm sm:shadow-md p-5 sm:p-7 md:p-8">
-        {/* Card Header */}
-        <div className="pb-5 mb-5 border-b border-slate-100">
-          <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
-            Biodata &amp; Informasi Akun
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Perbarui data profil, kontak, rekening, atau kata sandi Anda di sini.
-          </p>
-        </div>
-
         {/* Alert Error */}
         {errorMessage && (
           <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs sm:text-sm flex items-center gap-2 animate-in fade-in">
@@ -814,34 +804,6 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
                   placeholder="Contoh: Jl. Ijen No. 12, Klojen, Kota Malang, Jawa Timur"
                   className="w-full h-11 px-3.5 bg-white border border-slate-300 focus:border-[#1E3A8A] focus:ring-2 focus:ring-blue-100 rounded-xl text-sm font-medium text-slate-900 outline-none transition-all"
                 />
-              </div>
-
-              {/* 3.3 Kontak Darurat (Keluarga / Kerabat) */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 pt-2 border-t border-slate-100">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-slate-700">
-                    Nama Kontak Darurat
-                  </label>
-                  <input
-                    type="text"
-                    value={emergencyContactName}
-                    onChange={(e) => setEmergencyContactName(e.target.value)}
-                    placeholder="Nama kerabat / keluarga terdekat"
-                    className="w-full h-11 px-3.5 bg-white border border-slate-300 focus:border-[#1E3A8A] focus:ring-2 focus:ring-blue-100 rounded-xl text-sm font-medium text-slate-900 transition-all outline-none"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-slate-700">
-                    No. HP Kontak Darurat
-                  </label>
-                  <input
-                    type="tel"
-                    value={emergencyContactPhone}
-                    onChange={(e) => setEmergencyContactPhone(e.target.value)}
-                    placeholder="Contoh: 081987654321"
-                    className="w-full h-11 px-3.5 bg-white border border-slate-300 focus:border-[#1E3A8A] focus:ring-2 focus:ring-blue-100 rounded-xl text-sm text-slate-900 outline-none transition-all"
-                  />
-                </div>
               </div>
             </div>
           )}
