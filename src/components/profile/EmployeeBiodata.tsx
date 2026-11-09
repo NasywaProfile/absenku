@@ -11,6 +11,10 @@ import {
   ArrowRight,
   ArrowLeft,
   X,
+  Lock,
+  Eye,
+  EyeOff,
+  KeyRound,
 } from 'lucide-react';
 import { User, EmploymentType } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
@@ -18,7 +22,7 @@ import { uploadToCloudinary } from '../../lib/cloudinary.ts';
 import { compressImageFile } from '../../lib/image-compression.ts';
 import { sendRealEmail, generateEmailHtmlTemplate } from '../../lib/real-email.ts';
 
-export type BiodataTabKey = 'general' | 'job' | 'contact' | 'payroll';
+export type BiodataTabKey = 'general' | 'job' | 'contact' | 'payroll' | 'security';
 
 interface EmployeeBiodataProps {
   currentUser: User | null;
@@ -149,6 +153,12 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
   const [bankAccountHolder, setBankAccountHolder] = useState('');
   const [isPaymentDropdownOpen, setIsPaymentDropdownOpen] = useState(false);
 
+  // Form Fields - Keamanan & Ganti Sandi (Opsional)
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Pilihan Bank & E-Wallet
@@ -250,13 +260,27 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
       return;
     }
 
+    if (newPassword.trim()) {
+      if (newPassword.trim().length < 6) {
+        setActiveTab('security');
+        setErrorMessage('Kata sandi baru minimal 6 karakter.');
+        return;
+      }
+      if (newPassword.trim() !== confirmPassword.trim()) {
+        setActiveTab('security');
+        setErrorMessage('Konfirmasi kata sandi baru tidak sesuai.');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     const oldEmail = currentUser.email?.trim().toLowerCase();
     const newEmail = email.trim();
     const isEmailChanged = Boolean(oldEmail && newEmail.toLowerCase() !== oldEmail);
+    const isPasswordChanged = Boolean(newPassword.trim());
 
-    const updated = AppStorage.updateUserProfile(currentUser.id, {
+    const updatePayload: Partial<User> = {
       name: name.trim(),
       email: newEmail,
       phone: phone.trim(),
@@ -271,7 +295,13 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
       bankAccountNumber: bankAccountNumber.trim(),
       bankAccountHolder: bankAccountHolder.trim() || name.trim(),
       isProfileComplete: true,
-    });
+    };
+
+    if (isPasswordChanged) {
+      updatePayload.password = newPassword.trim();
+    }
+
+    const updated = AppStorage.updateUserProfile(currentUser.id, updatePayload);
 
     if (isEmailChanged) {
       const emailSubject = `[in-Time] Konfirmasi Pembaruan Email Akun ${currentUser.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Pengguna'}`;
@@ -327,11 +357,17 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
       setIsSubmitting(false);
       if (updated) {
         onUserUpdated(updated);
-        setSuccessMessage(
-          isEmailChanged
-            ? `Biodata diri berhasil diperbarui! Notifikasi konfirmasi resmi telah dikirimkan ke inbox email baru: ${newEmail}.`
-            : 'Biodata diri berhasil diperbarui dan disimpan!'
-        );
+        setNewPassword('');
+        setConfirmPassword('');
+        let msg = 'Biodata diri berhasil diperbarui dan disimpan!';
+        if (isEmailChanged && isPasswordChanged) {
+          msg = `Email dan kata sandi berhasil diperbarui! Notifikasi konfirmasi dikirim ke ${newEmail}.`;
+        } else if (isEmailChanged) {
+          msg = `Alamat email berhasil diperbarui! Notifikasi konfirmasi dikirim ke ${newEmail}.`;
+        } else if (isPasswordChanged) {
+          msg = 'Kata sandi berhasil diperbarui! Gunakan kata sandi baru untuk login berikutnya.';
+        }
+        setSuccessMessage(msg);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 5000);
       }
@@ -355,22 +391,33 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
                   activeTab === 'general'
                     ? '0%'
                     : activeTab === 'job'
-                    ? '33.33%'
+                    ? '25%'
                     : activeTab === 'contact'
-                    ? '66.66%'
+                    ? '50%'
+                    : activeTab === 'payroll'
+                    ? '75%'
                     : 'calc(100% - 48px)'
                 }`,
               }}
             />
 
             {[
-              { id: 'general', number: 1, label: 'Informasi Umum' },
-              { id: 'job', number: 2, label: 'Informasi Pekerjaan' },
-              { id: 'contact', number: 3, label: 'Kontak & Alamat' },
-              { id: 'payroll', number: 4, label: 'Informasi Rekening' },
+              { id: 'general', number: 1, label: 'Umum' },
+              { id: 'job', number: 2, label: 'Pekerjaan' },
+              { id: 'contact', number: 3, label: 'Kontak' },
+              { id: 'payroll', number: 4, label: 'Rekening' },
+              { id: 'security', number: 5, label: 'Keamanan' },
             ].map((step) => {
               const currentStepNumber =
-                activeTab === 'general' ? 1 : activeTab === 'job' ? 2 : activeTab === 'contact' ? 3 : 4;
+                activeTab === 'general'
+                  ? 1
+                  : activeTab === 'job'
+                  ? 2
+                  : activeTab === 'contact'
+                  ? 3
+                  : activeTab === 'payroll'
+                  ? 4
+                  : 5;
               const isCompleted = step.number < currentStepNumber;
               const isActive = step.id === activeTab;
 
@@ -427,6 +474,7 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
               if (activeTab === 'general') setActiveTab('job');
               else if (activeTab === 'job') setActiveTab('contact');
               else if (activeTab === 'contact') setActiveTab('payroll');
+              else if (activeTab === 'payroll') setActiveTab('security');
             }
           }}
           className="w-full"
@@ -802,6 +850,67 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
               </div>
             </div>
           )}
+
+          {/* TAB 5: KEAMANAN & KATA SANDI (OPSIONAL) */}
+          {activeTab === 'security' && (
+            <div className="animate-in fade-in duration-150 min-h-[230px] md:min-h-0 md:h-[152px] flex flex-col justify-between space-y-4 md:space-y-0">
+              <div className="pb-2 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-800">Keamanan & Kata Sandi</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Perbarui kata sandi akun Anda untuk mengamankan akses ke portal.</p>
+              </div>
+
+              {/* Form Input Password Baru */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Kata Sandi Baru <span className="text-slate-400 font-normal">(Opsional)</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Minimal 6 karakter"
+                      className="w-full h-11 pl-10 pr-10 bg-white border border-slate-300 focus:border-[#1E3A8A] focus:ring-2 focus:ring-blue-100 rounded-xl text-sm text-slate-900 outline-none transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                      title={showNewPassword ? 'Sembunyikan' : 'Tampilkan'}
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Konfirmasi Kata Sandi Baru
+                  </label>
+                  <div className="relative flex items-center">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Ulangi kata sandi baru"
+                      className="w-full h-11 pl-10 pr-10 bg-white border border-slate-300 focus:border-[#1E3A8A] focus:ring-2 focus:ring-blue-100 rounded-xl text-sm text-slate-900 outline-none transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                      title={showConfirmPassword ? 'Sembunyikan' : 'Tampilkan'}
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </form>
 
         {/* Card Footer: Navigation & Save Buttons */}
@@ -813,6 +922,7 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
                 if (activeTab === 'job') setActiveTab('general');
                 else if (activeTab === 'contact') setActiveTab('job');
                 else if (activeTab === 'payroll') setActiveTab('contact');
+                else if (activeTab === 'security') setActiveTab('payroll');
               }}
               className="w-10 h-10 rounded-full border border-slate-200 text-slate-600 hover:text-[#1E3A8A] hover:border-[#1E3A8A] hover:bg-blue-50/50 flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-2xs"
               title="Sebelumnya"
@@ -825,7 +935,7 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
           )}
 
           <div className="flex items-center gap-2.5 ml-auto">
-            {activeTab !== 'payroll' ? (
+            {activeTab !== 'security' ? (
               <button
                 type="button"
                 onClick={(e) => {
@@ -833,6 +943,7 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
                   if (activeTab === 'general') setActiveTab('job');
                   else if (activeTab === 'job') setActiveTab('contact');
                   else if (activeTab === 'contact') setActiveTab('payroll');
+                  else if (activeTab === 'payroll') setActiveTab('security');
                 }}
                 className="w-10 h-10 rounded-full bg-[#1E3A8A] hover:bg-[#172554] text-white flex items-center justify-center shadow-xs transition-all cursor-pointer active:scale-95"
                 title="Selanjutnya"

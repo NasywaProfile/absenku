@@ -671,7 +671,11 @@ export const AppStorage = {
     let updatedUser: User | null = null;
     const nextUsers = users.map((u) => {
       if (u.id === userId) {
-        updatedUser = { ...u, ...updates };
+        const finalUpdates = { ...updates };
+        if (finalUpdates.password && !isPasswordEncrypted(finalUpdates.password)) {
+          finalUpdates.password = hashPassword(finalUpdates.password);
+        }
+        updatedUser = { ...u, ...finalUpdates };
         return updatedUser;
       }
       return u;
