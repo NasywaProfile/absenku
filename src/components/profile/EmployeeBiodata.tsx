@@ -501,6 +501,32 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
 
       {/* MIDDLE & BOTTOM SECTION: Kolom Form dengan Card */}
       <div className="w-full bg-white border border-slate-200/90 rounded-2xl sm:rounded-3xl shadow-sm sm:shadow-md p-5 sm:p-7 md:p-8">
+        {/* Card Header dengan Tombol Simpan Cepat */}
+        <div className="flex items-center justify-between gap-3 pb-5 mb-5 border-b border-slate-100 flex-wrap">
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
+              Biodata &amp; Informasi Akun
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Perbarui data profil, kontak, rekening, atau kata sandi Anda di sini.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleSaveAll}
+            disabled={isSubmitting || isUploading}
+            className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-[#1E3A8A] hover:bg-[#172554] disabled:opacity-50 text-white text-xs font-bold shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed flex items-center gap-2 active:scale-95"
+            title="Simpan Perubahan Biodata"
+          >
+            {isSubmitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Check className="w-4 h-4 stroke-[2.5]" />
+            )}
+            <span>{isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
+          </button>
+        </div>
+
         {/* Alert Error */}
         {errorMessage && (
           <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs sm:text-sm flex items-center gap-2 animate-in fade-in">
@@ -968,18 +994,18 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
                 else if (activeTab === 'payroll') setActiveTab('contact');
                 else if (activeTab === 'security') setActiveTab('payroll');
               }}
-              className="w-10 h-10 rounded-full border border-slate-200 text-slate-600 hover:text-[#1E3A8A] hover:border-[#1E3A8A] hover:bg-blue-50/50 flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-2xs"
-              title="Sebelumnya"
-              aria-label="Sebelumnya"
+              className="px-4 py-2 sm:px-4.5 sm:py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:text-[#1E3A8A] hover:border-[#1E3A8A] hover:bg-blue-50/50 flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
+              title="Kembali ke Tab Sebelumnya"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-4 h-4" />
+              <span>Sebelumnya</span>
             </button>
           ) : (
-            <div className="w-10 h-10" />
+            <div />
           )}
 
-          <div className="flex items-center gap-2.5 ml-auto">
-            {activeTab !== 'security' ? (
+          <div className="flex items-center gap-2.5 ml-auto flex-wrap">
+            {activeTab !== 'security' && (
               <button
                 type="button"
                 onClick={(e) => {
@@ -989,28 +1015,28 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
                   else if (activeTab === 'contact') setActiveTab('payroll');
                   else if (activeTab === 'payroll') setActiveTab('security');
                 }}
-                className="w-10 h-10 rounded-full bg-[#1E3A8A] hover:bg-[#172554] text-white flex items-center justify-center shadow-xs transition-all cursor-pointer active:scale-95"
-                title="Selanjutnya"
-                aria-label="Selanjutnya"
+                className="px-4 py-2 sm:px-4.5 sm:py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-2xs"
+                title="Lanjut ke Tab Selanjutnya"
               >
-                <ArrowRight className="w-5 h-5" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSaveAll}
-                disabled={isSubmitting || isUploading}
-                className="w-10 h-10 rounded-full bg-[#1E3A8A] hover:bg-[#172554] disabled:opacity-50 text-white flex items-center justify-center shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed active:scale-95"
-                title="Simpan Perubahan"
-                aria-label="Simpan Perubahan"
-              >
-                {isSubmitting ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Check className="w-5 h-5 stroke-[2.5]" />
-                )}
+                <span>Selanjutnya</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={handleSaveAll}
+              disabled={isSubmitting || isUploading}
+              className="px-5 py-2 sm:px-6 sm:py-2.5 rounded-xl bg-[#1E3A8A] hover:bg-[#172554] disabled:opacity-50 text-white text-xs font-bold shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed flex items-center gap-2 active:scale-95"
+              title="Simpan Semua Perubahan Biodata"
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4 stroke-[2.5]" />
+              )}
+              <span>{isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
+            </button>
           </div>
         </div>
       </div>

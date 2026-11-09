@@ -112,15 +112,26 @@ export const ApiClient = {
       }
       return res;
     } catch (err: any) {
-      if (err?.status === 401) {
-        const directRes = await this.request<{ message: string; user: any; token?: string }>('/profile/direct', {
-          method: 'PUT',
-          body: JSON.stringify(data),
-        });
-        if (directRes && directRes.token) {
-          this.setToken(directRes.token);
+      if (err?.status === 401 || err?.status === 404 || err?.status === 405) {
+        try {
+          const directRes = await this.request<{ message: string; user: any; token?: string }>('/profile/direct', {
+            method: 'POST',
+            body: JSON.stringify(data),
+          });
+          if (directRes && directRes.token) {
+            this.setToken(directRes.token);
+          }
+          return directRes;
+        } catch {
+          const directResPut = await this.request<{ message: string; user: any; token?: string }>('/profile/direct', {
+            method: 'PUT',
+            body: JSON.stringify(data),
+          });
+          if (directResPut && directResPut.token) {
+            this.setToken(directResPut.token);
+          }
+          return directResPut;
         }
-        return directRes;
       }
       throw err;
     }
