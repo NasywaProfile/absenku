@@ -148,6 +148,10 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
   // Alamat Tempat Tinggal
   const [address, setAddress] = useState('');
 
+  // Form Fields - Kontak Darurat
+  const [emergencyContactName, setEmergencyContactName] = useState('');
+  const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
+
   // Form Fields - Payroll (Bank & E-Wallet)
   const [bankName, setBankName] = useState('BCA');
   const [bankAccountNumber, setBankAccountNumber] = useState('');
@@ -202,6 +206,8 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
       setBankName(currentUser.bankName || 'BCA');
       setBankAccountNumber(currentUser.bankAccountNumber || '');
       setBankAccountHolder(currentUser.bankAccountHolder || currentUser.name || '');
+      setEmergencyContactName(currentUser.emergencyContactName || '');
+      setEmergencyContactPhone(currentUser.emergencyContactPhone || '');
     }
   }, [currentUser]);
 
@@ -277,16 +283,70 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
     setIsSubmitting(true);
     setErrorMessage(null);
 
-    const oldEmail = currentUser.email?.trim().toLowerCase();
-    const newEmail = email.trim();
-    const isEmailChanged = Boolean(oldEmail && newEmail.toLowerCase() !== oldEmail);
-    const isPasswordChanged = Boolean(newPassword.trim());
-
-    // 1. Simpan perubahan ke MySQL server backend
     try {
+      const oldEmail = currentUser.email?.trim().toLowerCase();
+      const newEmail = email.trim();
+      const isEmailChanged = Boolean(oldEmail && newEmail.toLowerCase() !== oldEmail);
+      const isPasswordChanged = Boolean(newPassword.trim());
+
+      // 1. Simpan perubahan ke MySQL server backend (mengirim alias dwibahasa ID & EN)
       const serverPayload: any = {
         id: currentUser.id,
+        user_id: currentUser.id,
         current_email: currentUser.email,
+        name: name.trim(),
+        nama: name.trim(),
+        email: newEmail,
+        phone: phone.trim(),
+        nomor_telepon: phone.trim(),
+        gender,
+        jenis_kelamin: gender,
+        birthDate: birthDate ? birthDate.trim() : (currentUser.birthDate || '2000-01-01'),
+        tanggal_lahir: birthDate ? birthDate.trim() : (currentUser.birthDate || '2000-01-01'),
+        address: address.trim(),
+        alamat: address.trim(),
+        avatar: avatar || currentUser.avatar,
+        foto_profil: avatar || currentUser.avatar,
+        department: department.trim(),
+        divisi: department.trim(),
+        position: department.trim() || currentUser.position,
+        jabatan: department.trim() || currentUser.position,
+        employment_type: employmentType,
+        tipe_kepegawaian: employmentType,
+        bank_name: bankName.trim(),
+        nama_bank: bankName.trim(),
+        bank_account_number: bankAccountNumber.trim(),
+        nomor_rekening: bankAccountNumber.trim(),
+        bank_account_holder: bankAccountHolder.trim() || name.trim(),
+        nama_pemilik_rekening: bankAccountHolder.trim() || name.trim(),
+        emergency_contact_name: emergencyContactName.trim(),
+        nama_kontak_darurat: emergencyContactName.trim(),
+        emergency_contact_phone: emergencyContactPhone.trim(),
+        nomor_kontak_darurat: emergencyContactPhone.trim(),
+        is_profile_complete: true,
+        profil_lengkap: true,
+      };
+
+      if (isPasswordChanged) {
+        serverPayload.password = newPassword.trim();
+      }
+
+      try {
+        const apiRes = await ApiClient.updateProfile(serverPayload);
+        if (apiRes && apiRes.token) {
+          ApiClient.setToken(apiRes.token);
+        }
+      } catch (apiErr: any) {
+        console.warn('Gagal sinkron profil ke server backend:', apiErr);
+        if (apiErr?.status === 422 || apiErr?.status === 400) {
+          setErrorMessage(apiErr?.message || 'Data profil tidak valid.');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // 2. Simpan ke local AppStorage
+      const updatePayload: Partial<User> = {
         name: name.trim(),
         email: newEmail,
         phone: phone.trim(),
@@ -296,126 +356,99 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
         avatar: avatar || currentUser.avatar,
         department: department.trim(),
         position: department.trim() || currentUser.position,
-        employment_type: employmentType,
-        bank_name: bankName.trim(),
-        bank_account_number: bankAccountNumber.trim(),
-        bank_account_holder: bankAccountHolder.trim() || name.trim(),
-        emergency_contact_name: emergencyContactName.trim(),
-        emergency_contact_phone: emergencyContactPhone.trim(),
-        is_profile_complete: true,
+        employmentType,
+        bankName: bankName.trim(),
+        bankAccountNumber: bankAccountNumber.trim(),
+        bankAccountHolder: bankAccountHolder.trim() || name.trim(),
+        emergencyContactName: emergencyContactName.trim(),
+        emergencyContactPhone: emergencyContactPhone.trim(),
+        isProfileComplete: true,
       };
 
       if (isPasswordChanged) {
-        serverPayload.password = newPassword.trim();
+        updatePayload.password = newPassword.trim();
       }
 
-      const apiRes = await ApiClient.updateProfile(serverPayload);
-      if (apiRes && apiRes.token) {
-        ApiClient.setToken(apiRes.token);
-      }
-    } catch (apiErr: any) {
-      console.warn('Gagal memperbarui profil ke server backend:', apiErr);
-      if (apiErr?.status === 422 || apiErr?.status === 400) {
-        setIsSubmitting(false);
-        setErrorMessage(apiErr?.message || 'Data profil tidak valid.');
-        return;
-      }
-    }
+      const updated = AppStorage.updateUserProfile(currentUser.id, updatePayload) || {
+        ...currentUser,
+        ...updatePayload,
+      };
 
-    const updatePayload: Partial<User> = {
-      name: name.trim(),
-      email: newEmail,
-      phone: phone.trim(),
-      gender,
-      birthDate: birthDate ? birthDate.trim() : (currentUser.birthDate || '2000-01-01'),
-      address: address.trim(),
-      avatar: avatar || currentUser.avatar,
-      department: department.trim(),
-      position: department.trim() || currentUser.position,
-      employmentType,
-      bankName: bankName.trim(),
-      bankAccountNumber: bankAccountNumber.trim(),
-      bankAccountHolder: bankAccountHolder.trim() || name.trim(),
-      emergencyContactName: emergencyContactName.trim(),
-      emergencyContactPhone: emergencyContactPhone.trim(),
-      isProfileComplete: true,
-    };
+      // 3. Email notifikasi jika email diubah
+      if (isEmailChanged) {
+        try {
+          const emailSubject = `[in-Time] Konfirmasi Pembaruan Email Akun ${currentUser.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Pengguna'}`;
+          const now = new Date();
+          const dateFormatted = new Intl.DateTimeFormat('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          }).format(now);
+          const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} WIB`;
 
-    if (isPasswordChanged) {
-      updatePayload.password = newPassword.trim();
-    }
+          const emailHtml = generateEmailHtmlTemplate({
+            title: 'Konfirmasi Pembaruan Email Akun',
+            recipientName: name.trim() || currentUser.name,
+            intro: `Halo <strong>${name.trim() || currentUser.name}</strong>, pemberitahuan ini mengonfirmasi bahwa alamat email untuk akun ${currentUser.role === 'SUPER_ADMIN' ? 'Super Administrator' : 'pengguna'} Anda pada platform operasional in-Time telah berhasil diperbarui dan diverifikasi.`,
+            fields: [
+              { label: 'Nama Pengguna', value: name.trim() || currentUser.name },
+              { label: 'Peran Akun', value: currentUser.role === 'SUPER_ADMIN' ? 'Super Administrator' : currentUser.role === 'ADMIN' ? 'Administrator' : 'Karyawan' },
+              { label: 'Email Baru', value: `<strong>${newEmail}</strong>` },
+              { label: 'Email Sebelumnya', value: currentUser.email || '-' },
+              { label: 'Waktu Pembaruan', value: `${dateFormatted}, ${timeFormatted}` },
+              { label: 'Status Akun', value: '<span style="color: #16a34a; font-weight: bold;">Aktif & Terverifikasi</span>' },
+            ],
+            actionText: 'Buka Portal in-Time',
+            footerNote: 'Pemberitahuan resmi: Seluruh korespondensi dan notifikasi penugasan selanjutnya akan dikirimkan ke alamat email ini.',
+          });
 
-    const updated = AppStorage.updateUserProfile(currentUser.id, updatePayload);
+          sendRealEmail({
+            to: newEmail,
+            subject: emailSubject,
+            html: emailHtml,
+            text: `Konfirmasi Pembaruan Email Akun in-Time: Alamat email untuk akun ${name.trim()} berhasil diubah ke ${newEmail} pada ${dateFormatted}, ${timeFormatted}.`,
+          });
 
-    if (isEmailChanged) {
-      const emailSubject = `[in-Time] Konfirmasi Pembaruan Email Akun ${currentUser.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Pengguna'}`;
-      const now = new Date();
-      const dateFormatted = new Intl.DateTimeFormat('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      }).format(now);
-      const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} WIB`;
-
-      const emailHtml = generateEmailHtmlTemplate({
-        title: 'Konfirmasi Pembaruan Email Akun',
-        recipientName: name.trim() || currentUser.name,
-        intro: `Halo <strong>${name.trim() || currentUser.name}</strong>, pemberitahuan ini mengonfirmasi bahwa alamat email untuk akun ${currentUser.role === 'SUPER_ADMIN' ? 'Super Administrator' : 'pengguna'} Anda pada platform operasional in-Time telah berhasil diperbarui dan diverifikasi.`,
-        fields: [
-          { label: 'Nama Pengguna', value: name.trim() || currentUser.name },
-          { label: 'Peran Akun', value: currentUser.role === 'SUPER_ADMIN' ? 'Super Administrator' : currentUser.role === 'ADMIN' ? 'Administrator' : 'Karyawan' },
-          { label: 'Email Baru', value: `<strong>${newEmail}</strong>` },
-          { label: 'Email Sebelumnya', value: currentUser.email || '-' },
-          { label: 'Waktu Pembaruan', value: `${dateFormatted}, ${timeFormatted}` },
-          { label: 'Status Akun', value: '<span style="color: #16a34a; font-weight: bold;">Aktif & Terverifikasi</span>' },
-        ],
-        actionText: 'Buka Portal in-Time',
-        footerNote: 'Pemberitahuan resmi: Seluruh korespondensi dan notifikasi penugasan selanjutnya akan dikirimkan ke alamat email ini.',
-      });
-
-      sendRealEmail({
-        to: newEmail,
-        subject: emailSubject,
-        html: emailHtml,
-        text: `Konfirmasi Pembaruan Email Akun in-Time: Alamat email untuk akun ${name.trim()} berhasil diubah ke ${newEmail} pada ${dateFormatted}, ${timeFormatted}.`,
-      });
-
-      AppStorage.addEmailNotification({
-        id: `email_change_${Date.now()}`,
-        toEmail: newEmail,
-        toName: name.trim() || currentUser.name,
-        fromName: 'Sistem in-Time Notifier',
-        fromEmail: 'system@in-time.id',
-        subject: emailSubject,
-        employeeName: name.trim() || currentUser.name,
-        category: 'Pembaruan Akun',
-        reason: `Alamat email akun telah berhasil diperbarui menjadi ${newEmail}.`,
-        directApprovalLink: '#profile',
-        sentAt: `${now.toISOString().split('T')[0]} ${timeFormatted.replace(' WIB', '')}`,
-        read: false,
-        recipientRole: currentUser.role,
-      });
-    }
-
-    setTimeout(() => {
-      setIsSubmitting(false);
-      if (updated) {
-        onUserUpdated(updated);
-        setNewPassword('');
-        setConfirmPassword('');
-        let msg = 'Biodata diri berhasil diperbarui dan disimpan!';
-        if (isEmailChanged && isPasswordChanged) {
-          msg = `Email dan kata sandi berhasil diperbarui! Notifikasi konfirmasi dikirim ke ${newEmail}.`;
-        } else if (isEmailChanged) {
-          msg = `Alamat email berhasil diperbarui! Notifikasi konfirmasi dikirim ke ${newEmail}.`;
-        } else if (isPasswordChanged) {
-          msg = 'Kata sandi berhasil diperbarui! Gunakan kata sandi baru untuk login berikutnya.';
+          AppStorage.addEmailNotification({
+            id: `email_change_${Date.now()}`,
+            toEmail: newEmail,
+            toName: name.trim() || currentUser.name,
+            fromName: 'Sistem in-Time Notifier',
+            fromEmail: 'system@in-time.id',
+            subject: emailSubject,
+            employeeName: name.trim() || currentUser.name,
+            category: 'Pembaruan Akun',
+            reason: `Alamat email akun telah berhasil diperbarui menjadi ${newEmail}.`,
+            directApprovalLink: '#profile',
+            sentAt: `${now.toISOString().split('T')[0]} ${timeFormatted.replace(' WIB', '')}`,
+            read: false,
+            recipientRole: currentUser.role,
+          });
+        } catch (emailErr) {
+          console.warn('Email notification error:', emailErr);
         }
-        setSuccessMessage(msg);
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 5000);
       }
-    }, 300);
+
+      onUserUpdated(updated);
+      setNewPassword('');
+      setConfirmPassword('');
+      let msg = 'Biodata diri berhasil diperbarui dan disimpan!';
+      if (isEmailChanged && isPasswordChanged) {
+        msg = `Email dan kata sandi berhasil diperbarui! Notifikasi konfirmasi dikirim ke ${newEmail}.`;
+      } else if (isEmailChanged) {
+        msg = `Alamat email berhasil diperbarui! Notifikasi konfirmasi dikirim ke ${newEmail}.`;
+      } else if (isPasswordChanged) {
+        msg = 'Kata sandi berhasil diperbarui! Gunakan kata sandi baru untuk login berikutnya.';
+      }
+      setSuccessMessage(msg);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 5000);
+    } catch (err: any) {
+      console.error('Error in handleSaveAll:', err);
+      setErrorMessage(err?.message || 'Terjadi kesalahan saat menyimpan perubahan biodata.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -532,6 +565,14 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
           <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs sm:text-sm flex items-center gap-2 animate-in fade-in">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
             <span className="font-semibold">{errorMessage}</span>
+          </div>
+        )}
+
+        {/* Alert Sukses Inline */}
+        {saveSuccess && (
+          <div className="mb-5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs sm:text-sm flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            <span className="font-semibold">{successMessage}</span>
           </div>
         )}
 
@@ -783,6 +824,34 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
                   placeholder="Contoh: Jl. Ijen No. 12, Klojen, Kota Malang, Jawa Timur"
                   className="w-full h-11 px-3.5 bg-white border border-slate-300 focus:border-[#1E3A8A] focus:ring-2 focus:ring-blue-100 rounded-xl text-sm font-medium text-slate-900 outline-none transition-all"
                 />
+              </div>
+
+              {/* 3.3 Kontak Darurat (Keluarga / Kerabat) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 pt-2 border-t border-slate-100">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Nama Kontak Darurat
+                  </label>
+                  <input
+                    type="text"
+                    value={emergencyContactName}
+                    onChange={(e) => setEmergencyContactName(e.target.value)}
+                    placeholder="Nama kerabat / keluarga terdekat"
+                    className="w-full h-11 px-3.5 bg-white border border-slate-300 focus:border-[#1E3A8A] focus:ring-2 focus:ring-blue-100 rounded-xl text-sm font-medium text-slate-900 transition-all outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    No. HP Kontak Darurat
+                  </label>
+                  <input
+                    type="tel"
+                    value={emergencyContactPhone}
+                    onChange={(e) => setEmergencyContactPhone(e.target.value)}
+                    placeholder="Contoh: 081987654321"
+                    className="w-full h-11 px-3.5 bg-white border border-slate-300 focus:border-[#1E3A8A] focus:ring-2 focus:ring-blue-100 rounded-xl text-sm text-slate-900 outline-none transition-all"
+                  />
+                </div>
               </div>
             </div>
           )}

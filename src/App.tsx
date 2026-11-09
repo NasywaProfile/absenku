@@ -26,7 +26,7 @@ import { getApprovedLeaveForDate, isOffCategory } from './lib/attendance-status.
 import { getCurrentDateString, getCurrentTimeString, calculateClockInPunctuality, calculateWorkDurationMinutes } from './lib/time-utils.ts';
 import { calculateHaversineDistance } from './lib/geo-utils.ts';
 import { saveAttendanceWithOfflineSupport } from './lib/offline-sync.ts';
-import { User, OfficeConfig, AttendanceRecord, LeaveRequest, TaskItem, UserRole } from './types/index.ts';
+import { User, OfficeConfig, AttendanceRecord, LeaveRequest, TaskItem, UserRole, ChatTopic, ChatComment } from './types/index.ts';
 
 export default function App() {
   const [sessionUser, setSessionUser] = useState<User | null>(() => AppStorage.getSessionUser());

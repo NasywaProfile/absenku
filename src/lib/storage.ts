@@ -686,7 +686,12 @@ export const AppStorage = {
     const users = this.getUsers();
     let updatedUser: User | null = null;
     const nextUsers = users.map((u) => {
-      if (u.id === userId) {
+      const isTarget =
+        u.id === userId ||
+        (updates.email && u.email && u.email.toLowerCase() === updates.email.toLowerCase()) ||
+        (userId === 'usr_super_admin' && (u.role === 'SUPER_ADMIN' || u.id === 'usr_super_admin'));
+
+      if (isTarget) {
         const finalUpdates = { ...updates };
         if (finalUpdates.password && !isPasswordEncrypted(finalUpdates.password)) {
           finalUpdates.password = hashPassword(finalUpdates.password);
@@ -696,10 +701,35 @@ export const AppStorage = {
       }
       return u;
     });
+
     if (updatedUser) {
       this.saveUsers(nextUsers);
       ApiClient.updateProfile(updates).catch(() => {});
+    } else {
+      const finalUpdates = { ...updates };
+      if (finalUpdates.password && !isPasswordEncrypted(finalUpdates.password)) {
+        finalUpdates.password = hashPassword(finalUpdates.password);
+      }
+      updatedUser = {
+        id: userId,
+        name: updates.name || 'User',
+        email: updates.email || '',
+        role: 'EMPLOYEE',
+        status: 'ACTIVE',
+        employmentType: 'CONTRACT',
+        department: 'Operasional',
+        position: 'Staf',
+        avatar: '',
+        phone: '',
+        joinDate: '',
+        leaveBalance: 12,
+        isProfileComplete: true,
+        ...finalUpdates,
+      } as User;
+      this.saveUsers([...users, updatedUser]);
+      ApiClient.updateProfile(updates).catch(() => {});
     }
+
     return updatedUser;
   },
 
