@@ -142,15 +142,32 @@ export default function App() {
           }
         }
 
-        // Deduplikasi users agar tidak ada akun ganda di seluruh aplikasi
+        // Deduplikasi users agar tidak ada akun ganda di seluruh aplikasi (utamakan akun ACTIVE jika ada duplikat)
+        mergedUsers.sort((a, b) => {
+          if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
+          if (a.status !== 'ACTIVE' && b.status === 'ACTIVE') return 1;
+          return 0;
+        });
+
         const dedupedMerged: User[] = [];
-        const seenKeys = new Set<string>();
+        const seenEmails = new Set<string>();
+        const seenNames = new Set<string>();
+        const seenIds = new Set<string>();
+
         for (const u of mergedUsers) {
-          const key = (u.email ? u.email.trim().toLowerCase() : u.id);
-          if (!seenKeys.has(key)) {
-            seenKeys.add(key);
-            dedupedMerged.push(u);
-          }
+          const uId = u.id;
+          const emailKey = u.email ? u.email.trim().toLowerCase() : '';
+          const nameKey = u.name ? u.name.trim().toLowerCase() : '';
+
+          if (uId && seenIds.has(uId)) continue;
+          if (emailKey && seenEmails.has(emailKey)) continue;
+          if (nameKey && seenNames.has(nameKey)) continue;
+
+          if (uId) seenIds.add(uId);
+          if (emailKey) seenEmails.add(emailKey);
+          if (nameKey) seenNames.add(nameKey);
+
+          dedupedMerged.push(u);
         }
         AppStorage.saveUsers(dedupedMerged);
         setUsers(dedupedMerged);
@@ -409,6 +426,7 @@ export default function App() {
   };
 
   const handleUpdateEmployeeRole = async (userId: string, newRole: UserRole) => {
+    const targetUser = users.find((u) => u.id === userId);
     AppStorage.updateUserRole(userId, newRole);
     if (currentUser && currentUser.id === userId) {
       const updatedUser: User = { ...currentUser, role: newRole };
@@ -417,12 +435,12 @@ export default function App() {
       setSessionUser(updatedUser);
     }
     setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+      prev.map((u) => (u.id === userId || (targetUser?.email && u.email?.toLowerCase() === targetUser.email.toLowerCase()) ? { ...u, role: newRole } : u))
     );
     loadData();
 
     try {
-      await ApiClient.updateUserRole(userId, newRole);
+      await ApiClient.updateUserRole(userId, newRole, targetUser?.email);
     } catch (err) {
       console.warn('Gagal update role ke backend:', err);
     }
@@ -563,17 +581,18 @@ export default function App() {
   // Handler ACC Pendaftaran Akun Baru oleh Admin / Super Admin
   const handleApproveRegistration = async (userId: string, targetRole?: UserRole) => {
     if (!currentUser) return;
-    const finalRole = targetRole || 'EMPLOYEE';
+    const targetUser = users.find((u) => u.id === userId);
+    const finalRole = targetRole || targetUser?.role || 'EMPLOYEE';
     AppStorage.approveRegistration(userId, currentUser.name, finalRole);
     AppStorage.updateUserRole(userId, finalRole);
     setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, status: 'ACTIVE', role: finalRole } : u))
+      prev.map((u) => (u.id === userId || (targetUser?.email && u.email?.toLowerCase() === targetUser.email.toLowerCase()) ? { ...u, status: 'ACTIVE', role: finalRole } : u))
     );
     loadData();
 
     try {
-      await ApiClient.approveUser(userId, finalRole);
-      await ApiClient.updateUserRole(userId, finalRole);
+      await ApiClient.approveUser(userId, finalRole, targetUser?.email);
+      await ApiClient.updateUserRole(userId, finalRole, targetUser?.email);
     } catch (err) {
       console.warn('Gagal sinkron approval akun ke server:', err);
     }

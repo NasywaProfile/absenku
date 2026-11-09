@@ -208,14 +208,15 @@ export function AdminEmployeeManagement({
         (u) =>
           u.status === 'PENDING_APPROVAL' &&
           u.id !== currentUser.id &&
-          u.email?.toLowerCase() !== currentUser.email?.toLowerCase()
+          u.email?.toLowerCase().trim() !== currentUser.email?.toLowerCase().trim() &&
+          u.name?.toLowerCase().trim() !== currentUser.name?.toLowerCase().trim()
       )
       .sort((a, b) => {
         const dateA = a.registeredAt || a.id || '';
         const dateB = b.registeredAt || b.id || '';
         return dateB.localeCompare(dateA);
       });
-  }, [users, currentUser.id, currentUser.email]);
+  }, [users, currentUser.id, currentUser.email, currentUser.name]);
   const [activeSubTab, setActiveSubTab] = useState<'EMPLOYEES' | 'APPROVALS'>(
     initialSubTab || 'EMPLOYEES'
   );

@@ -266,16 +266,29 @@ export function KanbanBoard({
   const [newDesc, setNewDesc] = useState('');
   const [newPriority, setNewPriority] = useState<TaskPriority>('MEDIUM');
   const assignableUsers = useMemo(() => {
-    const map = new Map<string, UserType>();
+    const list: UserType[] = [];
+    const seenNames = new Set<string>();
+    const seenEmails = new Set<string>();
+    const seenIds = new Set<string>();
+
     (users || []).forEach((u) => {
       if (u.role === 'SUPER_ADMIN' || u.status !== 'ACTIVE') return;
-      const key = (u.email && u.email.trim().toLowerCase()) ||
-                  (u.name ? `${u.name.trim().toLowerCase()}_${(u.department || '').trim().toLowerCase()}` : u.id);
-      if (!map.has(key)) {
-        map.set(key, u);
-      }
+
+      const uId = u.id;
+      const uEmail = u.email?.toLowerCase().trim();
+      const uName = u.name?.toLowerCase().trim();
+
+      if (uId && seenIds.has(uId)) return;
+      if (uEmail && seenEmails.has(uEmail)) return;
+      if (uName && seenNames.has(uName)) return;
+
+      if (uId) seenIds.add(uId);
+      if (uEmail) seenEmails.add(uEmail);
+      if (uName) seenNames.add(uName);
+
+      list.push(u);
     });
-    return Array.from(map.values());
+    return list;
   }, [users]);
   const [newAssigneeId, setNewAssigneeId] = useState<string>(() => {
     return assignableUsers[0]?.id || users[0]?.id || '';

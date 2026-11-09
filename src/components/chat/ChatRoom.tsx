@@ -197,31 +197,47 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
   const [showAddLinkInput, setShowAddLinkInput] = useState<boolean>(false);
 
   // Anggota tim yang dapat ditag:
-  // 1. Tidak dobel (deduplikasi berdasarkan email/id/name)
+  // 1. Tidak dobel (deduplikasi ketat berdasarkan ID, Email, dan Nama)
   // 2. Akun pembuat (currentUser / Akun A) TIDAK USAH masuk ke daftar tag anggota tim
   //    karena Akun A otomatis diikutsertakan sebagai pembuat tugas/topik
   const uniqueTeammates = useMemo(() => {
-    const map = new Map<string, UserType>();
+    const list: UserType[] = [];
+    const seenNames = new Set<string>();
+    const seenEmails = new Set<string>();
+    const seenIds = new Set<string>();
+
+    const creatorId = currentUser?.id;
+    const creatorEmail = currentUser?.email?.toLowerCase().trim();
+    const creatorName = currentUser?.name?.toLowerCase().trim();
+
     (users || []).forEach((u) => {
       if (!u || u.status !== 'ACTIVE') return;
 
+      const uId = u.id;
+      const uEmail = u.email?.toLowerCase().trim();
+      const uName = u.name?.toLowerCase().trim();
+
       // Akun pembuat (currentUser / Akun A) TIDAK dimasukkan ke pilihan checklist
       const isCreator =
-        u.id === currentUser.id ||
-        (Boolean(u.email) && Boolean(currentUser.email) && u.email.toLowerCase() === currentUser.email.toLowerCase()) ||
-        (Boolean(u.name) && Boolean(currentUser.name) && u.name.toLowerCase().trim() === currentUser.name.toLowerCase().trim());
+        (creatorId && uId === creatorId) ||
+        (creatorEmail && uEmail && uEmail === creatorEmail) ||
+        (creatorName && uName && uName === creatorName);
 
       if (isCreator) return;
 
-      // Kunci deduplikasi (email jika ada, atau nama + divisi, atau id)
-      const key = (u.email && u.email.trim().toLowerCase()) ||
-                  (u.name ? `${u.name.trim().toLowerCase()}_${(u.department || '').trim().toLowerCase()}` : u.id);
+      // Cek apakah sudah pernah masuk berdasarkan ID, Email, atau Nama yang sama
+      if (uId && seenIds.has(uId)) return;
+      if (uEmail && seenEmails.has(uEmail)) return;
+      if (uName && seenNames.has(uName)) return;
 
-      if (!map.has(key)) {
-        map.set(key, u);
-      }
+      if (uId) seenIds.add(uId);
+      if (uEmail) seenEmails.add(uEmail);
+      if (uName) seenNames.add(uName);
+
+      list.push(u);
     });
-    return Array.from(map.values());
+
+    return list;
   }, [users, currentUser]);
 
   // Modern dialog confirmation state (no browser alert/confirm popup)
@@ -423,23 +439,59 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
 
   // Filtered Topics list: topik hanya tampil jika akun terdaftar di Assignees (taggedTeammateIds) atau pembuat
   const filteredTopics = useMemo(() => {
-    const currentNameLower = currentUser?.name ? currentUser.name.toLowerCase() : '';
+    const currentNameLower = currentUser?.name ? currentUser.name.toLowerCase().trim() : '';
+    const currentEmailLower = currentUser?.email ? currentUser.email.toLowerCase().trim() : '';
+    const currentId = currentUser?.id;
+
     if (!Array.isArray(topics)) return [];
+
+    // Kumpulkan seluruh identitas milik currentUser (ID, Email, Nama) dari session & list users
+    const myIdentifiers = new Set<string>();
+    if (currentId) myIdentifiers.add(currentId.toLowerCase());
+    if (currentEmailLower) myIdentifiers.add(currentEmailLower);
+    if (currentNameLower) myIdentifiers.add(currentNameLower);
+
+    (users || []).forEach((u) => {
+      const match =
+        (currentId && u.id === currentId) ||
+        (currentEmailLower && u.email && u.email.toLowerCase().trim() === currentEmailLower) ||
+        (currentNameLower && u.name && u.name.toLowerCase().trim() === currentNameLower);
+      if (match) {
+        if (u.id) myIdentifiers.add(u.id.toLowerCase());
+        if (u.email) myIdentifiers.add(u.email.toLowerCase().trim());
+        if (u.name) myIdentifiers.add(u.name.toLowerCase().trim());
+      }
+    });
 
     return topics.filter((t) => {
       const tagged = Array.isArray(t.taggedTeammateIds) ? t.taggedTeammateIds : [];
-      // Access Control: Admin/Superadmin memiliki akses pemantauan penuh, topik umum tanpa tag terbuka untuk semua, atau khusus akun yang ditandai / pembuat
+
+      // Cek apakah akun ini pembuat topik
+      const isCreator =
+        (t.createdBy && myIdentifiers.has(t.createdBy.toLowerCase())) ||
+        (t.createdByName && myIdentifiers.has(t.createdByName.toLowerCase().trim()));
+
+      // Cek apakah akun ini termasuk yang ditag
+      const isTagged = tagged.some((tagItem) => {
+        if (!tagItem || typeof tagItem !== 'string') return false;
+        const cleanTag = tagItem.toLowerCase().trim();
+        if (myIdentifiers.has(cleanTag)) return true;
+        // Cek juga jika tagItem merujuk pada user yang memiliki email/nama sama dengan currentUser
+        const matchedUser = (users || []).find((u) => u.id?.toLowerCase() === cleanTag);
+        if (matchedUser) {
+          if (matchedUser.email && myIdentifiers.has(matchedUser.email.toLowerCase().trim())) return true;
+          if (matchedUser.name && myIdentifiers.has(matchedUser.name.toLowerCase().trim())) return true;
+        }
+        return false;
+      });
+
+      // Access Control: Admin/Superadmin memiliki akses pemantauan penuh,
+      // topik umum tanpa tag terbuka untuk semua, atau khusus akun yang ditandai / pembuat
       const isAssignee = Boolean(
         isAdminOrSuperAdmin ||
         tagged.length === 0 ||
-        (currentUser?.id && tagged.includes(currentUser.id)) ||
-        (currentUser?.id && t.createdBy === currentUser.id) ||
-        (currentNameLower &&
-          tagged.some(
-            (idOrName) =>
-              (currentUser?.id && idOrName === currentUser.id) ||
-              (typeof idOrName === 'string' && idOrName.toLowerCase() === currentNameLower)
-          ))
+        isTagged ||
+        isCreator
       );
 
       if (!isAssignee) {
@@ -448,7 +500,8 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
 
       const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
       const matchesTeammate =
-        teammateFilter === 'ALL' || tagged.includes(teammateFilter);
+        teammateFilter === 'ALL' ||
+        tagged.some((tagItem) => typeof tagItem === 'string' && tagItem.toLowerCase() === teammateFilter.toLowerCase());
       const matchesCreatedBy =
         createdByFilter === 'ALL' || t.createdBy === createdByFilter;
       const matchesCreatedDate =
@@ -459,7 +512,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
         (t.shortNotes && t.shortNotes.toLowerCase().includes(searchTerm.toLowerCase()));
       return matchesStatus && matchesTeammate && matchesCreatedBy && matchesCreatedDate && matchesSearch;
     });
-  }, [topics, statusFilter, teammateFilter, createdByFilter, createdDateCustom, searchTerm, currentUser]);
+  }, [topics, statusFilter, teammateFilter, createdByFilter, createdDateCustom, searchTerm, currentUser, users, isAdminOrSuperAdmin]);
 
   // Pastikan topik aktif ditutup jika pengguna tidak memiliki akses ke topik tersebut
   useEffect(() => {
@@ -490,8 +543,22 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
     e.preventDefault();
     if (!newTitle.trim()) return;
 
-    // Akun pembuat (currentUser / Akun A) otomatis masuk karena Akun A yang buat
-    const finalTaggedIds = Array.from(new Set([currentUser.id, ...newTaggedIds]));
+    // Simpan semua representasi identitas akun yang ditandai (ID, Email, Nama)
+    // serta identitas pembuat (Akun A) agar sinkronisasi antar perangkat & halaman 100% akurat
+    const taggedIdentifiers: string[] = [currentUser.id];
+    if (currentUser.email) taggedIdentifiers.push(currentUser.email);
+    if (currentUser.name) taggedIdentifiers.push(currentUser.name);
+
+    newTaggedIds.forEach((uid) => {
+      taggedIdentifiers.push(uid);
+      const matched = (users || []).find((u) => u.id === uid);
+      if (matched) {
+        if (matched.email) taggedIdentifiers.push(matched.email);
+        if (matched.name) taggedIdentifiers.push(matched.name);
+      }
+    });
+
+    const finalTaggedIds = Array.from(new Set(taggedIdentifiers));
 
     AppStorage.addChatTopic({
       title: newTitle.trim(),
