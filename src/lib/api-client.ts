@@ -165,9 +165,10 @@ export const ApiClient = {
     return this.request<any[]>('/users');
   },
 
-  async approveUser(userId: string) {
+  async approveUser(userId: string, role?: string) {
     return this.request(`/users/${userId}/approve`, {
       method: 'POST',
+      body: JSON.stringify({ role, peran: role }),
     });
   },
 

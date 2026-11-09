@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Clock,
   Check,
@@ -188,8 +188,15 @@ export function NeoBrutalistDashboard({
     return AppStorage.getDailyTasks().filter((t) => t.userId === currentUser.id);
   }, [currentUser.id, dataVersion]);
 
+  const loadedDateRef = useRef<string | null>(null);
+
   // Load existing logbook on selectedDate change
   useEffect(() => {
+    if (loadedDateRef.current === selectedDate) {
+      return;
+    }
+    loadedDateRef.current = selectedDate;
+
     const existingLog = AppStorage.getDailyTaskForDate(currentUser.id, selectedDate);
     if (existingLog && ((existingLog.tasks && existingLog.tasks.length > 0) || existingLog.notes)) {
       const text =
@@ -209,7 +216,7 @@ export function NeoBrutalistDashboard({
       }
     }
     setSavedSuccessMessage(null);
-  }, [selectedDate, currentUser.id, allAttendance, dataVersion]);
+  }, [selectedDate, currentUser.id]);
 
   const handleSaveLogbook = () => {
     if (isOffSelectedDate) {

@@ -84,30 +84,33 @@ export default function App() {
           const idx = mergedUsers.findIndex(
             (u) => u.id === su.id || u.email.toLowerCase() === su.email.toLowerCase()
           );
+          const existingLocal = idx >= 0 ? mergedUsers[idx] : null;
           const mappedUser: User = {
             id: su.id,
-            name: su.name || su.nama,
-            email: su.email,
-            role: (su.role || su.peran || 'EMPLOYEE') as UserRole,
-            status: su.status || 'ACTIVE',
-            employmentType: su.employment_type || su.tipe_kepegawaian || 'CONTRACT',
-            department: su.department || su.divisi || 'Operasional',
-            position: su.position || su.jabatan || 'Staf',
-            avatar: su.avatar || su.foto_profil || '',
-            phone: su.phone || su.nomor_telepon || (idx >= 0 ? mergedUsers[idx].phone : '') || '',
-            joinDate: su.join_date || su.tanggal_bergabung || (idx >= 0 ? mergedUsers[idx].joinDate : '') || '',
-            leaveBalance: su.leave_balance ?? su.sisa_cuti ?? (idx >= 0 ? mergedUsers[idx].leaveBalance : 12),
-            bankName: su.bank_name || su.nama_bank || (idx >= 0 ? mergedUsers[idx].bankName : '') || '',
-            bankAccountNumber: su.bank_account_number || su.nomor_rekening || (idx >= 0 ? mergedUsers[idx].bankAccountNumber : '') || '',
-            bankAccountHolder: su.bank_account_holder || su.nama_pemilik_rekening || (idx >= 0 ? mergedUsers[idx].bankAccountHolder : '') || '',
-            emergencyContactName: su.emergency_contact_name || su.nama_kontak_darurat || (idx >= 0 ? mergedUsers[idx].emergencyContactName : '') || '',
-            emergencyContactPhone: su.emergency_contact_phone || su.nomor_kontak_darurat || (idx >= 0 ? mergedUsers[idx].emergencyContactPhone : '') || '',
-            address: su.address || su.alamat || (idx >= 0 ? mergedUsers[idx].address : '') || '',
-            registeredAt: su.registered_at || su.waktu_daftar || (idx >= 0 ? mergedUsers[idx].registeredAt : '') || '',
+            name: su.name || su.nama || (existingLocal ? existingLocal.name : ''),
+            email: su.email || (existingLocal ? existingLocal.email : ''),
+            role: (su.role || su.peran || (existingLocal ? existingLocal.role : 'EMPLOYEE')) as UserRole,
+            status: su.status || (existingLocal ? existingLocal.status : 'ACTIVE'),
+            employmentType: su.employment_type || su.tipe_kepegawaian || (existingLocal ? existingLocal.employmentType : 'CONTRACT'),
+            department: su.department || su.divisi || (existingLocal ? existingLocal.department : 'Operasional'),
+            position: su.position || su.jabatan || (existingLocal ? existingLocal.position : 'Staf'),
+            avatar: su.avatar || su.foto_profil || (existingLocal ? existingLocal.avatar : '') || '',
+            phone: su.phone || su.nomor_telepon || (existingLocal ? existingLocal.phone : '') || '',
+            gender: (su.gender || su.jenis_kelamin || (existingLocal ? existingLocal.gender : 'L')) as 'L' | 'P',
+            birthDate: su.birthDate || su.birth_date || su.tanggal_lahir || (existingLocal ? existingLocal.birthDate : '2000-01-01'),
+            joinDate: su.join_date || su.tanggal_bergabung || (existingLocal ? existingLocal.joinDate : '') || '',
+            leaveBalance: su.leave_balance ?? su.sisa_cuti ?? (existingLocal ? existingLocal.leaveBalance : 12),
+            bankName: su.bank_name || su.nama_bank || (existingLocal ? existingLocal.bankName : '') || '',
+            bankAccountNumber: su.bank_account_number || su.nomor_rekening || (existingLocal ? existingLocal.bankAccountNumber : '') || '',
+            bankAccountHolder: su.bank_account_holder || su.nama_pemilik_rekening || (existingLocal ? existingLocal.bankAccountHolder : '') || '',
+            emergencyContactName: su.emergency_contact_name || su.nama_kontak_darurat || (existingLocal ? existingLocal.emergencyContactName : '') || '',
+            emergencyContactPhone: su.emergency_contact_phone || su.nomor_kontak_darurat || (existingLocal ? existingLocal.emergencyContactPhone : '') || '',
+            address: su.address || su.alamat || (existingLocal ? existingLocal.address : '') || '',
+            registeredAt: su.registered_at || su.waktu_daftar || (existingLocal ? existingLocal.registeredAt : '') || '',
             isProfileComplete: Boolean(
               su.is_profile_complete ??
               su.profil_lengkap ??
-              (idx >= 0 ? mergedUsers[idx].isProfileComplete : false)
+              (existingLocal ? existingLocal.isProfileComplete : false)
             ),
           };
           if (idx >= 0) {
@@ -547,6 +550,19 @@ export default function App() {
         current_email: updatedUser.email,
         name: updatedUser.name,
         nama: updatedUser.name,
+        gender: updatedUser.gender,
+        jenis_kelamin: updatedUser.gender,
+        birthDate: updatedUser.birthDate,
+        birth_date: updatedUser.birthDate,
+        tanggal_lahir: updatedUser.birthDate,
+        department: updatedUser.department,
+        divisi: updatedUser.department,
+        position: updatedUser.position,
+        jabatan: updatedUser.position,
+        employment_type: updatedUser.employmentType,
+        tipe_kepegawaian: updatedUser.employmentType,
+        avatar: updatedUser.avatar,
+        foto_profil: updatedUser.avatar,
         phone: updatedUser.phone,
         nomor_telepon: updatedUser.phone,
         address: updatedUser.address,

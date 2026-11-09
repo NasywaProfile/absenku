@@ -588,7 +588,7 @@ export const AppStorage = {
     }
 
     this.saveUsers(updated);
-    ApiClient.approveUser(userId).catch(() => {});
+    ApiClient.approveUser(userId, (approvedUser as User).role).catch(() => {});
 
     // Kirim notifikasi email ke pendaftar yang akunnya baru disetujui / diverifikasi
     try {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -168,8 +168,15 @@ export function AttendanceClockTab({
     return AppStorage.getDailyTasks().filter((t) => t.userId === currentUser.id);
   }, [currentUser.id, dataVersion]);
 
+  const loadedDateRef = useRef<string | null>(null);
+
   // When selectedDate changes, load existing logbook into the single text box
   useEffect(() => {
+    if (loadedDateRef.current === selectedDate) {
+      return;
+    }
+    loadedDateRef.current = selectedDate;
+
     const existingLog = AppStorage.getDailyTaskForDate(currentUser.id, selectedDate);
     if (existingLog && ((existingLog.tasks && existingLog.tasks.length > 0) || existingLog.notes)) {
       const text = existingLog.tasks && existingLog.tasks.length > 0
@@ -189,7 +196,7 @@ export function AttendanceClockTab({
       }
     }
     setSavedSuccessMessage(null);
-  }, [selectedDate, currentUser.id, allAttendance, dataVersion]);
+  }, [selectedDate, currentUser.id]);
 
   const handleLocationUpdate = (coords: Coordinates, dist: number, within: boolean) => {
     setCurrentCoords(coords);

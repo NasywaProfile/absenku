@@ -71,6 +71,8 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
           position: res.user.position || res.user.jabatan || localMatched?.position || 'Staf',
           avatar: res.user.avatar || res.user.foto_profil || localMatched?.avatar || '',
           phone: res.user.phone || res.user.nomor_telepon || localMatched?.phone || '',
+          gender: (res.user.gender || res.user.jenis_kelamin || localMatched?.gender || 'L') as 'L' | 'P',
+          birthDate: res.user.birthDate || res.user.birth_date || res.user.tanggal_lahir || localMatched?.birthDate || '2000-01-01',
           joinDate: res.user.join_date || res.user.tanggal_bergabung || localMatched?.joinDate || '',
           leaveBalance: res.user.leave_balance ?? res.user.sisa_cuti ?? localMatched?.leaveBalance ?? 12,
           bankName: res.user.bank_name || res.user.nama_bank || localMatched?.bankName || '',
