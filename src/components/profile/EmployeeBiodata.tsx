@@ -544,14 +544,6 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
           </div>
         )}
 
-        {/* Alert Sukses Inline */}
-        {saveSuccess && (
-          <div className="mb-5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs sm:text-sm flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-            <span className="font-semibold">{successMessage}</span>
-          </div>
-        )}
-
         <form
           id="employeeBiodataForm"
           onSubmit={handleSaveAll}
