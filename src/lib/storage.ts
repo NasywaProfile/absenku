@@ -449,6 +449,11 @@ export const AppStorage = {
     const tasks = this.getDailyTasks().filter((t: DailyTaskLog) => t.userId !== userId);
     this.saveDailyTasks(tasks);
 
+    // Kirim perintah DELETE ke backend Laravel & MySQL
+    ApiClient.deleteUser(userId).catch((err) => {
+      console.warn('Gagal menghapus user dari backend:', err);
+    });
+
     // Bersihkan tugas Kanban: hapus tugas yang hanya ditugaskan ke karyawan ini,
     // dan lepaskan karyawan dari tugas yang dikerjakan bersama.
     const cleanedKanban: TaskItem[] = [];
@@ -2809,10 +2814,16 @@ export const AppStorage = {
     ApiClient.createChatTopic({
       id: newTopic.id,
       title: newTopic.title,
-      description: newTopic.description,
-      channel: newTopic.channel,
-      author_id: newTopic.authorId,
-      author_name: newTopic.authorName,
+      status: newTopic.status,
+      shortNotes: newTopic.shortNotes,
+      longNotes: newTopic.longNotes,
+      taggedTeammateIds: newTopic.taggedTeammateIds,
+      files: newTopic.files,
+      links: newTopic.links,
+      images: newTopic.images,
+      createdBy: newTopic.createdBy,
+      createdByName: newTopic.createdByName,
+      createdByAvatar: newTopic.createdByAvatar,
     }).catch(() => {});
 
     return newTopic;
@@ -2826,6 +2837,17 @@ export const AppStorage = {
       topic.updatedAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       topics[index] = topic;
       this.saveChatTopics(topics);
+
+      ApiClient.updateChatTopic(topic.id, {
+        title: topic.title,
+        status: topic.status,
+        shortNotes: topic.shortNotes,
+        longNotes: topic.longNotes,
+        taggedTeammateIds: topic.taggedTeammateIds,
+        files: topic.files,
+        links: topic.links,
+        images: topic.images,
+      }).catch(() => {});
     }
   },
 
@@ -2833,6 +2855,7 @@ export const AppStorage = {
     const topics = this.getChatTopics();
     const filtered = topics.filter((t) => t.id !== topicId);
     this.saveChatTopics(filtered);
+    ApiClient.deleteChatTopic(topicId).catch(() => {});
   },
 
   addTopicComment(topicId: string, commentData: Omit<ChatComment, 'id' | 'topicId' | 'timestamp'>): ChatComment {
@@ -2871,6 +2894,7 @@ export const AppStorage = {
     if (topic && topic.comments) {
       topic.comments = topic.comments.filter((c) => c.id !== commentId);
       this.saveChatTopics(topics);
+      ApiClient.deleteChatMessage(commentId).catch(() => {});
     }
   },
 

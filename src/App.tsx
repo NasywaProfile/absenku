@@ -70,7 +70,16 @@ export default function App() {
       const serverUsers = await ApiClient.getUsers().catch(() => null);
       if (Array.isArray(serverUsers) && serverUsers.length > 0) {
         const localUsers = AppStorage.getUsers();
-        const mergedUsers = [...localUsers];
+        const serverUserIds = new Set(serverUsers.map((su) => su.id));
+        const serverUserEmails = new Set(serverUsers.map((su) => (su.email || '').toLowerCase()));
+
+        // Prune users yang sudah dihapus dari database server
+        const validLocalUsers = localUsers.filter((u) => {
+          if (u.id === 'usr_super_admin' || u.role === 'SUPER_ADMIN') return true;
+          return serverUserIds.has(u.id) || serverUserEmails.has((u.email || '').toLowerCase());
+        });
+
+        const mergedUsers = [...validLocalUsers];
         for (const su of serverUsers) {
           const idx = mergedUsers.findIndex(
             (u) => u.id === su.id || u.email.toLowerCase() === su.email.toLowerCase()
@@ -113,6 +122,9 @@ export default function App() {
           if (freshCurrent) {
             setCurrentUser(freshCurrent);
             setSessionUser(freshCurrent);
+          } else if (activeUserId !== 'usr_super_admin') {
+            // User sudah dihapus oleh Super Admin
+            handleLogout();
           }
         }
       }
@@ -239,22 +251,37 @@ export default function App() {
         const mergedTopics = [...localTopics];
         for (const st of serverTopics) {
           const idx = mergedTopics.findIndex((t) => t.id === st.id);
+          const mappedComments: ChatComment[] = Array.isArray(st.comments)
+            ? st.comments.map((c: any) => ({
+                id: c.id,
+                topicId: c.topicId || c.topik_id || st.id,
+                userId: c.userId || c.pengguna_id || '',
+                userName: c.userName || c.nama_pengirim || '',
+                userAvatar: c.userAvatar || c.foto_pengirim || '',
+                userRole: c.userRole || c.peran_pengirim || 'EMPLOYEE',
+                timestamp: c.timestamp || c.waktu_kirim || '',
+                notes: c.notes || c.isi_pesan || '',
+                attachments: Array.isArray(c.attachments) ? c.attachments : (Array.isArray(c.lampiran) ? c.lampiran : []),
+                type: 'COMMENT' as const,
+              }))
+            : (idx >= 0 ? mergedTopics[idx].comments : []);
+
           const mappedTopic: ChatTopic = {
             id: st.id,
             title: st.title || st.judul_topik || '',
-            status: st.status || st.status_topik || 'OPEN',
-            taggedTeammateIds: Array.isArray(st.tagged_teammate_ids) ? st.tagged_teammate_ids : [],
-            files: Array.isArray(st.files) ? st.files : [],
-            links: Array.isArray(st.links) ? st.links : [],
-            images: Array.isArray(st.images) ? st.images : [],
-            shortNotes: st.short_notes || st.catatan_singkat || '',
-            longNotes: st.long_notes || st.catatan_lengkap || '',
-            authorId: st.dibuat_oleh_id || st.author_id || '',
-            authorName: st.dibuat_oleh_nama || st.author_name || '',
-            authorAvatar: st.dibuat_oleh_foto || '',
-            comments: Array.isArray(st.comments) ? st.comments : (idx >= 0 ? mergedTopics[idx].comments : []),
-            createdAt: st.created_at || '',
-            updatedAt: st.updated_at || '',
+            status: (st.status || st.status_topik || 'NEED_COMMENTS') as any,
+            taggedTeammateIds: Array.isArray(st.taggedTeammateIds) ? st.taggedTeammateIds : (Array.isArray(st.id_anggota_ditandai) ? st.id_anggota_ditandai : []),
+            files: Array.isArray(st.files) ? st.files : (Array.isArray(st.berkas) ? st.berkas : []),
+            links: Array.isArray(st.links) ? st.links : (Array.isArray(st.tautan) ? st.tautan : []),
+            images: Array.isArray(st.images) ? st.images : (Array.isArray(st.gambar) ? st.gambar : []),
+            shortNotes: st.shortNotes || st.short_notes || st.catatan_singkat || '',
+            longNotes: st.longNotes || st.long_notes || st.catatan_lengkap || '',
+            createdBy: st.createdBy || st.created_by || st.dibuat_oleh_id || '',
+            createdByName: st.createdByName || st.created_by_name || st.dibuat_oleh_nama || '',
+            createdByAvatar: st.createdByAvatar || st.created_by_avatar || st.dibuat_oleh_foto || '',
+            comments: mappedComments,
+            createdAt: st.createdAt || st.created_at || '',
+            updatedAt: st.updatedAt || st.updated_at || '',
           };
           if (idx >= 0) {
             mergedTopics[idx] = { ...mergedTopics[idx], ...mappedTopic };
@@ -408,9 +435,15 @@ export default function App() {
     loadData();
   };
 
-  const handleDeleteEmployee = (userId: string) => {
+  const handleDeleteEmployee = async (userId: string) => {
+    try {
+      await ApiClient.deleteUser(userId);
+    } catch (e) {
+      console.warn('Gagal menghapus user dari server backend:', e);
+    }
     AppStorage.deleteUser(userId);
     loadData();
+    syncWithBackend();
   };
 
   const handlePurgeAllExceptSuperAdmin = () => {

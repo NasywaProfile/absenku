@@ -39,6 +39,7 @@ import {
   TaskAttachment,
 } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
+import { ApiClient } from '../../lib/api-client.ts';
 import {
   Bubble,
   BubbleContent,
@@ -74,7 +75,64 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
   const [activeTopic, setActiveTopic] = useState<ChatTopic | null>(null);
 
   useEffect(() => {
-    const handleChatSync = () => {
+    const handleChatSync = async () => {
+      try {
+        const serverTopics = await ApiClient.getChatTopics().catch(() => null);
+        if (Array.isArray(serverTopics) && serverTopics.length > 0) {
+          const localTopics = AppStorage.getChatTopics();
+          const merged = [...localTopics];
+          for (const st of serverTopics) {
+            const idx = merged.findIndex((t) => t.id === st.id);
+            const mappedComments: ChatComment[] = Array.isArray(st.comments)
+              ? st.comments.map((c: any) => ({
+                  id: c.id,
+                  topicId: c.topicId || c.topik_id || st.id,
+                  userId: c.userId || c.pengguna_id || '',
+                  userName: c.userName || c.nama_pengirim || '',
+                  userAvatar: c.userAvatar || c.foto_pengirim || '',
+                  userRole: c.userRole || c.peran_pengirim || 'EMPLOYEE',
+                  timestamp: c.timestamp || c.waktu_kirim || '',
+                  notes: c.notes || c.isi_pesan || '',
+                  attachments: Array.isArray(c.attachments) ? c.attachments : (Array.isArray(c.lampiran) ? c.lampiran : []),
+                  type: 'COMMENT' as const,
+                }))
+              : (idx >= 0 ? merged[idx].comments : []);
+
+            const mappedTopic: ChatTopic = {
+              id: st.id,
+              title: st.title || st.judul_topik || '',
+              status: (st.status || st.status_topik || 'NEED_COMMENTS') as any,
+              taggedTeammateIds: Array.isArray(st.taggedTeammateIds) ? st.taggedTeammateIds : (Array.isArray(st.id_anggota_ditandai) ? st.id_anggota_ditandai : []),
+              files: Array.isArray(st.files) ? st.files : (Array.isArray(st.berkas) ? st.berkas : []),
+              links: Array.isArray(st.links) ? st.links : (Array.isArray(st.tautan) ? st.tautan : []),
+              images: Array.isArray(st.images) ? st.images : (Array.isArray(st.gambar) ? st.gambar : []),
+              shortNotes: st.shortNotes || st.short_notes || st.catatan_singkat || '',
+              longNotes: st.longNotes || st.long_notes || st.catatan_lengkap || '',
+              createdBy: st.createdBy || st.created_by || st.dibuat_oleh_id || '',
+              createdByName: st.createdByName || st.created_by_name || st.dibuat_oleh_nama || '',
+              createdByAvatar: st.createdByAvatar || st.created_by_avatar || st.dibuat_oleh_foto || '',
+              comments: mappedComments,
+              createdAt: st.createdAt || st.created_at || '',
+              updatedAt: st.updatedAt || st.updated_at || '',
+            };
+            if (idx >= 0) {
+              merged[idx] = { ...merged[idx], ...mappedTopic };
+            } else {
+              merged.push(mappedTopic);
+            }
+          }
+          AppStorage.saveChatTopics(merged);
+          setTopics(merged);
+          setActiveTopic((prev) => {
+            if (!prev) return null;
+            return merged.find((t) => t.id === prev.id) || prev;
+          });
+          return;
+        }
+      } catch {
+        // Fallback to local
+      }
+
       const updated = AppStorage.getChatTopics();
       setTopics(updated);
       setActiveTopic((prev) => {

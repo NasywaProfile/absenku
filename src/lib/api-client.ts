@@ -134,6 +134,12 @@ export const ApiClient = {
     });
   },
 
+  async deleteUser(userId: string) {
+    return this.request(`/users/${userId}`, {
+      method: 'DELETE',
+    });
+  },
+
   // ================= Office Config =================
   async getOfficeConfig() {
     return this.request('/office-config');
@@ -263,6 +269,12 @@ export const ApiClient = {
     });
   },
 
+  async deleteChatTopic(id: string) {
+    return this.request(`/chat/topics/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
   async getChatMessages(params?: { topic_id?: string; channel_id?: string }) {
     const searchParams = new URLSearchParams(params as any).toString();
     const endpoint = `/chat/messages${searchParams ? `?${searchParams}` : ''}`;
@@ -273,6 +285,12 @@ export const ApiClient = {
     return this.request('/chat/messages', {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  },
+
+  async deleteChatMessage(id: string) {
+    return this.request(`/chat/messages/${id}`, {
+      method: 'DELETE',
     });
   },
 };
