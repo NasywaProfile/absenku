@@ -204,13 +204,18 @@ export function AdminEmployeeManagement({
 
   const pendingUsers = React.useMemo(() => {
     return users
-      .filter((u) => u.status === 'PENDING_APPROVAL')
+      .filter(
+        (u) =>
+          u.status === 'PENDING_APPROVAL' &&
+          u.id !== currentUser.id &&
+          u.email?.toLowerCase() !== currentUser.email?.toLowerCase()
+      )
       .sort((a, b) => {
         const dateA = a.registeredAt || a.id || '';
         const dateB = b.registeredAt || b.id || '';
         return dateB.localeCompare(dateA);
       });
-  }, [users]);
+  }, [users, currentUser.id, currentUser.email]);
   const [activeSubTab, setActiveSubTab] = useState<'EMPLOYEES' | 'APPROVALS'>(
     initialSubTab || 'EMPLOYEES'
   );

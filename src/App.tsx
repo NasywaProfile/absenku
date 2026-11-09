@@ -81,16 +81,28 @@ export default function App() {
 
         const mergedUsers = [...validLocalUsers];
         for (const su of serverUsers) {
-          const idx = mergedUsers.findIndex(
-            (u) => u.id === su.id || u.email.toLowerCase() === su.email.toLowerCase()
-          );
+          // Proteksi: usr_super_admin hanya boleh dicocokkan dengan usr_super_admin, tidak boleh tertimpa pendaftar lain
+          const idx = mergedUsers.findIndex((u) => {
+            if (su.id === 'usr_super_admin') return u.id === 'usr_super_admin';
+            if (u.id === 'usr_super_admin') return false;
+            return u.id === su.id || (u.email && su.email && u.email.toLowerCase() === su.email.toLowerCase());
+          });
           const existingLocal = idx >= 0 ? mergedUsers[idx] : null;
+          const mappedRole =
+            su.id === 'usr_super_admin'
+              ? 'SUPER_ADMIN'
+              : ((su.role || su.peran || (existingLocal ? existingLocal.role : 'EMPLOYEE')) as UserRole);
+          const mappedStatus =
+            su.id === 'usr_super_admin'
+              ? 'ACTIVE'
+              : (su.status || (existingLocal ? existingLocal.status : 'ACTIVE'));
+
           const mappedUser: User = {
             id: su.id,
             name: su.name || su.nama || (existingLocal ? existingLocal.name : ''),
             email: su.email || (existingLocal ? existingLocal.email : ''),
-            role: (su.role || su.peran || (existingLocal ? existingLocal.role : 'EMPLOYEE')) as UserRole,
-            status: su.status || (existingLocal ? existingLocal.status : 'ACTIVE'),
+            role: mappedRole,
+            status: mappedStatus,
             employmentType: su.employment_type || su.tipe_kepegawaian || (existingLocal ? existingLocal.employmentType : 'CONTRACT'),
             department: su.department || su.divisi || (existingLocal ? existingLocal.department : 'Operasional'),
             position: su.position || su.jabatan || (existingLocal ? existingLocal.position : 'Staf'),

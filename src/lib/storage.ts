@@ -232,7 +232,9 @@ export const AppStorage = {
         changed = true;
       } else {
         const sa = parsed[saIndex];
-        // Pastikan email superadmin terisi jika kosong (tidak pakem, mempertahankan email yang diubah)
+        sa.role = 'SUPER_ADMIN';
+        sa.status = 'ACTIVE';
+        // Pastikan email superadmin terisi jika kosong
         if (!sa.email) {
           sa.email = INITIAL_USERS[0].email;
           changed = true;
