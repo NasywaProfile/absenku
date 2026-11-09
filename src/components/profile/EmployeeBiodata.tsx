@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { User, EmploymentType } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
+import { ApiClient } from '../../lib/api-client.ts';
 import { uploadToCloudinary } from '../../lib/cloudinary.ts';
 import { compressImageFile } from '../../lib/image-compression.ts';
 import { sendRealEmail, generateEmailHtmlTemplate } from '../../lib/real-email.ts';
@@ -244,7 +245,7 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
     }
   };
 
-  const handleSaveAll = (e?: React.FormEvent) => {
+  const handleSaveAll = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErrorMessage(null);
 
@@ -274,11 +275,52 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
     }
 
     setIsSubmitting(true);
+    setErrorMessage(null);
 
     const oldEmail = currentUser.email?.trim().toLowerCase();
     const newEmail = email.trim();
     const isEmailChanged = Boolean(oldEmail && newEmail.toLowerCase() !== oldEmail);
     const isPasswordChanged = Boolean(newPassword.trim());
+
+    // 1. Simpan perubahan ke MySQL server backend
+    try {
+      const serverPayload: any = {
+        id: currentUser.id,
+        current_email: currentUser.email,
+        name: name.trim(),
+        email: newEmail,
+        phone: phone.trim(),
+        gender,
+        birthDate: birthDate ? birthDate.trim() : (currentUser.birthDate || '2000-01-01'),
+        address: address.trim(),
+        avatar: avatar || currentUser.avatar,
+        department: department.trim(),
+        position: department.trim() || currentUser.position,
+        employment_type: employmentType,
+        bank_name: bankName.trim(),
+        bank_account_number: bankAccountNumber.trim(),
+        bank_account_holder: bankAccountHolder.trim() || name.trim(),
+        emergency_contact_name: emergencyContactName.trim(),
+        emergency_contact_phone: emergencyContactPhone.trim(),
+        is_profile_complete: true,
+      };
+
+      if (isPasswordChanged) {
+        serverPayload.password = newPassword.trim();
+      }
+
+      const apiRes = await ApiClient.updateProfile(serverPayload);
+      if (apiRes && apiRes.token) {
+        ApiClient.setToken(apiRes.token);
+      }
+    } catch (apiErr: any) {
+      console.warn('Gagal memperbarui profil ke server backend:', apiErr);
+      if (apiErr?.status === 422 || apiErr?.status === 400) {
+        setIsSubmitting(false);
+        setErrorMessage(apiErr?.message || 'Data profil tidak valid.');
+        return;
+      }
+    }
 
     const updatePayload: Partial<User> = {
       name: name.trim(),
@@ -294,6 +336,8 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
       bankName: bankName.trim(),
       bankAccountNumber: bankAccountNumber.trim(),
       bankAccountHolder: bankAccountHolder.trim() || name.trim(),
+      emergencyContactName: emergencyContactName.trim(),
+      emergencyContactPhone: emergencyContactPhone.trim(),
       isProfileComplete: true,
     };
 

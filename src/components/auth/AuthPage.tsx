@@ -99,17 +99,19 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
         setErrorMsg(msg);
         return;
       }
-      // Jika akun dibuat via mock/test harness lokal di browser
-      const localUser = AppStorage.authenticate(loginIdentifier, loginPassword);
-      if (localUser) {
-        AppStorage.setSessionUser(localUser.id);
-        setIsLoading(false);
-        onLoginSuccess(localUser);
-        return;
+      // HANYA gunakan fallback autentikasi lokal jika server offline / gangguan koneksi (network error)
+      if (apiErr?.isNetworkError || apiErr?.status === 0) {
+        const localUser = AppStorage.authenticate(loginIdentifier, loginPassword);
+        if (localUser) {
+          AppStorage.setSessionUser(localUser.id);
+          setIsLoading(false);
+          onLoginSuccess(localUser);
+          return;
+        }
       }
 
       setIsLoading(false);
-      setErrorMsg('Email/username atau password tidak sesuai.');
+      setErrorMsg(apiErr?.message || 'Email/username atau password tidak sesuai.');
       return;
     }
 

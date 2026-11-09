@@ -102,10 +102,28 @@ export const ApiClient = {
   },
 
   async updateProfile(data: any) {
-    return this.request('/profile', {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+    try {
+      const res = await this.request<{ message: string; user: any; token?: string }>('/profile', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+      if (res && res.token) {
+        this.setToken(res.token);
+      }
+      return res;
+    } catch (err: any) {
+      if (err?.status === 401) {
+        const directRes = await this.request<{ message: string; user: any; token?: string }>('/profile/direct', {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        });
+        if (directRes && directRes.token) {
+          this.setToken(directRes.token);
+        }
+        return directRes;
+      }
+      throw err;
+    }
   },
 
   async logout() {
