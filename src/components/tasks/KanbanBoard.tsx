@@ -1127,55 +1127,30 @@ export function KanbanBoard({
                             {/* Hairline Divider */}
                             <div className="border-t border-slate-100 pt-2" />
 
-                            {/* Footer: Overlapping Assignee Avatars (Kiri) & Deadline Date (Kanan) */}
+                            {/* Footer: Assignee (Kiri) & Deadline Date (Kanan) */}
                             <div className="flex items-center justify-between gap-2 text-xs">
-                              {task.assignees && task.assignees.length > 0 ? (
-                                <div className="flex items-center -space-x-2">
-                                  {task.assignees.slice(0, 3).map((a, idx) => (
-                                    a.avatar ? (
-                                      <img
-                                        key={idx}
-                                        src={a.avatar}
-                                        alt={a.name}
-                                        className="w-7 h-7 rounded-full object-cover border-2 border-white shadow-2xs"
-                                        title={`Pelaksana: ${a.name}`}
-                                      />
-                                    ) : (
-                                      <div
-                                        key={idx}
-                                        className="w-7 h-7 rounded-full bg-amber-400 text-slate-900 border-2 border-white font-extrabold text-[10px] flex items-center justify-center shadow-2xs"
-                                        title={`Pelaksana: ${a.name}`}
-                                      >
-                                        {a.name.substring(0, 2).toUpperCase()}
-                                      </div>
-                                    )
-                                  ))}
-                                  {task.assignees.length > 3 && (
-                                    <div
-                                      className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 border-2 border-white font-bold text-[10px] flex items-center justify-center shadow-2xs"
-                                      title={`${task.assignees.length - 3} pelaksana lainnya`}
-                                    >
-                                      +{task.assignees.length - 3}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="flex items-center -space-x-2">
-                                  <div className="w-7 h-7 rounded-full bg-amber-400 text-slate-900 border-2 border-white font-extrabold text-[10px] flex items-center justify-center shadow-2xs" title={`Pelaksana: ${task.assignedName}`}>
-                                    {task.assignedName ? task.assignedName.substring(0, 2).toUpperCase() : 'AU'}
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {task.assignedAvatar ? (
+                                  <img
+                                    src={task.assignedAvatar}
+                                    alt={task.assignedName || 'Karyawan'}
+                                    className="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0 shadow-2xs"
+                                    title={`Ditugaskan ke: ${task.assignedName}`}
+                                  />
+                                ) : (
+                                  <div
+                                    className="w-6 h-6 rounded-full bg-blue-100 text-[#1E3A8A] font-extrabold text-[10px] flex items-center justify-center border border-blue-200 shrink-0 shadow-2xs"
+                                    title={`Ditugaskan ke: ${task.assignedName}`}
+                                  >
+                                    {(task.assignedName || 'K').substring(0, 2).toUpperCase()}
                                   </div>
-                                  {task.assignedAvatar && (
-                                    <img
-                                      src={task.assignedAvatar}
-                                      alt={task.assignedName}
-                                      className="w-7 h-7 rounded-full object-cover border-2 border-white shadow-2xs"
-                                      title={`Pelaksana: ${task.assignedName}`}
-                                    />
-                                  )}
-                                </div>
-                              )}
+                                )}
+                                <span className="text-[11px] font-semibold text-slate-700 truncate max-w-[120px]" title={task.assignedName}>
+                                  {task.assignedName || 'Belum ditugaskan'}
+                                </span>
+                              </div>
 
-                              <span className="text-xs text-slate-400 font-normal">
+                              <span className="text-xs text-slate-400 font-normal shrink-0">
                                 {task.dueDate}
                               </span>
                             </div>
@@ -1348,52 +1323,23 @@ export function KanbanBoard({
                         </td>
                         <td className="py-3 px-3.5 whitespace-nowrap">
                           <div className="flex items-center gap-2">
-                            {task.assignees && task.assignees.length > 0 ? (
-                              <div className="flex items-center -space-x-1.5 shrink-0">
-                                {task.assignees.slice(0, 3).map((a, idx) => (
-                                  a.avatar ? (
-                                    <img
-                                      key={idx}
-                                      src={a.avatar}
-                                      alt={a.name}
-                                      className="w-6 h-6 rounded-full object-cover border-2 border-white shadow-2xs"
-                                      title={`Pelaksana: ${a.name}`}
-                                    />
-                                  ) : (
-                                    <div
-                                      key={idx}
-                                      className="w-6 h-6 rounded-full bg-amber-400 text-slate-900 border-2 border-white font-extrabold text-[10px] flex items-center justify-center shadow-2xs"
-                                      title={`Pelaksana: ${a.name}`}
-                                    >
-                                      {a.name.substring(0, 2).toUpperCase()}
-                                    </div>
-                                  )
-                                ))}
-                                {task.assignees.length > 3 && (
-                                  <div
-                                    className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 border-2 border-white font-bold text-[9px] flex items-center justify-center shadow-2xs"
-                                    title={`${task.assignees.length - 3} lainnya`}
-                                  >
-                                    +{task.assignees.length - 3}
-                                  </div>
-                                )}
-                              </div>
+                            {task.assignedAvatar ? (
+                              <img
+                                src={task.assignedAvatar}
+                                alt={task.assignedName}
+                                className="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0 shadow-2xs"
+                                title={task.assignedName}
+                              />
                             ) : (
-                              <div className="flex items-center -space-x-1.5 shrink-0">
-                                <div className="w-6 h-6 rounded-full bg-amber-400 text-slate-900 border-2 border-white font-extrabold text-[10px] flex items-center justify-center shadow-2xs">
-                                  {task.assignedName ? task.assignedName.substring(0, 2).toUpperCase() : 'AU'}
-                                </div>
-                                {task.assignedAvatar && (
-                                  <img
-                                    src={task.assignedAvatar}
-                                    alt={task.assignedName}
-                                    className="w-6 h-6 rounded-full object-cover border-2 border-white shadow-2xs"
-                                  />
-                                )}
+                              <div
+                                className="w-6 h-6 rounded-full bg-blue-100 text-[#1E3A8A] font-extrabold text-[10px] flex items-center justify-center border border-blue-200 shrink-0 shadow-2xs"
+                                title={task.assignedName}
+                              >
+                                {(task.assignedName || 'K').substring(0, 2).toUpperCase()}
                               </div>
                             )}
                             <span className="font-semibold text-slate-800 text-xs truncate max-w-[140px]">
-                              {task.assignedName}
+                              {task.assignedName || 'Belum ditugaskan'}
                             </span>
                           </div>
                         </td>

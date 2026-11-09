@@ -777,6 +777,20 @@ export const AppStorage = {
       records.unshift(newRecord);
     }
     this.saveAttendanceRecords(records);
+
+    // Kirim presensi ke Laravel Backend & MySQL
+    ApiClient.clockIn({
+      id: newRecord.id,
+      clock_in_time: newRecord.clockInTime,
+      clock_in_lat: newRecord.clockInLat,
+      clock_in_lng: newRecord.clockInLng,
+      clock_in_distance_meter: newRecord.clockInDistanceMeter,
+      clock_in_location_status: newRecord.clockInLocationStatus,
+      clock_in_status: newRecord.clockInStatus,
+      clock_in_late_minutes: newRecord.clockInLateMinutes,
+      work_mode: newRecord.workMode,
+      notes: newRecord.notes,
+    }).catch(() => {});
   },
 
   clearTodayAttendance(): void {
@@ -1921,6 +1935,7 @@ export const AppStorage = {
 
     // Kirim pengajuan ke Laravel Backend & MySQL
     ApiClient.createLeave({
+      id: newLeave.id,
       category: newLeave.category,
       start_date: newLeave.startDate,
       end_date: newLeave.endDate,
@@ -2839,10 +2854,12 @@ export const AppStorage = {
     this.saveChatTopics(topics);
 
     ApiClient.sendChatMessage({
+      id: newComment.id,
       topic_id: topicId,
       user_id: newComment.userId,
       user_name: newComment.userName,
-      content: newComment.content,
+      content: newComment.notes || (newComment as any).content || '',
+      notes: newComment.notes || '',
     }).catch(() => {});
 
     return newComment;

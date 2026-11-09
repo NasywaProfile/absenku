@@ -72,6 +72,29 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
     currentUser.role === 'SUPER_ADMIN';
   const [topics, setTopics] = useState<ChatTopic[]>(() => AppStorage.getChatTopics());
   const [activeTopic, setActiveTopic] = useState<ChatTopic | null>(null);
+
+  useEffect(() => {
+    const handleChatSync = () => {
+      const updated = AppStorage.getChatTopics();
+      setTopics(updated);
+      setActiveTopic((prev) => {
+        if (!prev) return null;
+        return updated.find((t) => t.id === prev.id) || prev;
+      });
+    };
+
+    window.addEventListener('absenku:chat_updated', handleChatSync);
+    window.addEventListener('storage', handleChatSync);
+
+    const interval = setInterval(handleChatSync, 2000);
+
+    return () => {
+      window.removeEventListener('absenku:chat_updated', handleChatSync);
+      window.removeEventListener('storage', handleChatSync);
+      clearInterval(interval);
+    };
+  }, []);
+
   const [isTopicFullScreen, setIsTopicFullScreen] = useState(false);
   const [isCreateTopicFullScreen, setIsCreateTopicFullScreen] = useState(false);
   const [isAttachmentsExpanded, setIsAttachmentsExpanded] = useState(false);

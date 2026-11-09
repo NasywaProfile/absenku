@@ -123,7 +123,6 @@ export default function App() {
         const localLeaves = AppStorage.getLeaveRequests();
         const mergedLeaves = [...localLeaves];
         for (const sl of serverLeaves) {
-          const idx = mergedLeaves.findIndex((l) => l.id === sl.id);
           const mappedLeave: LeaveRequest = {
             id: sl.id,
             userId: sl.user_id || sl.pengguna_id || sl.userId,
@@ -145,6 +144,9 @@ export default function App() {
             reviewedAt: sl.reviewed_at || sl.waktu_persetujuan,
             rejectionReason: sl.rejection_reason || sl.alasan_penolakan,
           };
+          const idx = mergedLeaves.findIndex(
+            (l) => l.id === sl.id || (l.userId === mappedLeave.userId && l.startDate === mappedLeave.startDate && l.category === mappedLeave.category)
+          );
           if (idx >= 0) {
             mergedLeaves[idx] = { ...mergedLeaves[idx], ...mappedLeave };
           } else {
@@ -161,7 +163,6 @@ export default function App() {
         const localAtt = AppStorage.getAttendanceRecords();
         const mergedAtt = [...localAtt];
         for (const sa of serverAtt) {
-          const idx = mergedAtt.findIndex((a) => a.id === sa.id);
           const mappedAtt: AttendanceRecord = {
             id: sa.id,
             userId: sa.user_id || sa.pengguna_id || sa.userId,
@@ -181,6 +182,9 @@ export default function App() {
             notes: sa.notes || sa.catatan || '',
             syncStatus: 'SYNCED',
           };
+          const idx = mergedAtt.findIndex(
+            (a) => a.id === sa.id || (a.userId === mappedAtt.userId && a.date === mappedAtt.date)
+          );
           if (idx >= 0) {
             mergedAtt[idx] = { ...mergedAtt[idx], ...mappedAtt };
           } else {
@@ -259,6 +263,7 @@ export default function App() {
           }
         }
         AppStorage.saveChatTopics(mergedTopics);
+        window.dispatchEvent(new CustomEvent('absenku:chat_updated'));
       }
 
       // 6. Ambil konfigurasi kantor dari server
