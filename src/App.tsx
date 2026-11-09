@@ -95,7 +95,7 @@ export default function App() {
             emergencyContactPhone: su.emergency_contact_phone || su.nomor_kontak_darurat || '',
             address: su.address || su.alamat || '',
             registeredAt: su.registered_at || su.waktu_daftar || '',
-            isProfileComplete: su.is_profile_complete ?? Boolean(su.profil_lengkap),
+            isProfileComplete: Boolean(su.is_profile_complete ?? su.profil_lengkap),
           };
           if (idx >= 0) {
             mergedUsers[idx] = { ...mergedUsers[idx], ...mappedUser };
@@ -105,6 +105,16 @@ export default function App() {
         }
         AppStorage.saveUsers(mergedUsers);
         setUsers(mergedUsers);
+
+        // Jika user yang sedang login mengalami update status (misal di-ACC admin di device lain), perbarui otomatis
+        const activeUserId = AppStorage.getSessionUser()?.id;
+        if (activeUserId) {
+          const freshCurrent = mergedUsers.find((u) => u.id === activeUserId);
+          if (freshCurrent) {
+            setCurrentUser(freshCurrent);
+            setSessionUser(freshCurrent);
+          }
+        }
       }
 
       // 2. Ambil data perizinan dari server
@@ -116,15 +126,23 @@ export default function App() {
           const idx = mergedLeaves.findIndex((l) => l.id === sl.id);
           const mappedLeave: LeaveRequest = {
             id: sl.id,
-            userId: sl.user_id || sl.id_pengguna || sl.userId,
-            userName: sl.user_name || sl.nama_pengguna || sl.userName || '',
-            type: sl.type || sl.kategori || sl.category || 'CUTI_TAHUNAN',
+            userId: sl.user_id || sl.pengguna_id || sl.userId,
+            userName: sl.user_name || sl.nama_karyawan || sl.userName || '',
+            userAvatar: sl.user_avatar || sl.foto_karyawan || '',
+            department: sl.department || sl.divisi || 'Operasional',
+            employmentType: sl.employment_type || sl.tipe_kepegawaian || 'CONTRACT',
+            category: (sl.category || sl.kategori_izin || 'LEAVE') as any,
             startDate: sl.start_date || sl.tanggal_mulai || sl.startDate,
             endDate: sl.end_date || sl.tanggal_selesai || sl.endDate,
+            totalDays: sl.total_days || sl.jumlah_hari || 1,
             reason: sl.reason || sl.alasan || '',
-            status: sl.status || 'PENDING',
-            submittedAt: sl.submitted_at || sl.waktu_pengajuan || sl.submittedAt || '',
-            approvedBy: sl.approved_by || sl.disetujui_oleh,
+            attachmentName: sl.attachment_name || sl.nama_lampiran,
+            attachmentData: sl.attachment_data || sl.data_lampiran,
+            attachmentType: sl.attachment_type || sl.tipe_lampiran,
+            status: sl.status || sl.status_pengajuan || 'PENDING',
+            appliedAt: sl.applied_at || sl.waktu_pengajuan || sl.appliedAt || '',
+            reviewedBy: sl.reviewed_by || sl.disetujui_oleh,
+            reviewedAt: sl.reviewed_at || sl.waktu_persetujuan,
             rejectionReason: sl.rejection_reason || sl.alasan_penolakan,
           };
           if (idx >= 0) {
@@ -146,15 +164,21 @@ export default function App() {
           const idx = mergedAtt.findIndex((a) => a.id === sa.id);
           const mappedAtt: AttendanceRecord = {
             id: sa.id,
-            userId: sa.user_id || sa.id_pengguna || sa.userId,
-            userName: sa.user_name || sa.nama_pengguna || sa.userName || '',
+            userId: sa.user_id || sa.pengguna_id || sa.userId,
+            userName: sa.user_name || sa.nama_karyawan || sa.userName || '',
+            userAvatar: sa.user_avatar || sa.foto_karyawan || sa.userAvatar || '',
+            department: sa.department || sa.divisi || 'Operasional',
+            employmentType: sa.employment_type || sa.tipe_kepegawaian || 'CONTRACT',
             date: sa.date || sa.tanggal,
-            clockIn: sa.clock_in || sa.jam_masuk,
-            clockOut: sa.clock_out || sa.jam_keluar,
-            status: sa.status || 'HADIR',
-            workLocation: sa.work_location || sa.lokasi_kerja || 'OFFICE',
-            clockInNotes: sa.clock_in_notes || sa.catatan_masuk,
-            clockOutNotes: sa.clock_out_notes || sa.catatan_keluar,
+            clockInTime: sa.clock_in_time || sa.jam_masuk || '',
+            clockInLat: sa.clock_in_lat ?? sa.latitude ?? 0,
+            clockInLng: sa.clock_in_lng ?? sa.longitude ?? 0,
+            clockInDistanceMeter: sa.clock_in_distance_meter ?? sa.jarak_meter ?? 0,
+            clockInLocationStatus: sa.clock_in_location_status || sa.status_lokasi || 'IN_OFFICE',
+            clockInStatus: sa.clock_in_status || sa.status_kehadiran || 'ON_TIME',
+            clockInLateMinutes: sa.clock_in_late_minutes ?? sa.menit_keterlambatan ?? 0,
+            workMode: sa.work_mode || sa.mode_kerja || 'WFO',
+            notes: sa.notes || sa.catatan || '',
             syncStatus: 'SYNCED',
           };
           if (idx >= 0) {
@@ -180,11 +204,19 @@ export default function App() {
             description: st.description || st.deskripsi || '',
             status: st.status || st.status_tugas || 'TODO',
             priority: st.priority || st.prioritas || 'MEDIUM',
-            assignedTo: st.assigned_to || st.ditugaskan_ke,
-            dueDate: st.due_date || st.tenggat_waktu,
-            createdBy: st.created_by || st.dibuat_oleh,
+            assignedTo: st.assigned_to || st.ditugaskan_ke || '',
+            assignedName: st.assigned_name || st.nama_petugas || '',
+            assignedAvatar: st.assigned_avatar || st.foto_petugas || '',
+            tags: Array.isArray(st.tags) ? st.tags : [],
+            assignees: Array.isArray(st.assignees) ? st.assignees : [],
+            dueDate: st.due_date || st.tenggat_waktu || '',
+            createdBy: st.created_by || st.dibuat_oleh || 'usr_super_admin',
             createdAt: st.created_at || '',
             updatedAt: st.updated_at || '',
+            activities: Array.isArray(st.activities) ? st.activities : [],
+            attachments: Array.isArray(st.attachments) ? st.attachments : [],
+            reviewNotes: st.review_notes,
+            submissionNotes: st.submission_notes,
           };
           if (idx >= 0) {
             mergedTasks[idx] = { ...mergedTasks[idx], ...mappedTask };
@@ -196,7 +228,40 @@ export default function App() {
         setTasks(mergedTasks);
       }
 
-      // 5. Ambil konfigurasi kantor dari server
+      // 5. Ambil data ruang obrolan / topik chat dari server
+      const serverTopics = await ApiClient.getChatTopics().catch(() => null);
+      if (Array.isArray(serverTopics) && serverTopics.length > 0) {
+        const localTopics = AppStorage.getChatTopics();
+        const mergedTopics = [...localTopics];
+        for (const st of serverTopics) {
+          const idx = mergedTopics.findIndex((t) => t.id === st.id);
+          const mappedTopic: ChatTopic = {
+            id: st.id,
+            title: st.title || st.judul_topik || '',
+            status: st.status || st.status_topik || 'OPEN',
+            taggedTeammateIds: Array.isArray(st.tagged_teammate_ids) ? st.tagged_teammate_ids : [],
+            files: Array.isArray(st.files) ? st.files : [],
+            links: Array.isArray(st.links) ? st.links : [],
+            images: Array.isArray(st.images) ? st.images : [],
+            shortNotes: st.short_notes || st.catatan_singkat || '',
+            longNotes: st.long_notes || st.catatan_lengkap || '',
+            authorId: st.dibuat_oleh_id || st.author_id || '',
+            authorName: st.dibuat_oleh_nama || st.author_name || '',
+            authorAvatar: st.dibuat_oleh_foto || '',
+            comments: Array.isArray(st.comments) ? st.comments : (idx >= 0 ? mergedTopics[idx].comments : []),
+            createdAt: st.created_at || '',
+            updatedAt: st.updated_at || '',
+          };
+          if (idx >= 0) {
+            mergedTopics[idx] = { ...mergedTopics[idx], ...mappedTopic };
+          } else {
+            mergedTopics.push(mappedTopic);
+          }
+        }
+        AppStorage.saveChatTopics(mergedTopics);
+      }
+
+      // 6. Ambil konfigurasi kantor dari server
       const serverConfig = await ApiClient.getOfficeConfig().catch(() => null);
       if (serverConfig && (serverConfig.name || serverConfig.nama_kantor)) {
         const mappedCfg: OfficeConfig = {
@@ -213,10 +278,12 @@ export default function App() {
         AppStorage.updateOfficeConfig(mappedCfg);
         setOfficeConfig(mappedCfg);
       }
+
+      loadData();
     } catch {
       // offline / abaikan jika jaringan tidak stabil
     }
-  }, []);
+  }, [loadData]);
 
   // Muat data awal saat pertama dibuka & dengarkan perubahan perizinan/storage/sinkronisasi
   useEffect(() => {
@@ -229,15 +296,17 @@ export default function App() {
     };
 
     window.addEventListener('absenku:leaves_updated', handleSync);
+    window.addEventListener('absenku:tasks_updated', handleSync);
     window.addEventListener('storage', handleSync);
 
-    // Auto-sync berkala setiap 10 detik agar multi-device (Laptop & HP) selalu up-to-date
+    // Auto-sync berkala setiap 5 detik agar multi-device (Laptop & HP) selalu up-to-date realtime
     const timer = setInterval(() => {
       syncWithBackend();
-    }, 10000);
+    }, 5000);
 
     return () => {
       window.removeEventListener('absenku:leaves_updated', handleSync);
+      window.removeEventListener('absenku:tasks_updated', handleSync);
       window.removeEventListener('storage', handleSync);
       clearInterval(timer);
     };
