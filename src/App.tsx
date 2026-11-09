@@ -21,6 +21,7 @@ import { CompleteProfileModal } from './components/employee/CompleteProfileModal
 import { PendingApprovalScreen } from './components/auth/PendingApprovalScreen.tsx';
 import { ModernConfirmDialog } from './components/common/ModernConfirmDialog.tsx';
 import { AppStorage } from './lib/storage.ts';
+import { ApiClient } from './lib/api-client.ts';
 import { getApprovedLeaveForDate, isOffCategory } from './lib/attendance-status.ts';
 import { getCurrentDateString, getCurrentTimeString, calculateClockInPunctuality, calculateWorkDurationMinutes } from './lib/time-utils.ts';
 import { calculateHaversineDistance } from './lib/geo-utils.ts';
@@ -59,22 +60,141 @@ export default function App() {
     setTasks(loadedTasks);
   }, []);
 
-  // Muat data awal saat pertama dibuka & dengarkan perubahan perizinan/storage
+  // Sinkronisasi data dari backend API (MySQL di server VPS)
+  const syncWithBackend = useCallback(async () => {
+    try {
+      const token = ApiClient.getToken();
+      if (!token) return;
+
+      // 1. Ambil data users dari server
+      const serverUsers = await ApiClient.getUsers().catch(() => null);
+      if (Array.isArray(serverUsers) && serverUsers.length > 0) {
+        const localUsers = AppStorage.getUsers();
+        const mergedUsers = [...localUsers];
+        for (const su of serverUsers) {
+          const idx = mergedUsers.findIndex(
+            (u) => u.id === su.id || u.email.toLowerCase() === su.email.toLowerCase()
+          );
+          const mappedUser: User = {
+            id: su.id,
+            name: su.name || su.nama,
+            email: su.email,
+            role: (su.role || su.peran || 'EMPLOYEE') as UserRole,
+            status: su.status || 'ACTIVE',
+            employmentType: su.employment_type || su.tipe_kepegawaian || 'CONTRACT',
+            department: su.department || su.divisi || 'Operasional',
+            position: su.position || su.jabatan || 'Staf',
+            avatar: su.avatar || su.foto_profil || '',
+            phone: su.phone || su.nomor_telepon || '',
+            joinDate: su.join_date || su.tanggal_bergabung || '',
+            leaveBalance: su.leave_balance ?? su.sisa_cuti ?? 12,
+            bankName: su.bank_name || su.nama_bank || '',
+            bankAccountNumber: su.bank_account_number || su.nomor_rekening || '',
+            bankAccountHolder: su.bank_account_holder || su.nama_pemilik_rekening || '',
+            emergencyContactName: su.emergency_contact_name || su.nama_kontak_darurat || '',
+            emergencyContactPhone: su.emergency_contact_phone || su.nomor_kontak_darurat || '',
+            address: su.address || su.alamat || '',
+            registeredAt: su.registered_at || su.waktu_daftar || '',
+            isProfileComplete: su.is_profile_complete ?? Boolean(su.profil_lengkap),
+          };
+          if (idx >= 0) {
+            mergedUsers[idx] = { ...mergedUsers[idx], ...mappedUser };
+          } else {
+            mergedUsers.push(mappedUser);
+          }
+        }
+        AppStorage.saveUsers(mergedUsers);
+        setUsers(mergedUsers);
+      }
+
+      // 2. Ambil data perizinan dari server
+      const serverLeaves = await ApiClient.getLeaves().catch(() => null);
+      if (Array.isArray(serverLeaves) && serverLeaves.length > 0) {
+        const localLeaves = AppStorage.getLeaveRequests();
+        const mergedLeaves = [...localLeaves];
+        for (const sl of serverLeaves) {
+          const idx = mergedLeaves.findIndex((l) => l.id === sl.id);
+          const mappedLeave: LeaveRequest = {
+            id: sl.id,
+            userId: sl.user_id || sl.id_pengguna || sl.userId,
+            userName: sl.user_name || sl.nama_pengguna || sl.userName || '',
+            type: sl.type || sl.kategori || sl.category || 'CUTI_TAHUNAN',
+            startDate: sl.start_date || sl.tanggal_mulai || sl.startDate,
+            endDate: sl.end_date || sl.tanggal_selesai || sl.endDate,
+            reason: sl.reason || sl.alasan || '',
+            status: sl.status || 'PENDING',
+            submittedAt: sl.submitted_at || sl.waktu_pengajuan || sl.submittedAt || '',
+            approvedBy: sl.approved_by || sl.disetujui_oleh,
+            rejectionReason: sl.rejection_reason || sl.alasan_penolakan,
+          };
+          if (idx >= 0) {
+            mergedLeaves[idx] = { ...mergedLeaves[idx], ...mappedLeave };
+          } else {
+            mergedLeaves.push(mappedLeave);
+          }
+        }
+        AppStorage.saveLeaves(mergedLeaves);
+        setLeaves(mergedLeaves);
+      }
+
+      // 3. Ambil data presensi dari server
+      const serverAtt = await ApiClient.getAttendance().catch(() => null);
+      if (Array.isArray(serverAtt) && serverAtt.length > 0) {
+        const localAtt = AppStorage.getAttendanceRecords();
+        const mergedAtt = [...localAtt];
+        for (const sa of serverAtt) {
+          const idx = mergedAtt.findIndex((a) => a.id === sa.id);
+          const mappedAtt: AttendanceRecord = {
+            id: sa.id,
+            userId: sa.user_id || sa.id_pengguna || sa.userId,
+            userName: sa.user_name || sa.nama_pengguna || sa.userName || '',
+            date: sa.date || sa.tanggal,
+            clockIn: sa.clock_in || sa.jam_masuk,
+            clockOut: sa.clock_out || sa.jam_keluar,
+            status: sa.status || 'HADIR',
+            workLocation: sa.work_location || sa.lokasi_kerja || 'OFFICE',
+            clockInNotes: sa.clock_in_notes || sa.catatan_masuk,
+            clockOutNotes: sa.clock_out_notes || sa.catatan_keluar,
+            syncStatus: 'SYNCED',
+          };
+          if (idx >= 0) {
+            mergedAtt[idx] = { ...mergedAtt[idx], ...mappedAtt };
+          } else {
+            mergedAtt.push(mappedAtt);
+          }
+        }
+        AppStorage.saveAttendanceRecords(mergedAtt);
+        setRecords(mergedAtt);
+      }
+    } catch {
+      // offline / abaikan jika jaringan tidak stabil
+    }
+  }, []);
+
+  // Muat data awal saat pertama dibuka & dengarkan perubahan perizinan/storage/sinkronisasi
   useEffect(() => {
     loadData();
+    syncWithBackend();
 
     const handleSync = () => {
       loadData();
+      syncWithBackend();
     };
 
     window.addEventListener('absenku:leaves_updated', handleSync);
     window.addEventListener('storage', handleSync);
 
+    // Auto-sync berkala setiap 10 detik agar multi-device (Laptop & HP) selalu up-to-date
+    const timer = setInterval(() => {
+      syncWithBackend();
+    }, 10000);
+
     return () => {
       window.removeEventListener('absenku:leaves_updated', handleSync);
       window.removeEventListener('storage', handleSync);
+      clearInterval(timer);
     };
-  }, [loadData]);
+  }, [loadData, syncWithBackend]);
 
   // Handler reset presensi hari ini
   const handleResetTodayAttendance = () => {
@@ -354,6 +474,7 @@ export default function App() {
           setSessionUser(loggedInUser);
           setCurrentUser(loggedInUser);
           loadData();
+          syncWithBackend();
         }}
       />
     );

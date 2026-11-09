@@ -514,7 +514,7 @@ export const AppStorage = {
       id: `usr_${Date.now()}`,
       name: data.name.trim(),
       email: emailNormalized,
-      password: hashPassword(data.password || ''),
+      password: hashPassword(data.password),
       role: 'EMPLOYEE',
       status: 'PENDING_APPROVAL', // Wajib persetujuan Admin/Super Admin
       employmentType: data.employmentType,
@@ -535,6 +535,17 @@ export const AppStorage = {
 
     users.push(newUser);
     this.saveUsers(users);
+
+    // Sinkronisasi pendaftaran ke API backend MySQL
+    ApiClient.register({
+      name: newUser.name,
+      email: newUser.email,
+      password: data.password,
+      department: newUser.department,
+      position: newUser.position,
+      employment_type: newUser.employmentType,
+      phone: newUser.phone,
+    }).catch(() => {});
 
     return { success: true, user: newUser };
   },

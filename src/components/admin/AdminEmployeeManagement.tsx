@@ -27,6 +27,7 @@ import { User, EmploymentType, UserRole } from '../../types/index.ts';
 import { EMPLOYMENT_TYPE_LABELS } from '../../lib/whatsapp-recap.ts';
 import { EmployeeDetailDrawer } from './EmployeeDetailDrawer.tsx';
 import { AppStorage } from '../../lib/storage.ts';
+import { ApiClient } from '../../lib/api-client.ts';
 import { Tooltip } from '../ui/tooltip.tsx';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 
@@ -74,6 +75,7 @@ export function AdminEmployeeManagement({
   // Form Tambah Karyawan Baru
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('Absenku123!');
   const [newPhone, setNewPhone] = useState('');
   const [newDept, setNewDept] = useState('Teknologi & Engineering');
   const [newPosition, setNewPosition] = useState('Software Engineer');
@@ -133,13 +135,35 @@ export function AdminEmployeeManagement({
     return true;
   });
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || !newEmail.trim()) return;
 
+    const pwd = newPassword.trim() || 'Absenku123!';
+
+    // 1. Simpan ke database MySQL backend server
+    try {
+      const apiRes = await ApiClient.register({
+        name: newName.trim(),
+        email: newEmail.trim(),
+        password: pwd,
+        department: newDept,
+        position: newPosition,
+        employment_type: newType,
+        phone: newPhone,
+      });
+      if (apiRes && apiRes.user) {
+        await ApiClient.approveUser(apiRes.user.id).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Gagal mendaftarkan karyawan ke server backend, menggunakan penyimpanan lokal:', err);
+    }
+
+    // 2. Simpan ke local AppStorage
     const res = AppStorage.registerNewUser({
       name: newName,
       email: newEmail,
+      password: pwd,
       phone: newPhone,
       department: newDept,
       position: newPosition,
@@ -158,6 +182,7 @@ export function AdminEmployeeManagement({
       setShowAddModal(false);
       setNewName('');
       setNewEmail('');
+      setNewPassword('Absenku123!');
       setNewPhone('');
       setNewBankAccount('');
       setNewEmergencyName('');
@@ -733,6 +758,22 @@ export function AdminEmployeeManagement({
                 </div>
                 <div>
                   <label className="block font-bold text-slate-800 mb-1">
+                    Password Awal
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Default: Absenku123!"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
                     Tipe Kepegawaian
                   </label>
                   <select
@@ -746,9 +787,6 @@ export function AdminEmployeeManagement({
                     <option value="PERMANENT">Karyawan Tetap</option>
                   </select>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-800 mb-1">
                     Divisi / Departemen
@@ -761,18 +799,19 @@ export function AdminEmployeeManagement({
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900"
                   />
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-800 mb-1">
-                    Jabatan / Posisi
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newPosition}
-                    onChange={(e) => setNewPosition(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900"
-                  />
-                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Jabatan / Posisi
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newPosition}
+                  onChange={(e) => setNewPosition(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900"
+                />
               </div>
 
               {/* Data Finansial */}

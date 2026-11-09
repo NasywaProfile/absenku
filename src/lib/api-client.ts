@@ -5,7 +5,7 @@
 
 const API_BASE_URL =
   (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) ||
-  'http://127.0.0.1:8000/api';
+  '/api';
 const TOKEN_KEY = 'absenku_auth_token';
 
 export const ApiClient = {
