@@ -561,9 +561,6 @@ export function ChatTopicModal({
           <div className="flex -space-x-1.5 overflow-hidden items-center py-0.5">
             {renderTeammateAvatars(activeTopic.taggedTeammateIds)}
           </div>
-          <span className="text-xs font-bold text-slate-700">
-            {activeTopic.taggedTeammateIds?.length || 0} Rekan Ditag
-          </span>
         </div>
       </div>
     </div>
