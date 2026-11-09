@@ -37,6 +37,7 @@ import {
   User as UserType,
   UserRole,
   TaskAttachment,
+  safeParseJsonArray,
 } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
 import { ApiClient } from '../../lib/api-client.ts';
@@ -106,7 +107,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
               id: st.id,
               title: st.title || st.judul_topik || '',
               status: (st.status || st.status_topik || 'NEED_COMMENTS') as any,
-              taggedTeammateIds: Array.isArray(st.taggedTeammateIds) ? st.taggedTeammateIds : (Array.isArray(st.id_anggota_ditandai) ? st.id_anggota_ditandai : []),
+              taggedTeammateIds: safeParseJsonArray(st.taggedTeammateIds ?? st.id_anggota_ditandai ?? st.tagged_teammate_ids),
               files: Array.isArray(st.files) ? st.files : (Array.isArray(st.berkas) ? st.berkas : []),
               links: Array.isArray(st.links) ? st.links : (Array.isArray(st.tautan) ? st.tautan : []),
               images: Array.isArray(st.images) ? st.images : (Array.isArray(st.gambar) ? st.gambar : []),
@@ -144,6 +145,9 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
         return updated.find((t) => t.id === prev.id) || prev;
       });
     };
+
+    // Sinkronkan data topik dari server seketika saat halaman dibuka
+    handleChatSync();
 
     window.addEventListener('absenku:chat_updated', handleChatSync);
     window.addEventListener('storage', handleChatSync);
@@ -464,21 +468,28 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
     });
 
     return topics.filter((t) => {
-      const tagged = Array.isArray(t.taggedTeammateIds) ? t.taggedTeammateIds : [];
+      const tagged = safeParseJsonArray(
+        t.taggedTeammateIds ?? (t as any).id_anggota_ditandai ?? (t as any).tagged_teammate_ids
+      );
 
       // Cek apakah akun ini pembuat topik
       const isCreator =
-        (t.createdBy && myIdentifiers.has(t.createdBy.toLowerCase())) ||
+        (t.createdBy && myIdentifiers.has(t.createdBy.toLowerCase().trim())) ||
         (t.createdByName && myIdentifiers.has(t.createdByName.toLowerCase().trim()));
 
       // Cek apakah akun ini termasuk yang ditag
       const isTagged = tagged.some((tagItem) => {
-        if (!tagItem || typeof tagItem !== 'string') return false;
+        if (!tagItem) return false;
         const cleanTag = tagItem.toLowerCase().trim();
         if (myIdentifiers.has(cleanTag)) return true;
-        // Cek juga jika tagItem merujuk pada user yang memiliki email/nama sama dengan currentUser
-        const matchedUser = (users || []).find((u) => u.id?.toLowerCase() === cleanTag);
+        // Cek juga jika tagItem merujuk pada user yang memiliki email/nama/ID sama dengan currentUser
+        const matchedUser = (users || []).find((u) => 
+          (u.id && u.id.toLowerCase().trim() === cleanTag) ||
+          (u.email && u.email.toLowerCase().trim() === cleanTag) ||
+          (u.name && u.name.toLowerCase().trim() === cleanTag)
+        );
         if (matchedUser) {
+          if (matchedUser.id && myIdentifiers.has(matchedUser.id.toLowerCase().trim())) return true;
           if (matchedUser.email && myIdentifiers.has(matchedUser.email.toLowerCase().trim())) return true;
           if (matchedUser.name && myIdentifiers.has(matchedUser.name.toLowerCase().trim())) return true;
         }

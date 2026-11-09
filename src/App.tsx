@@ -26,7 +26,7 @@ import { getApprovedLeaveForDate, isOffCategory } from './lib/attendance-status.
 import { getCurrentDateString, getCurrentTimeString, calculateClockInPunctuality, calculateWorkDurationMinutes } from './lib/time-utils.ts';
 import { calculateHaversineDistance } from './lib/geo-utils.ts';
 import { saveAttendanceWithOfflineSupport } from './lib/offline-sync.ts';
-import { User, OfficeConfig, AttendanceRecord, LeaveRequest, TaskItem, UserRole, ChatTopic, ChatComment } from './types/index.ts';
+import { User, OfficeConfig, AttendanceRecord, LeaveRequest, TaskItem, UserRole, ChatTopic, ChatComment, safeParseJsonArray } from './types/index.ts';
 
 export default function App() {
   const [sessionUser, setSessionUser] = useState<User | null>(() => AppStorage.getSessionUser());
@@ -332,7 +332,7 @@ export default function App() {
             id: st.id,
             title: st.title || st.judul_topik || '',
             status: (st.status || st.status_topik || 'NEED_COMMENTS') as any,
-            taggedTeammateIds: Array.isArray(st.taggedTeammateIds) ? st.taggedTeammateIds : (Array.isArray(st.id_anggota_ditandai) ? st.id_anggota_ditandai : []),
+            taggedTeammateIds: safeParseJsonArray(st.taggedTeammateIds ?? st.id_anggota_ditandai ?? st.tagged_teammate_ids),
             files: Array.isArray(st.files) ? st.files : (Array.isArray(st.berkas) ? st.berkas : []),
             links: Array.isArray(st.links) ? st.links : (Array.isArray(st.tautan) ? st.tautan : []),
             images: Array.isArray(st.images) ? st.images : (Array.isArray(st.gambar) ? st.gambar : []),

@@ -368,3 +368,27 @@ export interface ChatTopic {
   updatedAt: string;
   comments: ChatComment[];
 }
+
+export function safeParseJsonArray(value: any): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((x) => (typeof x === 'string' ? x : (x?.id || x?.email || x?.name || '')).toString().trim())
+      .filter(Boolean);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((x) => (typeof x === 'string' ? x : (x?.id || x?.email || x?.name || '')).toString().trim())
+          .filter(Boolean);
+      }
+    } catch {
+      return value
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
+  return [];
+}

@@ -39,7 +39,7 @@ import {
   Lock,
   Laptop,
 } from 'lucide-react';
-import { AttendanceRecord, LeaveRequest, OfficeConfig, User, UserRole, EmploymentType, TaskItem, TaskStatus, TaskPriority, getPriorityLabel, ChatTopic } from '../../types/index.ts';
+import { AttendanceRecord, LeaveRequest, OfficeConfig, User, UserRole, EmploymentType, TaskItem, TaskStatus, TaskPriority, getPriorityLabel, ChatTopic, safeParseJsonArray } from '../../types/index.ts';
 import { formatIndonesianDate, formatIndonesianDateShort, getCurrentDateString, calculateClockInPunctuality } from '../../lib/time-utils.ts';
 import { TaskDetailModal } from '../tasks/TaskDetailModal.tsx';
 import {
@@ -135,24 +135,73 @@ export function AdminDashboard({
   const [chatTopics, setChatTopics] = useState<ChatTopic[]>(() => AppStorage.getChatTopics());
   const [selectedChatTopic, setSelectedChatTopic] = useState<ChatTopic | null>(null);
 
+  useEffect(() => {
+    const syncChat = () => {
+      setChatTopics(AppStorage.getChatTopics());
+    };
+    window.addEventListener('absenku:chat_updated', syncChat);
+    window.addEventListener('storage', syncChat);
+    const interval = setInterval(syncChat, 2000);
+    return () => {
+      window.removeEventListener('absenku:chat_updated', syncChat);
+      window.removeEventListener('storage', syncChat);
+      clearInterval(interval);
+    };
+  }, []);
+
   // Topik yang terlihat: hanya jika akun terdaftar di Assignees (taggedTeammateIds) atau pembuat
   const visibleChatTopics = useMemo(() => {
-    const currentNameLower = currentUser?.name ? currentUser.name.toLowerCase() : '';
+    const currentNameLower = currentUser?.name ? currentUser.name.toLowerCase().trim() : '';
+    const currentEmailLower = currentUser?.email ? currentUser.email.toLowerCase().trim() : '';
+    const currentId = currentUser?.id;
     if (!Array.isArray(chatTopics)) return [];
-    return chatTopics.filter((t) => {
-      const tagged = Array.isArray(t.taggedTeammateIds) ? t.taggedTeammateIds : [];
-      return Boolean(
-        (currentUser?.id && tagged.includes(currentUser.id)) ||
-        (currentUser?.id && t.createdBy === currentUser.id) ||
-        (currentNameLower &&
-          tagged.some(
-            (idOrName) =>
-              (currentUser?.id && idOrName === currentUser.id) ||
-              (typeof idOrName === 'string' && idOrName.toLowerCase() === currentNameLower)
-          ))
-      );
+
+    const myIdentifiers = new Set<string>();
+    if (currentId) myIdentifiers.add(currentId.toLowerCase().trim());
+    if (currentEmailLower) myIdentifiers.add(currentEmailLower);
+    if (currentNameLower) myIdentifiers.add(currentNameLower);
+
+    (users || []).forEach((u) => {
+      const match =
+        (currentId && u.id === currentId) ||
+        (currentEmailLower && u.email && u.email.toLowerCase().trim() === currentEmailLower) ||
+        (currentNameLower && u.name && u.name.toLowerCase().trim() === currentNameLower);
+      if (match) {
+        if (u.id) myIdentifiers.add(u.id.toLowerCase().trim());
+        if (u.email) myIdentifiers.add(u.email.toLowerCase().trim());
+        if (u.name) myIdentifiers.add(u.name.toLowerCase().trim());
+      }
     });
-  }, [chatTopics, currentUser]);
+
+    return chatTopics.filter((t) => {
+      const tagged = safeParseJsonArray(
+        t.taggedTeammateIds ?? (t as any).id_anggota_ditandai ?? (t as any).tagged_teammate_ids
+      );
+
+      const isCreator =
+        (t.createdBy && myIdentifiers.has(t.createdBy.toLowerCase().trim())) ||
+        (t.createdByName && myIdentifiers.has(t.createdByName.toLowerCase().trim()));
+
+      const isTagged = tagged.some((tagItem) => {
+        if (!tagItem) return false;
+        const cleanTag = tagItem.toLowerCase().trim();
+        if (myIdentifiers.has(cleanTag)) return true;
+        const matchedUser = (users || []).find((u) => 
+          (u.id && u.id.toLowerCase().trim() === cleanTag) ||
+          (u.email && u.email.toLowerCase().trim() === cleanTag) ||
+          (u.name && u.name.toLowerCase().trim() === cleanTag)
+        );
+        if (matchedUser) {
+          if (matchedUser.id && myIdentifiers.has(matchedUser.id.toLowerCase().trim())) return true;
+          if (matchedUser.email && myIdentifiers.has(matchedUser.email.toLowerCase().trim())) return true;
+          if (matchedUser.name && myIdentifiers.has(matchedUser.name.toLowerCase().trim())) return true;
+        }
+        return false;
+      });
+
+      return Boolean(tagged.length === 0 || isTagged || isCreator);
+    });
+  }, [chatTopics, currentUser, users]);
 
   // Calendar & Logbook state
   const todayDateStr = getCurrentDateString();
