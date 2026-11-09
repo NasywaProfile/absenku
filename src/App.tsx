@@ -436,13 +436,21 @@ export default function App() {
   };
 
   const handleDeleteEmployee = async (userId: string) => {
+    // 1. Update state dan localStorage langsung agar UI seketika terupdate tanpa delay
+    AppStorage.deleteUser(userId);
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+    loadData();
+
+    // 2. Kirim perintah DELETE ke server backend
     try {
       await ApiClient.deleteUser(userId);
-    } catch (e) {
+    } catch (e: any) {
       console.warn('Gagal menghapus user dari server backend:', e);
+      const msg = e?.message || 'Gagal menghapus karyawan dari server database.';
+      setAccessDeniedMessage(msg);
     }
-    AppStorage.deleteUser(userId);
-    loadData();
+
+    // 3. Sinkronisasi ulang dengan backend
     syncWithBackend();
   };
 
@@ -496,9 +504,18 @@ export default function App() {
     loadData();
   };
 
-  const handleRejectRegistration = (userId: string) => {
+  const handleRejectRegistration = async (userId: string) => {
     AppStorage.rejectRegistration(userId);
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
     loadData();
+
+    try {
+      await ApiClient.deleteUser(userId);
+    } catch {
+      await ApiClient.rejectUser(userId).catch(() => {});
+    }
+
+    syncWithBackend();
   };
 
   // Handler Pengisian Wajib Data Diri Karyawan Baru

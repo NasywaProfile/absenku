@@ -473,7 +473,7 @@ export function AdminEmployeeManagement({
                         </button>
 
                         {/* Tombol Hapus Akun Khusus Super Admin */}
-                        {isSuperAdmin && user.id !== currentUser.id && (
+                        {isSuperAdmin && user.id !== currentUser.id && user.email.toLowerCase() !== currentUser.email.toLowerCase() && (
                           <Tooltip content={`Hapus Akun ${user.name}`} position="top">
                             <button
                               type="button"

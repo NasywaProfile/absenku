@@ -52,7 +52,12 @@ export function EmployeeDetailDrawer({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
-  const canDelete = Boolean(isSuperAdmin && employee && employee.id !== currentUser?.id);
+  const isSelf = Boolean(
+    employee &&
+    currentUser &&
+    (employee.id === currentUser.id || employee.email?.toLowerCase() === currentUser.email?.toLowerCase())
+  );
+  const canDelete = Boolean(isSuperAdmin && employee && !isSelf);
 
   useEffect(() => {
     if (!isOpen) {
