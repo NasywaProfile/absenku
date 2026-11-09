@@ -1122,9 +1122,11 @@ export const AppStorage = {
     }
     try {
       const parsed: TaskItem[] = JSON.parse(raw);
+      const deletedIds = new Set(this.getDeletedTaskIds());
+      const activeTasks = parsed.filter((t) => !deletedIds.has(String(t.id)));
       const allUsers = this.getUsers();
       // Pastikan nama dan avatar assignee selalu sinkron dengan data profil user
-      return parsed.map((t) => {
+      return activeTasks.map((t) => {
         const matched = allUsers.find((u) => u.id === t.assignedTo);
         const filteredActivities = (t.activities || [])
           .filter((act) => {
@@ -1821,11 +1823,33 @@ export const AppStorage = {
     this.saveTasks(updated);
   },
 
+  getDeletedTaskIds(): string[] {
+    try {
+      const raw = localStorage.getItem('absenku_deleted_task_ids');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  recordDeletedTaskId(taskId: string): void {
+    try {
+      const list = this.getDeletedTaskIds();
+      const sId = String(taskId);
+      if (!list.includes(sId)) {
+        list.push(sId);
+        localStorage.setItem('absenku_deleted_task_ids', JSON.stringify(list.slice(-200)));
+      }
+    } catch {}
+  },
+
   deleteTask(taskId: string): void {
     const tasks = this.getTasks();
-    const updated = tasks.filter((t) => t.id !== taskId);
+    const updated = tasks.filter((t) => String(t.id) !== String(taskId));
     this.saveTasks(updated);
+    this.recordDeletedTaskId(taskId);
     ApiClient.deleteKanbanTask(taskId).catch(() => {});
+    window.dispatchEvent(new CustomEvent('absenku:tasks_updated'));
   },
 
   deleteTaskActivity(taskId: string, activityId: string): void {

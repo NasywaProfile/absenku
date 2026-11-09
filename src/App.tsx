@@ -278,18 +278,36 @@ export default function App() {
 
       // 4. Ambil data tugas Kanban dari server
       const serverTasks = await ApiClient.getKanbanTasks().catch(() => null);
-      if (Array.isArray(serverTasks) && serverTasks.length > 0) {
+      if (Array.isArray(serverTasks)) {
         const localTasks = AppStorage.getTasks();
-        const mergedTasks = [...localTasks];
+        const serverTaskIds = new Set(serverTasks.map((st) => String(st.id)));
+        const deletedIds = new Set(AppStorage.getDeletedTaskIds());
+
+        // Prune tugas yang telah dihapus oleh PIC di server:
+        // Tugas lokal yang tidak ada lagi di serverTasks otomatis dibersihkan dari layar pelaksana
+        const validLocalTasks = localTasks.filter((t) => {
+          const tId = String(t.id);
+          if (deletedIds.has(tId)) return false;
+          if (serverTasks.length > 0 && !serverTaskIds.has(tId)) {
+            const isVeryRecent =
+              t.id.startsWith('task_') &&
+              Date.now() - parseInt(t.id.split('_')[1] || '0', 10) < 10000;
+            if (!isVeryRecent) return false;
+          }
+          return true;
+        });
+
+        const mergedTasks = [...validLocalTasks];
         for (const st of serverTasks) {
-          const idx = mergedTasks.findIndex((t) => t.id === st.id);
+          if (deletedIds.has(String(st.id))) continue;
+          const idx = mergedTasks.findIndex((t) => String(t.id) === String(st.id));
           const existingTask = idx >= 0 ? mergedTasks[idx] : null;
           const serverAttachments = Array.isArray(st.attachments) && st.attachments.length > 0
             ? st.attachments
             : (Array.isArray(st.lampiran) && st.lampiran.length > 0 ? st.lampiran : []);
 
           const mappedTask: TaskItem = {
-            id: st.id,
+            id: String(st.id),
             title: st.title || st.judul_tugas || '',
             description: st.description || st.deskripsi || '',
             status: st.status || st.status_tugas || 'TODO',

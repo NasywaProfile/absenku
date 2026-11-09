@@ -637,6 +637,19 @@ export function KanbanBoard({
     setTaskToDelete(null);
   };
 
+  // Sinkronisasi realtime saat PIC menghapus tugas di perangkat lain
+  useEffect(() => {
+    const handleSync = () => {
+      onRefresh();
+    };
+    window.addEventListener('absenku:tasks_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('absenku:tasks_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, [onRefresh]);
+
   const handleDeleteActivity = (actId: string) => {
     if (!activeTaskDetail) return;
     AppStorage.deleteTaskActivity(activeTaskDetail.id, actId);
@@ -1053,8 +1066,13 @@ export function KanbanBoard({
                       </div>
                     ) : (
                       columnTasks.map((task) => {
-                        const isMyTask = task.assignedTo === currentUser.id || Boolean(task.assignees?.some((a) => a.id === currentUser.id));
+                        const isMyTask =
+                          task.assignedTo === currentUser.id ||
+                          Boolean(task.assignees?.some((a) => a.id === currentUser.id)) ||
+                          (Boolean(currentUser.name) && task.assignedName === currentUser.name);
                         const isPIC = isAdmin || task.createdBy === currentUser.id;
+                        const isDone = task.status === 'DONE' || task.status === 'REVIEWED';
+                        const canDelete = isPIC || (isMyTask && isDone);
                         const picUser = users.find((u) => u.id === task.createdBy || u.role === 'ADMIN');
                         const isTodays = task.isTodays ?? true;
                         const stageLabel =
@@ -1102,7 +1120,7 @@ export function KanbanBoard({
                                 {getPriorityBadge(task.priority)}
                               </div>
 
-                              {isPIC ? (
+                              {canDelete ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1110,7 +1128,7 @@ export function KanbanBoard({
                                     handleDeleteTask(task.id);
                                   }}
                                   className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
-                                  title="Hapus Tugas"
+                                  title={isPIC ? "Hapus Tugas" : "Hapus Tugas Selesai"}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>

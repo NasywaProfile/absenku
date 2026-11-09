@@ -521,7 +521,10 @@ export function TaskDetailModal({
   const isPICActive = isAdmin || activeTask.createdBy === currentUser.id;
   const isMyTaskActive =
     activeTask.assignedTo === currentUser.id ||
-    Boolean(activeTask.assignees?.some((a) => a.id === currentUser.id));
+    Boolean(activeTask.assignees?.some((a) => a.id === currentUser.id)) ||
+    (Boolean(currentUser.name) && activeTask.assignedName === currentUser.name);
+  const isDoneActive = activeTask.status === 'DONE' || activeTask.status === 'REVIEWED';
+  const canDeleteActive = isPICActive || (isMyTaskActive && isDoneActive);
 
   // Activities list
   const activities = getTaskActivities(activeTask, users);
@@ -1090,8 +1093,8 @@ export function TaskDetailModal({
         </button>
       </div>
 
-      {/* Admin Hapus Tugas Button */}
-      {isAdmin && (
+      {/* Tombol Hapus Tugas: PIC selalu bisa, Pelaksana bisa jika tugas sudah SELESAI */}
+      {canDeleteActive && (
         <div className="pt-1 flex items-center justify-end text-[11px] text-slate-400">
           <button
             type="button"
@@ -1100,10 +1103,10 @@ export function TaskDetailModal({
               handleModalClose();
             }}
             className="px-2 py-0.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg font-semibold transition-colors flex items-center gap-1 cursor-pointer ml-auto"
-            title="Hapus Tugas Langsung"
+            title={isPICActive ? "Hapus Tugas Langsung" : "Hapus Tugas Selesai"}
           >
             <Trash2 className="w-3 h-3" />
-            Hapus Tugas
+            {isPICActive ? "Hapus Tugas" : "Hapus Tugas Selesai"}
           </button>
         </div>
       )}
