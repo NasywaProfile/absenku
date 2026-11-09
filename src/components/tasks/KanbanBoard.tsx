@@ -265,7 +265,18 @@ export function KanbanBoard({
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newPriority, setNewPriority] = useState<TaskPriority>('MEDIUM');
-  const assignableUsers = users.filter((u) => u.role !== 'SUPER_ADMIN');
+  const assignableUsers = useMemo(() => {
+    const map = new Map<string, UserType>();
+    (users || []).forEach((u) => {
+      if (u.role === 'SUPER_ADMIN' || u.status !== 'ACTIVE') return;
+      const key = (u.email && u.email.trim().toLowerCase()) ||
+                  (u.name ? `${u.name.trim().toLowerCase()}_${(u.department || '').trim().toLowerCase()}` : u.id);
+      if (!map.has(key)) {
+        map.set(key, u);
+      }
+    });
+    return Array.from(map.values());
+  }, [users]);
   const [newAssigneeId, setNewAssigneeId] = useState<string>(() => {
     return assignableUsers[0]?.id || users[0]?.id || '';
   });

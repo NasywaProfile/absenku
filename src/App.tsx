@@ -45,13 +45,23 @@ export default function App() {
   // Muat state dari persistent local storage
   const loadData = useCallback(() => {
     const loadedUsers = AppStorage.getUsers();
+    // Deduplikasi users agar tidak ada nama/akun dobel di seluruh tampilan
+    const dedupedUsers: User[] = [];
+    const seen = new Set<string>();
+    for (const u of loadedUsers) {
+      const key = (u.email ? u.email.trim().toLowerCase() : u.id);
+      if (!seen.has(key)) {
+        seen.add(key);
+        dedupedUsers.push(u);
+      }
+    }
     const curUser = AppStorage.getCurrentUser();
     const loadedConfig = AppStorage.getOfficeConfig();
     const loadedRecords = AppStorage.getAttendanceRecords();
     const loadedLeaves = AppStorage.getLeaveRequests();
     const loadedTasks = AppStorage.getTasks();
 
-    setUsers(loadedUsers);
+    setUsers(dedupedUsers);
     setSessionUser(AppStorage.getSessionUser());
     setCurrentUser(curUser);
     setOfficeConfig(loadedConfig);
@@ -131,13 +141,24 @@ export default function App() {
             mergedUsers.push(mappedUser);
           }
         }
-        AppStorage.saveUsers(mergedUsers);
-        setUsers(mergedUsers);
+
+        // Deduplikasi users agar tidak ada akun ganda di seluruh aplikasi
+        const dedupedMerged: User[] = [];
+        const seenKeys = new Set<string>();
+        for (const u of mergedUsers) {
+          const key = (u.email ? u.email.trim().toLowerCase() : u.id);
+          if (!seenKeys.has(key)) {
+            seenKeys.add(key);
+            dedupedMerged.push(u);
+          }
+        }
+        AppStorage.saveUsers(dedupedMerged);
+        setUsers(dedupedMerged);
 
         // Jika user yang sedang login mengalami update status (misal di-ACC admin di device lain), perbarui otomatis
         const activeUserId = AppStorage.getSessionUser()?.id;
         if (activeUserId) {
-          const freshCurrent = mergedUsers.find((u) => u.id === activeUserId);
+          const freshCurrent = dedupedMerged.find((u) => u.id === activeUserId);
           if (freshCurrent) {
             setCurrentUser(freshCurrent);
             setSessionUser(freshCurrent);
