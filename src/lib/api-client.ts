@@ -196,6 +196,21 @@ export const ApiClient = {
     }
   },
 
+  async updateEmploymentType(userId: string, employmentType: string, email?: string) {
+    const payload = { employment_type: employmentType, tipe_kepegawaian: employmentType, email };
+    try {
+      return await this.request(`/users/${userId}/employment-type`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      return await this.request(`/users/${userId}/employment-type`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }).catch(() => null);
+    }
+  },
+
   async rejectUser(userId: string, reason?: string) {
     return this.request(`/users/${userId}/reject`, {
       method: 'POST',
@@ -234,6 +249,8 @@ export const ApiClient = {
 
   async clockIn(data: {
     id?: string;
+    user_id?: string;
+    pengguna_id?: string;
     date?: string;
     clock_in_time: string;
     clock_in_lat?: number | null;
@@ -248,6 +265,13 @@ export const ApiClient = {
     return this.request('/attendance', {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  },
+
+  async deleteAttendance(params: { date?: string; tanggal?: string; user_id?: string; pengguna_id?: string }) {
+    const searchParams = new URLSearchParams(params as any).toString();
+    return this.request(`/attendance${searchParams ? `?${searchParams}` : ''}`, {
+      method: 'DELETE',
     });
   },
 

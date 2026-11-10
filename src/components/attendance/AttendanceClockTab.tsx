@@ -561,7 +561,7 @@ export function AttendanceClockTab({
                   const locationText = isWfh
                     ? 'Dari Rumah'
                     : isDinas
-                    ? 'Di Luar Kantor'
+                    ? 'Dinas Luar'
                     : todayRecord.clockInLocationStatus === 'OUT_OF_RANGE'
                     ? 'Di Luar Kantor'
                     : 'Area Kantor';
@@ -619,6 +619,33 @@ export function AttendanceClockTab({
                             <span>{badgeText}</span>
                           </div>
                         </div>
+                      </div>
+
+                      {/* Tombol Hapus Presensi Hari Ini (Khusus Uji Coba) */}
+                      <div className="pt-2 mt-2 border-t border-slate-200/50 flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmModal({
+                              isOpen: true,
+                              title: 'Hapus Presensi Hari Ini (Uji Coba)?',
+                              message: 'Catatan presensi hari ini akan dihapus dari sistem agar Anda dapat menguji presensi masuk kembali.',
+                              variant: 'danger',
+                              confirmText: 'Ya, Hapus Presensi',
+                              cancelText: 'Batal',
+                              onConfirm: () => {
+                                AppStorage.clearTodayAttendance();
+                                if (onRefresh) onRefresh();
+                                setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+                              },
+                            });
+                          }}
+                          className="px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors flex items-center gap-1 cursor-pointer border border-rose-200/60 shadow-2xs"
+                          title="Hapus presensi hari ini untuk uji coba"
+                        >
+                          <Trash2 className="w-3 h-3 text-rose-500" />
+                          <span>Hapus Presensi Hari Ini (Test)</span>
+                        </button>
                       </div>
                     </div>
                   );

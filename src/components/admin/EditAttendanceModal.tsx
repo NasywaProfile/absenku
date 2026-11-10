@@ -77,6 +77,11 @@ export function EditAttendanceModal({
   );
 
   const [notes, setNotes] = useState<string>(record.notes || existingLeave?.reason || '');
+  const [clockInTime, setClockInTime] = useState<string>(() => {
+    const raw = record.clockInTime || '08:00';
+    const clean = raw.replace(/\s*WIB/i, '').trim();
+    return clean.length >= 4 ? clean.substring(0, 5) : '08:00';
+  });
   const [isFullScreen, setIsFullScreen] = useState(false);
 
   // Cuti/Izin & Sakit = OFF (bebas presensi). WFH & Dinas Luar tetap bekerja.
@@ -116,10 +121,13 @@ export function EditAttendanceModal({
     const updated: AttendanceRecord = {
       ...record,
       clockInLocationStatus: effectiveLocationStatus,
-      clockInStatus: attendanceStatus,
-      clockInLateMinutes: attendanceStatus === 'LATE' ? Math.max(1, lateMinutes) : 0,
+      clockInStatus: isOffSelected ? 'ON_TIME' : attendanceStatus,
+      clockInTime: isOffSelected ? undefined : `${clockInTime} WIB`,
+      clockInLateMinutes: !isOffSelected && attendanceStatus === 'LATE' ? Math.max(1, lateMinutes) : 0,
       clockInDistanceMeter:
-        effectiveLocationStatus === 'IN_OFFICE'
+        isOffSelected
+          ? 0
+          : effectiveLocationStatus === 'IN_OFFICE'
           ? 15
           : effectiveLocationStatus === 'WFH_APPROVED' || effectiveLocationStatus === 'DINAS_APPROVED'
           ? record.clockInDistanceMeter ?? 0
@@ -300,82 +308,122 @@ export function EditAttendanceModal({
               </p>
             </div>
 
-            {/* 2. Lokasi Presensi (hanya untuk status Hadir biasa) */}
+            {/* 2. Lokasi Presensi (Hilang otomatis jika Cuti/Izin atau Sakit) */}
             {leaveCategory === 'NONE' && (
-            <div className="space-y-2">
-              <label className="block font-bold text-slate-800 text-xs">
-                Status Radius / Lokasi Presensi
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setLocationStatus('IN_OFFICE')}
-                  className={`p-3 rounded-xl border font-semibold flex flex-col items-center justify-center gap-1.5 transition-all text-center cursor-pointer ${
-                    locationStatus === 'IN_OFFICE'
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20 shadow-xs'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <Building2 className="w-4 h-4 text-emerald-600" />
-                  <span>Area Kantor</span>
-                </button>
+              <div className="space-y-2">
+                <label className="block font-bold text-slate-800 text-xs">
+                  Status Radius / Lokasi Presensi
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setLocationStatus('IN_OFFICE')}
+                    className={`p-3 rounded-xl border font-semibold flex flex-col items-center justify-center gap-1.5 transition-all text-center cursor-pointer ${
+                      locationStatus === 'IN_OFFICE'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20 shadow-xs'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Building2 className="w-4 h-4 text-emerald-600" />
+                    <span>Area Kantor</span>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => setLocationStatus('OUT_OF_RANGE')}
-                  className={`p-3 rounded-xl border font-semibold flex flex-col items-center justify-center gap-1.5 transition-all text-center cursor-pointer ${
-                    locationStatus === 'OUT_OF_RANGE'
-                      ? 'bg-rose-50 border-rose-500 text-rose-800 ring-2 ring-rose-500/20 shadow-xs'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <MapPin className="w-4 h-4 text-rose-600" />
-                  <span>Luar Radius</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setLocationStatus('OUT_OF_RANGE')}
+                    className={`p-3 rounded-xl border font-semibold flex flex-col items-center justify-center gap-1.5 transition-all text-center cursor-pointer ${
+                      locationStatus === 'OUT_OF_RANGE'
+                        ? 'bg-rose-50 border-rose-500 text-rose-800 ring-2 ring-rose-500/20 shadow-xs'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <MapPin className="w-4 h-4 text-rose-600" />
+                    <span>Luar Radius</span>
+                  </button>
+                </div>
               </div>
-            </div>
             )}
 
-            {/* 3. Pengaturan Status Kehadiran (Tepat Waktu vs Terlambat) - tidak relevan untuk OFF */}
-            {!isOffSelected && (
-            <div className="space-y-2">
-              <label className="block font-bold text-slate-800 text-xs">
-                Status Waktu Masuk (Clock In)
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAttendanceStatus('ON_TIME');
-                    setLateMinutes(0);
-                  }}
-                  className={`p-3 rounded-xl border font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                    attendanceStatus === 'ON_TIME'
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20 shadow-xs'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Tepat Waktu</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAttendanceStatus('LATE');
-                    if (lateMinutes === 0) setLateMinutes(15);
-                  }}
-                  className={`p-3 rounded-xl border font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                    attendanceStatus === 'LATE'
-                      ? 'bg-amber-50 border-amber-500 text-amber-900 ring-2 ring-amber-500/20 shadow-xs'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  <span>Terlambat</span>
-                </button>
+            {leaveCategory === 'BUSINESS_TRIP' && (
+              <div className="space-y-1.5">
+                <label className="block font-bold text-slate-800 text-xs">
+                  Status Radius / Lokasi Presensi
+                </label>
+                <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-900 font-bold text-xs flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>Dinas Luar</span>
+                </div>
               </div>
-            </div>
+            )}
+
+            {leaveCategory === 'WFH' && (
+              <div className="space-y-1.5">
+                <label className="block font-bold text-slate-800 text-xs">
+                  Status Radius / Lokasi Presensi
+                </label>
+                <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold text-xs flex items-center gap-2">
+                  <Laptop className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span>Rumah / WFH</span>
+                </div>
+              </div>
+            )}
+
+            {/* 3. Pengaturan Status Kehadiran (Tepat Waktu vs Terlambat & Jam Masuk) - Hilang otomatis jika Cuti/Izin atau Sakit */}
+            {!isOffSelected && (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <label className="block font-bold text-slate-800 text-xs">
+                    Status Waktu Masuk (Clock In)
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttendanceStatus('ON_TIME');
+                        setLateMinutes(0);
+                      }}
+                      className={`p-3 rounded-xl border font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                        attendanceStatus === 'ON_TIME'
+                          ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20 shadow-xs'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>Tepat Waktu</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttendanceStatus('LATE');
+                        if (lateMinutes === 0) setLateMinutes(15);
+                      }}
+                      className={`p-3 rounded-xl border font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                        attendanceStatus === 'LATE'
+                          ? 'bg-amber-50 border-amber-500 text-amber-900 ring-2 ring-amber-500/20 shadow-xs'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      <span>Terlambat</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Input Jam Presensi Masuk (WIB) */}
+                <div className="space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <label className="block font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Jam Presensi Masuk (WIB)</span>
+                  </label>
+                  <input
+                    type="time"
+                    value={clockInTime}
+                    onChange={(e) => setClockInTime(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 font-bold focus:outline-hidden focus:ring-2 focus:ring-[#1E3A8A]"
+                  />
+                </div>
+              </div>
             )}
 
             {/* Keterlambatan Menit Input */}

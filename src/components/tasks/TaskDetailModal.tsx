@@ -521,8 +521,19 @@ export function TaskDetailModal({
   const isPICActive = isAdmin || activeTask.createdBy === currentUser.id;
   const isMyTaskActive =
     activeTask.assignedTo === currentUser.id ||
-    Boolean(activeTask.assignees?.some((a) => a.id === currentUser.id)) ||
-    (Boolean(currentUser.name) && activeTask.assignedName === currentUser.name);
+    (Boolean(currentUser.email) && activeTask.assignedTo === currentUser.email) ||
+    Boolean(
+      activeTask.assignees?.some(
+        (a) =>
+          a.id === currentUser.id ||
+          (currentUser.email && a.id === currentUser.email) ||
+          (currentUser.name &&
+            a.name?.toLowerCase().trim() === currentUser.name.toLowerCase().trim())
+      )
+    ) ||
+    (Boolean(currentUser.name) &&
+      activeTask.assignedName?.toLowerCase().trim() ===
+        currentUser.name.toLowerCase().trim());
   const isDoneActive = activeTask.status === 'DONE' || activeTask.status === 'REVIEWED';
   const canDeleteActive = isPICActive || (isMyTaskActive && isDoneActive);
 

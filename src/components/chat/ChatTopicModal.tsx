@@ -25,6 +25,8 @@ import {
   Upload,
   CheckSquare,
   Link2,
+  UserPlus,
+  Search,
 } from 'lucide-react';
 import {
   ChatTopic,
@@ -36,6 +38,7 @@ import {
   safeParseJsonArray,
 } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
+import { ApiClient } from '../../lib/api-client.ts';
 import {
   Bubble,
   BubbleContent,
@@ -133,6 +136,8 @@ export function ChatTopicModal({
     title: '',
     members: [],
   });
+  const [showTagTeammatesModal, setShowTagTeammatesModal] = useState(false);
+  const [tagSearchQuery, setTagSearchQuery] = useState('');
 
   const commentsEndRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
@@ -426,6 +431,60 @@ export function ChatTopicModal({
     });
   };
 
+  // Filter rekan tim untuk penambahan tag ke topik obrolan
+  const tagFilteredUsers = (users || []).filter((u) => {
+    if (!u || !u.name || u.name === 'Rekan Tim' || u.name === 'User') return false;
+    if (!tagSearchQuery.trim()) return true;
+    const q = tagSearchQuery.toLowerCase().trim();
+    return (
+      u.name.toLowerCase().includes(q) ||
+      (u.department && u.department.toLowerCase().includes(q)) ||
+      (u.email && u.email.toLowerCase().includes(q))
+    );
+  });
+
+  // Tambah / Cabut tag rekan tim pada topik yang sudah dibuat
+  const handleToggleTagUser = (userId: string) => {
+    if (!activeTopic) return;
+    const rawTagged = safeParseJsonArray(
+      activeTopic.taggedTeammateIds ?? (activeTopic as any).id_anggota_ditandai ?? (activeTopic as any).tagged_teammate_ids
+    );
+    const targetUser = (users || []).find((u) => u.id === userId);
+    const isCurrentlyTagged = rawTagged.some(
+      (id) =>
+        String(id).toLowerCase() === userId.toLowerCase() ||
+        (targetUser?.email && String(id).toLowerCase() === targetUser.email.toLowerCase()) ||
+        (targetUser?.name && String(id).toLowerCase() === targetUser.name.toLowerCase().trim())
+    );
+
+    let nextTagged: string[];
+    if (isCurrentlyTagged) {
+      nextTagged = rawTagged.filter(
+        (id) =>
+          String(id).toLowerCase() !== userId.toLowerCase() &&
+          (!targetUser?.email || String(id).toLowerCase() !== targetUser.email.toLowerCase()) &&
+          (!targetUser?.name || String(id).toLowerCase() !== targetUser.name.toLowerCase().trim())
+      );
+    } else {
+      nextTagged = [...rawTagged, userId];
+    }
+
+    const updatedTopic: ChatTopic = {
+      ...activeTopic,
+      taggedTeammateIds: nextTagged,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setActiveTopic(updatedTopic);
+    AppStorage.updateChatTopic(updatedTopic);
+    ApiClient.updateChatTopic(updatedTopic.id, {
+      taggedTeammateIds: nextTagged,
+      id_anggota_ditandai: nextTagged,
+    }).catch(console.error);
+    window.dispatchEvent(new CustomEvent('absenku:chat_updated'));
+    if (onTopicUpdated) onTopicUpdated(updatedTopic);
+  };
+
   // Render User Avatars Stack (Hapus dummy agar tidak render avatar kosong)
   const renderTeammateAvatars = (taggedIds: string[]) => {
     const rawTagged = safeParseJsonArray(taggedIds);
@@ -547,20 +606,31 @@ export function ChatTopicModal({
         </div>
       </div>
 
-      {/* 3. Members / Tim */}
+      {/* 3. Members / Tim (Assignees) */}
       <div className="flex items-center gap-4">
         <div className="w-32 sm:w-36 flex items-center gap-2 text-slate-400 shrink-0 font-medium">
           <Users className="w-4 h-4 text-slate-400" />
           <span>Assignees</span>
         </div>
-        <div
-          onClick={(e) => handleOpenTaggedMembersModal(activeTopic, e)}
-          className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-          title="Klik untuk melihat anggota tim"
-        >
-          <div className="flex -space-x-1.5 overflow-hidden items-center py-0.5">
-            {renderTeammateAvatars(activeTopic.taggedTeammateIds)}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div
+            onClick={() => setShowTagTeammatesModal(true)}
+            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+            title="Klik untuk kelola anggota tim yang ditag"
+          >
+            <div className="flex -space-x-1.5 overflow-hidden items-center py-0.5">
+              {renderTeammateAvatars(activeTopic.taggedTeammateIds)}
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowTagTeammatesModal(true)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-[#1E3A8A] hover:bg-blue-100 border border-blue-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+            title="Tambah atau kelola rekan yang ditag ke ruang obrolan ini"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>+ Tag Rekan</span>
+          </button>
         </div>
       </div>
     </div>
@@ -1233,6 +1303,125 @@ export function ChatTopicModal({
         subtitle={taggedMembersModalData.subtitle}
         members={taggedMembersModalData.members}
       />
+
+      {/* Modal Kelola / Tambah Tag Rekan Tim (Req 1) */}
+      {showTagTeammatesModal && activeTopic && (
+        <div
+          className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs animate-in fade-in duration-200 font-sans"
+          onClick={() => setShowTagTeammatesModal(false)}
+        >
+          <div
+            className="relative bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200/90 overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-6 py-4.5 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
+              <div>
+                <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <Users className="w-4 h-4 text-[#1E3A8A]" />
+                  <span>Kelola Rekan yang Ditag</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5 truncate max-w-[280px]">
+                  Topik: &quot;{activeTopic.title}&quot;
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTagTeammatesModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full border border-slate-200 transition-colors cursor-pointer"
+                title="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="px-6 pt-3 pb-2 border-b border-slate-100 bg-slate-50/50">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={tagSearchQuery}
+                  onChange={(e) => setTagSearchQuery(e.target.value)}
+                  placeholder="Cari nama atau departemen..."
+                  className="w-full pl-9 pr-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[#1E3A8A] transition-colors shadow-2xs"
+                />
+              </div>
+            </div>
+
+            {/* User List */}
+            <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-2 custom-scrollbar">
+              {tagFilteredUsers.length === 0 ? (
+                <div className="py-8 text-center text-slate-400 text-xs">
+                  Tidak ada rekan tim yang cocok.
+                </div>
+              ) : (
+                tagFilteredUsers.map((u) => {
+                  const rawTagged = safeParseJsonArray(
+                    activeTopic.taggedTeammateIds ?? (activeTopic as any).id_anggota_ditandai ?? (activeTopic as any).tagged_teammate_ids
+                  );
+                  const isTagged = rawTagged.some(
+                    (id) =>
+                      String(id).toLowerCase() === u.id.toLowerCase() ||
+                      (u.email && String(id).toLowerCase() === u.email.toLowerCase()) ||
+                      (u.name && String(id).toLowerCase() === u.name.toLowerCase().trim())
+                  );
+
+                  return (
+                    <div
+                      key={u.id}
+                      className="p-3 bg-white hover:bg-slate-50 rounded-2xl border border-slate-200/90 shadow-2xs flex items-center justify-between gap-3 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <img
+                          src={
+                            u.avatar ||
+                            `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                              u.name
+                            )}&background=1E3A8A&color=ffffff&size=128&bold=true`
+                          }
+                          alt={u.name}
+                          className="w-9 h-9 rounded-xl object-cover border border-slate-200 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-xs text-slate-900 truncate">{u.name}</p>
+                          <p className="text-[11px] text-slate-400 truncate">
+                            {u.department || (u.role === 'ADMIN' ? 'Administrator' : 'Karyawan')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleToggleTagUser(u.id)}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 border ${
+                          isTagged
+                            ? 'bg-blue-600 hover:bg-rose-600 text-white border-blue-600 hover:border-rose-600 shadow-2xs'
+                            : 'bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border-slate-200 hover:border-blue-300'
+                        }`}
+                        title={isTagged ? 'Klik untuk membatalkan tag' : 'Klik untuk tag rekan ini'}
+                      >
+                        {isTagged ? 'Ditag' : '+ Tag'}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setShowTagTeammatesModal(false)}
+                className="px-4 py-2 bg-[#1E3A8A] hover:bg-[#172554] text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Selesai
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

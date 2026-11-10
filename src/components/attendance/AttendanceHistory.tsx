@@ -24,6 +24,7 @@ import {
   AlertTriangle,
   Lock,
   Globe,
+  ClipboardList,
 } from 'lucide-react';
 import {
   AttendanceRecord,
@@ -91,7 +92,7 @@ const LOCATION_TAG_CONFIG: Record<
     iconColor: 'text-indigo-600',
   },
   BUSINESS_TRIP: {
-    label: 'Di Luar Kantor',
+    label: 'Dinas Luar',
     icon: MapPin,
     bg: 'bg-purple-50',
     text: 'text-purple-800',
@@ -158,6 +159,18 @@ export function AttendanceHistory({
   onClearAllAttendance,
 }: AttendanceHistoryProps) {
   const [dataVersion, setDataVersion] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setDataVersion((v) => v + 1);
+    window.addEventListener('absenku:attendance_updated', handleUpdate);
+    window.addEventListener('absenku:leaves_updated', handleUpdate);
+    window.addEventListener('absenku:users_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('absenku:attendance_updated', handleUpdate);
+      window.removeEventListener('absenku:leaves_updated', handleUpdate);
+      window.removeEventListener('absenku:users_updated', handleUpdate);
+    };
+  }, []);
 
   const currentUser = propCurrentUser || AppStorage.getCurrentUser() || ({} as User);
   const users = propUsers || AppStorage.getUsers() || [];
@@ -332,7 +345,7 @@ export function AttendanceHistory({
             : isWfh
             ? 'Dari Rumah'
             : isBusinessTrip
-            ? 'Di Luar Kantor'
+            ? 'Dinas Luar'
             : isOutOfRange
             ? 'Di Luar Kantor'
             : (ds.key === 'LEAVE' || ds.key === 'SICK')
@@ -1840,14 +1853,14 @@ export function AttendanceHistory({
                                     type="button"
                                     onClick={() => {
                                       const fullName = employeeNamesMap[colName] || colName;
-                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
-                                      setSimpleProfilePopup({
+                                      setSelectedCellInfo({
                                         name: fullName,
-                                        avatar: avatar,
+                                        date: row.dateStr,
+                                        status: 'Hadir',
                                       });
                                     }}
                                     className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#DCFCE7] text-[#15803D] hover:bg-[#BBF7D0] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
-                                    title={`Klik untuk melihat profil ${colName} (Hadir)`}
+                                    title={`Klik untuk melihat detail & logbook presensi ${colName} (Hadir)`}
                                   >
                                     Hadir
                                   </button>
@@ -1857,14 +1870,14 @@ export function AttendanceHistory({
                                     type="button"
                                     onClick={() => {
                                       const fullName = employeeNamesMap[colName] || colName;
-                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
-                                      setSimpleProfilePopup({
+                                      setSelectedCellInfo({
                                         name: fullName,
-                                        avatar: avatar,
+                                        date: row.dateStr,
+                                        status: 'Terlambat',
                                       });
                                     }}
                                     className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#FEF3C7] text-[#B45309] hover:bg-[#FDE68A] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
-                                    title={`Klik untuk melihat profil ${colName} (Terlambat)`}
+                                    title={`Klik untuk melihat detail & logbook presensi ${colName} (Terlambat)`}
                                   >
                                     Terlambat
                                   </button>
@@ -1874,14 +1887,14 @@ export function AttendanceHistory({
                                     type="button"
                                     onClick={() => {
                                       const fullName = employeeNamesMap[colName] || colName;
-                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
-                                      setSimpleProfilePopup({
+                                      setSelectedCellInfo({
                                         name: fullName,
-                                        avatar: avatar,
+                                        date: row.dateStr,
+                                        status: 'Cuti/Izin',
                                       });
                                     }}
                                     className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#DCFCE7] text-[#15803D] hover:bg-[#BBF7D0] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
-                                    title={`Klik untuk melihat profil ${colName} (Cuti/Izin)`}
+                                    title={`Klik untuk melihat detail perizinan ${colName} (Cuti/Izin)`}
                                   >
                                     Cuti/Izin
                                   </button>
@@ -1891,10 +1904,10 @@ export function AttendanceHistory({
                                     type="button"
                                     onClick={() => {
                                       const fullName = employeeNamesMap[colName] || colName;
-                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
-                                      setSimpleProfilePopup({
+                                      setSelectedCellInfo({
                                         name: fullName,
-                                        avatar: avatar,
+                                        date: row.dateStr,
+                                        status: 'WFH',
                                       });
                                     }}
                                     className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer shadow-2xs inline-flex items-center gap-1 active:scale-95 ${
@@ -1902,7 +1915,7 @@ export function AttendanceHistory({
                                         ? 'bg-[#FEF3C7] text-[#B45309] border border-amber-300 hover:bg-[#FDE68A]'
                                         : 'bg-[#E0E7FF] text-[#4338CA] hover:bg-[#C7D2FE]'
                                     }`}
-                                    title={row.lateWfhMap?.[colName] ? `Klik untuk melihat profil ${colName} (WFH Terlambat ${row.lateWfhMap[colName]} mnt)` : `Klik untuk melihat profil ${colName} (WFH)`}
+                                    title={row.lateWfhMap?.[colName] ? `Klik untuk melihat detail & logbook ${colName} (WFH Terlambat ${row.lateWfhMap[colName]} mnt)` : `Klik untuk melihat detail & logbook ${colName} (WFH)`}
                                   >
                                     <span>WFH</span>
                                     {row.lateWfhMap?.[colName] ? (
@@ -1917,14 +1930,14 @@ export function AttendanceHistory({
                                     type="button"
                                     onClick={() => {
                                       const fullName = employeeNamesMap[colName] || colName;
-                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
-                                      setSimpleProfilePopup({
+                                      setSelectedCellInfo({
                                         name: fullName,
-                                        avatar: avatar,
+                                        date: row.dateStr,
+                                        status: 'Sakit',
                                       });
                                     }}
                                     className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#FFEDD5] text-[#C2410C] hover:bg-[#FED7AA] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
-                                    title={`Klik untuk melihat profil ${colName} (Sakit)`}
+                                    title={`Klik untuk melihat detail perizinan ${colName} (Sakit)`}
                                   >
                                     Sakit
                                   </button>
@@ -1934,14 +1947,14 @@ export function AttendanceHistory({
                                     type="button"
                                     onClick={() => {
                                       const fullName = employeeNamesMap[colName] || colName;
-                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
-                                      setSimpleProfilePopup({
+                                      setSelectedCellInfo({
                                         name: fullName,
-                                        avatar: avatar,
+                                        date: row.dateStr,
+                                        status: 'Dinas Luar',
                                       });
                                     }}
                                     className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#F3E8FF] text-[#7E22CE] hover:bg-[#E9D5FF] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
-                                    title={`Klik untuk melihat profil ${colName} (Dinas Luar)`}
+                                    title={`Klik untuk melihat detail & logbook dinas luar ${colName}`}
                                   >
                                     Dinas Luar
                                   </button>
@@ -1951,14 +1964,14 @@ export function AttendanceHistory({
                                     type="button"
                                     onClick={() => {
                                       const fullName = employeeNamesMap[colName] || colName;
-                                      const avatar = employeeAvatarMap[colName] || users.find((u) => u.name.toLowerCase().includes(colName.toLowerCase()))?.avatar;
-                                      setSimpleProfilePopup({
+                                      setSelectedCellInfo({
                                         name: fullName,
-                                        avatar: avatar,
+                                        date: row.dateStr,
+                                        status: 'Tidak Hadir',
                                       });
                                     }}
                                     className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#FFE4E6] text-[#E11D48] hover:bg-[#FECDD3] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
-                                    title={`Klik untuk melihat profil ${colName} (Tidak Hadir)`}
+                                    title={`Klik untuk melihat detail presensi ${colName} (Tidak Hadir)`}
                                   >
                                     Tidak Hadir
                                   </button>
@@ -2251,7 +2264,7 @@ export function AttendanceHistory({
                                         : 'bg-purple-50 text-purple-800 border border-purple-200'
                                     }`}>
                                       <MapPin className="w-3 h-3 shrink-0" />
-                                      <span>Di Luar Kantor</span>
+                                      <span>Dinas Luar</span>
                                     </span>
                                   );
                                 }
@@ -2432,6 +2445,72 @@ export function AttendanceHistory({
                 <span className="text-slate-500 font-medium">Keterangan Status</span>
                 <span className="font-bold text-indigo-700">{selectedCellInfo.status}</span>
               </div>
+
+              {/* Logbook / Tugas Harian Karyawan (Dapat dilihat oleh semua akun) */}
+              {(() => {
+                const matchedUser = users.find(
+                  (u) =>
+                    u.name.toLowerCase().includes(selectedCellInfo.name.toLowerCase()) ||
+                    selectedCellInfo.name.toLowerCase().includes(u.name.toLowerCase())
+                );
+                const rawDate =
+                  allMatrixRows.find((r) => r.dateStr === selectedCellInfo.date)?.rawDate ||
+                  selectedCellInfo.date;
+
+                const userDailyTask = (dailyTasks || []).find(
+                  (t) =>
+                    (t.userId === matchedUser?.id ||
+                      t.userName?.toLowerCase() === selectedCellInfo.name.toLowerCase()) &&
+                    t.date === rawDate
+                );
+
+                const existingRec = (attendanceRecords || []).find(
+                  (r) =>
+                    (r.userId === matchedUser?.id || r.userName.toLowerCase() === selectedCellInfo.name.toLowerCase()) &&
+                    r.date === rawDate
+                );
+
+                const tasks =
+                  userDailyTask?.tasks && userDailyTask.tasks.length > 0
+                    ? userDailyTask.tasks
+                    : existingRec?.tasksDoneSummary && existingRec.tasksDoneSummary.length > 0
+                    ? existingRec.tasksDoneSummary
+                    : [];
+
+                const notes = userDailyTask?.notes || existingRec?.notes;
+
+                return (
+                  <div className="space-y-2.5 pt-1">
+                    <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
+                        <ClipboardList className="w-4 h-4 text-[#1E3A8A]" />
+                        <span>Logbook / Tugas Harian</span>
+                      </div>
+                      {tasks && tasks.length > 0 ? (
+                        <div className="space-y-1.5 pl-1">
+                          {tasks.map((task, tIdx) => (
+                            <div key={tIdx} className="flex items-start gap-2 text-slate-700 leading-snug">
+                              <span className="text-[#1E3A8A] font-bold mt-0.5">•</span>
+                              <span className="font-medium">{task}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-slate-400 italic text-[11px]">
+                          Karyawan belum mengisi logbook tugas untuk tanggal ini.
+                        </p>
+                      )}
+
+                      {notes && notes.trim() && (
+                        <div className="pt-2 border-t border-slate-200/60 text-[11px] text-slate-600">
+                          <span className="font-semibold text-slate-700">Catatan: </span>
+                          <span>{notes}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {(() => {
                 if (!isAdmin) return null;
@@ -2632,6 +2711,8 @@ export function AttendanceHistory({
                         locationBadge:
                           leaveCategory === 'WFH' || updated.clockInLocationStatus === 'WFH_APPROVED'
                             ? 'WFH'
+                            : leaveCategory === 'BUSINESS_TRIP' || updated.clockInLocationStatus === 'DINAS_APPROVED'
+                            ? 'Dinas Luar'
                             : updated.clockInLocationStatus === 'IN_OFFICE'
                             ? 'Area Kantor'
                             : 'Luar Radius',

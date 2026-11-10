@@ -596,7 +596,7 @@ export const AppStorage = {
       emergencyContactName: data.emergencyContactName || '',
       emergencyContactPhone: data.emergencyContactPhone || '',
       registeredAt: localTimeStr,
-      isProfileComplete: true,
+      isProfileComplete: false,
     };
 
     users.push(newUser);
@@ -717,17 +717,23 @@ export const AppStorage = {
   // Promosi Tipe Karyawan: Magang -> Freelance -> Kontrak -> Tetap
   updateEmploymentType(userId: string, newType: EmploymentType): void {
     const users = this.getUsers();
+    let targetUser: User | undefined;
     const updated = users.map((u) => {
       if (u.id === userId) {
-        return {
+        targetUser = {
           ...u,
           employmentType: newType,
           leaveBalance: newType === 'PERMANENT' ? Math.max(u.leaveBalance, 12) : u.leaveBalance,
         };
+        return targetUser;
       }
       return u;
     });
     this.saveUsers(updated);
+    ApiClient.updateEmploymentType(userId, newType, targetUser?.email).catch(() => {});
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('absenku:users_updated'));
+    }
   },
 
   // Toggle Keaktifan Akun (ACTIVE <-> INACTIVE) tanpa menghapus histori
@@ -835,6 +841,9 @@ export const AppStorage = {
       (r) => r.userId !== 'usr_super_admin' && r.userName?.toLowerCase() !== 'super admin'
     );
     safeSetItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(filtered));
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('absenku:attendance_updated'));
+    }
   },
 
   recordClockIn(newRecord: AttendanceRecord): void {
@@ -851,6 +860,10 @@ export const AppStorage = {
 
     // Kirim presensi ke Laravel Backend & MySQL
     ApiClient.clockIn({
+      id: newRecord.id,
+      user_id: newRecord.userId,
+      pengguna_id: newRecord.userId,
+      date: newRecord.date,
       clock_in_time: newRecord.clockInTime,
       clock_in_lat: newRecord.clockInLat,
       clock_in_lng: newRecord.clockInLng,
@@ -878,6 +891,8 @@ export const AppStorage = {
     // Kirim presensi ke Laravel Backend & MySQL
     ApiClient.clockIn({
       id: newRecord.id,
+      user_id: newRecord.userId,
+      pengguna_id: newRecord.userId,
       date: newRecord.date,
       clock_in_time: newRecord.clockInTime,
       clock_in_lat: newRecord.clockInLat,
@@ -898,6 +913,12 @@ export const AppStorage = {
       (r) => !(r.userId === curUserId && r.date === today)
     );
     this.saveAttendanceRecords(records);
+    if (curUserId) {
+      ApiClient.deleteAttendance({ date: today, user_id: curUserId }).catch(() => {});
+    }
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('absenku:attendance_updated'));
+    }
   },
 
   deleteAttendanceByDate(date: string, userId?: string): void {
@@ -906,6 +927,12 @@ export const AppStorage = {
       (r) => !(r.date === date && (!curUserId || r.userId === curUserId))
     );
     this.saveAttendanceRecords(records);
+    if (curUserId) {
+      ApiClient.deleteAttendance({ date, user_id: curUserId }).catch(() => {});
+    }
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('absenku:attendance_updated'));
+    }
 
     // Bersihkan juga dari antrean offline jika ada
     try {
@@ -2365,8 +2392,9 @@ export const AppStorage = {
 
     if (category !== 'NONE' && !sameCategory) {
       const template = covering[0];
-      result.push({
-        id: `leave_adm_${Date.now()}`,
+      const newLeaveId = `leave_adm_${Date.now()}`;
+      const newLeave: LeaveRequest = {
+        id: newLeaveId,
         userId: user.id,
         userName: user.name,
         userAvatar: user.avatar || template?.userAvatar || '',
@@ -2383,6 +2411,24 @@ export const AppStorage = {
         appliedAt: stamp,
         reviewedBy: reviewerName,
         reviewedAt: stamp,
+      };
+      result.push(newLeave);
+
+      ApiClient.createLeave({
+        id: newLeave.id,
+        user_id: user.id,
+        pengguna_id: user.id,
+        category: newLeave.category,
+        start_date: newLeave.startDate,
+        end_date: newLeave.endDate,
+        total_days: newLeave.totalDays,
+        reason: newLeave.reason,
+      }).then(() => {
+        ApiClient.approveLeave(newLeave.id).catch(() => {});
+      }).catch(() => {});
+    } else if (category === 'NONE') {
+      covering.forEach((cov) => {
+        ApiClient.deleteLeave(cov.id).catch(() => {});
       });
     }
 

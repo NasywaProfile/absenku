@@ -1068,8 +1068,19 @@ export function KanbanBoard({
                       columnTasks.map((task) => {
                         const isMyTask =
                           task.assignedTo === currentUser.id ||
-                          Boolean(task.assignees?.some((a) => a.id === currentUser.id)) ||
-                          (Boolean(currentUser.name) && task.assignedName === currentUser.name);
+                          (Boolean(currentUser.email) && task.assignedTo === currentUser.email) ||
+                          Boolean(
+                            task.assignees?.some(
+                              (a) =>
+                                a.id === currentUser.id ||
+                                (currentUser.email && a.id === currentUser.email) ||
+                                (currentUser.name &&
+                                  a.name?.toLowerCase().trim() === currentUser.name.toLowerCase().trim())
+                            )
+                          ) ||
+                          (Boolean(currentUser.name) &&
+                            task.assignedName?.toLowerCase().trim() ===
+                              currentUser.name.toLowerCase().trim());
                         const isPIC = isAdmin || task.createdBy === currentUser.id;
                         const isDone = task.status === 'DONE' || task.status === 'REVIEWED';
                         const canDelete = isPIC || (isMyTask && isDone);

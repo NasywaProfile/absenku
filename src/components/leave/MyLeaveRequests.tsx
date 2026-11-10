@@ -790,21 +790,17 @@ export function MyLeaveRequests({
                         )}
                       </td>
                       <td className="py-3.5 px-3.5 text-center whitespace-nowrap">
-                        {!isApproved && !isRejected ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCancelTargetId(req.id);
-                            }}
-                            title="Batalkan & Hapus Pengajuan"
-                            className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-rose-200 shadow-2xs active:scale-95"
-                          >
-                            <Trash2 className="w-4 h-4 mx-auto" />
-                          </button>
-                        ) : (
-                          <span className="text-slate-300 font-bold">-</span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCancelTargetId(req.id);
+                          }}
+                          title="Hapus Pengajuan (Uji Coba)"
+                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-rose-200 shadow-2xs active:scale-95"
+                        >
+                          <Trash2 className="w-4 h-4 mx-auto" />
+                        </button>
                       </td>
                     </tr>
                   );
@@ -1243,19 +1239,19 @@ export function MyLeaveRequests({
               )}
             </div>
 
-            {selectedLeaveDetail.status === 'PENDING' && (
-              <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-end gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    executeCancelLeave(selectedLeaveDetail.id);
-                  }}
-                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition-colors"
-                >
-                  Batalkan Pengajuan Ini
-                </button>
-              </div>
-            )}
+            <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-end gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  executeCancelLeave(selectedLeaveDetail.id);
+                }}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition-colors flex items-center gap-1.5"
+                title="Hapus pengajuan izin ini (Uji Coba)"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus Pengajuan (Uji Coba)</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -26,7 +26,7 @@ import { getApprovedLeaveForDate, isOffCategory } from './lib/attendance-status.
 import { getCurrentDateString, getCurrentTimeString, calculateClockInPunctuality, calculateWorkDurationMinutes } from './lib/time-utils.ts';
 import { calculateHaversineDistance } from './lib/geo-utils.ts';
 import { saveAttendanceWithOfflineSupport } from './lib/offline-sync.ts';
-import { User, OfficeConfig, AttendanceRecord, LeaveRequest, TaskItem, UserRole, ChatTopic, ChatComment, safeParseJsonArray } from './types/index.ts';
+import { User, OfficeConfig, AttendanceRecord, LeaveRequest, TaskItem, DailyTaskLog, UserRole, ChatTopic, ChatComment, safeParseJsonArray } from './types/index.ts';
 
 export default function App() {
   const [sessionUser, setSessionUser] = useState<User | null>(() => AppStorage.getSessionUser());
@@ -184,13 +184,20 @@ export default function App() {
         AppStorage.saveUsers(dedupedMerged);
         setUsers(dedupedMerged);
 
-        // Jika user yang sedang login mengalami update status (misal di-ACC admin di device lain), perbarui otomatis
-        const activeUserId = AppStorage.getSessionUser()?.id;
-        if (activeUserId) {
-          const freshCurrent = dedupedMerged.find((u) => u.id === activeUserId);
+        // Jika user yang sedang login mengalami update status atau tipe kepegawaian (misal di-update admin di device lain), perbarui otomatis
+        const activeUser = AppStorage.getSessionUser() || AppStorage.getCurrentUser();
+        const activeUserId = activeUser?.id;
+        const activeUserEmail = activeUser?.email ? activeUser.email.trim().toLowerCase() : '';
+        if (activeUserId || activeUserEmail) {
+          const freshCurrent = dedupedMerged.find(
+            (u) =>
+              (activeUserId && u.id === activeUserId) ||
+              (activeUserEmail && u.email && u.email.trim().toLowerCase() === activeUserEmail)
+          );
           if (freshCurrent) {
             setCurrentUser(freshCurrent);
             setSessionUser(freshCurrent);
+            AppStorage.saveCurrentUser(freshCurrent);
           } else if (activeUserId !== 'usr_super_admin') {
             // User sudah dihapus oleh Super Admin
             handleLogout();
@@ -342,6 +349,40 @@ export default function App() {
         setTasks(mergedTasks);
       }
 
+      // 4b. Ambil data logbook harian dari server (agar semua akun dapat saling melihat)
+      const serverLogs = await ApiClient.getDailyLogs().catch(() => null);
+      if (Array.isArray(serverLogs) && serverLogs.length > 0) {
+        const localLogs = AppStorage.getDailyTasks();
+        const mergedLogs = [...localLogs];
+        for (const sl of serverLogs) {
+          const mappedTasks = Array.isArray(sl.tasks)
+            ? sl.tasks
+            : (Array.isArray(sl.daftar_tugas) ? sl.daftar_tugas : []);
+          const uId = sl.userId || sl.pengguna_id || sl.user_id;
+          const tDate = sl.date || sl.tanggal;
+          if (!uId || !tDate) continue;
+          const idx = mergedLogs.findIndex(
+            (l) => (l.id && l.id === sl.id) || (l.userId === uId && l.date === tDate)
+          );
+          const mappedLog: DailyTaskLog = {
+            id: sl.id ? String(sl.id) : `dt_${uId}_${tDate}`,
+            userId: uId,
+            userName: sl.userName || sl.nama_karyawan || sl.user_name || '',
+            date: tDate,
+            tasks: mappedTasks,
+            notes: sl.notes || sl.catatan || '',
+            submittedAt: sl.submittedAt || sl.created_at || '',
+            updatedAt: sl.updatedAt || sl.updated_at || '',
+          };
+          if (idx >= 0) {
+            mergedLogs[idx] = { ...mergedLogs[idx], ...mappedLog };
+          } else {
+            mergedLogs.push(mappedLog);
+          }
+        }
+        AppStorage.saveDailyTasks(mergedLogs);
+      }
+
       // 5. Ambil data ruang obrolan / topik chat dari server
       const serverTopics = await ApiClient.getChatTopics().catch(() => null);
       if (Array.isArray(serverTopics) && serverTopics.length > 0) {
@@ -433,6 +474,8 @@ export default function App() {
 
     window.addEventListener('absenku:leaves_updated', handleSync);
     window.addEventListener('absenku:tasks_updated', handleSync);
+    window.addEventListener('absenku:users_updated', handleSync);
+    window.addEventListener('absenku:attendance_updated', handleSync);
     window.addEventListener('storage', handleSync);
 
     // Auto-sync berkala setiap 5 detik agar multi-device (Laptop & HP) selalu up-to-date realtime
@@ -443,6 +486,8 @@ export default function App() {
     return () => {
       window.removeEventListener('absenku:leaves_updated', handleSync);
       window.removeEventListener('absenku:tasks_updated', handleSync);
+      window.removeEventListener('absenku:users_updated', handleSync);
+      window.removeEventListener('absenku:attendance_updated', handleSync);
       window.removeEventListener('storage', handleSync);
       clearInterval(timer);
     };
