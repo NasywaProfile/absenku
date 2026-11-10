@@ -342,7 +342,10 @@ export function AttendanceHistory({
             statusColor = 'emerald';
           }
 
-          const locationText = isFreelance
+          const isOffDay = ds.key === 'LEAVE' || ds.key === 'SICK';
+          const locationText = isOffDay
+            ? undefined
+            : isFreelance
             ? 'Otomatis (Kantor/Rumah)'
             : isWfh
             ? 'Dari Rumah'
@@ -350,8 +353,6 @@ export function AttendanceHistory({
             ? 'Dinas Luar'
             : isOutOfRange
             ? 'Di Luar Kantor'
-            : (ds.key === 'LEAVE' || ds.key === 'SICK')
-            ? 'Bebas Absen'
             : 'Area Kantor';
 
           const userDailyTask = dailyTasks?.find(
@@ -2705,13 +2706,15 @@ export function AttendanceHistory({
                             ? 'amber'
                             : 'emerald',
                         locationBadge:
-                          leaveCategory === 'WFH' || updated.clockInLocationStatus === 'WFH_APPROVED'
+                          leaveCategory === 'SICK' || leaveCategory === 'LEAVE'
+                            ? undefined
+                            : leaveCategory === 'WFH' || updated.clockInLocationStatus === 'WFH_APPROVED'
                             ? 'WFH'
                             : leaveCategory === 'BUSINESS_TRIP' || updated.clockInLocationStatus === 'DINAS_APPROVED'
                             ? 'Dinas Luar'
                             : updated.clockInLocationStatus === 'IN_OFFICE'
                             ? 'Area Kantor'
-                            : 'Luar Radius',
+                            : 'Di Luar Kantor',
                       }
                     : m
                 ),

@@ -293,34 +293,40 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                           </span>
                         ) : null}
 
-                        {member.locationBadge && (
-                          <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getLocationBadgeStyle(
-                              member.locationBadge
-                            )}`}
-                          >
-                            {(() => {
-                              const text = (member.locationBadge || '').toLowerCase();
-                              if (text.includes('wfh') || text.includes('rumah')) {
-                                return <Laptop className="w-2.5 h-2.5 text-sky-600 shrink-0" />;
-                              }
-                              if (text.includes('dinas')) {
-                                return <MapPin className="w-2.5 h-2.5 text-amber-600 shrink-0" />;
-                              }
-                              if (text.includes('luar') || text.includes('radius')) {
-                                return <AlertTriangle className="w-2.5 h-2.5 text-rose-600 shrink-0" />;
-                              }
-                              if (text.includes('dokter') || text.includes('sakit')) {
-                                return <FileText className="w-2.5 h-2.5 text-rose-600 shrink-0" />;
-                              }
-                              if (text.includes('izin') || text.includes('resmi') || text.includes('cuti')) {
-                                return <CalendarDays className="w-2.5 h-2.5 text-sky-600 shrink-0" />;
-                              }
-                              return <Building2 className="w-2.5 h-2.5 text-teal-600 shrink-0" />;
-                            })()}
-                            <span>{member.locationBadge}</span>
-                          </span>
-                        )}
+                        {/* Keterangan Lokasi: Hilangkan jika status adalah Cuti / Izin atau Sakit */}
+                        {(() => {
+                          const isOff = Boolean(
+                            member.statusBadge && (
+                              member.statusBadge.toLowerCase().includes('sakit') ||
+                              member.statusBadge.toLowerCase().includes('cuti') ||
+                              member.statusBadge.toLowerCase().includes('izin')
+                            )
+                          );
+                          if (isOff || !member.locationBadge) return null;
+
+                          return (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getLocationBadgeStyle(
+                                member.locationBadge
+                              )}`}
+                            >
+                              {(() => {
+                                const text = (member.locationBadge || '').toLowerCase();
+                                if (text.includes('wfh') || text.includes('rumah')) {
+                                  return <Laptop className="w-2.5 h-2.5 text-sky-600 shrink-0" />;
+                                }
+                                if (text.includes('dinas')) {
+                                  return <MapPin className="w-2.5 h-2.5 text-amber-600 shrink-0" />;
+                                }
+                                if (text.includes('luar') || text.includes('radius')) {
+                                  return <AlertTriangle className="w-2.5 h-2.5 text-rose-600 shrink-0" />;
+                                }
+                                return <Building2 className="w-2.5 h-2.5 text-teal-600 shrink-0" />;
+                              })()}
+                              <span>{member.locationBadge}</span>
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
 
