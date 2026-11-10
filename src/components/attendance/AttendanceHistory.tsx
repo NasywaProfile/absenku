@@ -20,7 +20,6 @@ import {
   User as UserIcon,
   Edit3,
   MapPin,
-  Trash2,
   AlertTriangle,
   Lock,
   Globe,
@@ -209,7 +208,6 @@ export function AttendanceHistory({
     currentUser.role === 'SUPER_ADMIN' ? 'matrix' : 'matrix'
   );
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
-  const [showClearAllModal, setShowClearAllModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
@@ -1451,19 +1449,7 @@ export function AttendanceHistory({
               </button>
             </Tooltip>
 
-            {isAdmin && (
-              <Tooltip content="Hapus seluruh riwayat presensi karyawan" position="bottom">
-                <button
-                  type="button"
-                  onClick={() => setShowClearAllModal(true)}
-                  aria-label="Hapus Semua Riwayat Presensi"
-                  className="h-9.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl transition-all shadow-2xs cursor-pointer shrink-0 flex items-center justify-center gap-1.5 active:scale-95 border border-rose-200 text-xs font-semibold"
-                >
-                  <Trash2 className="w-4 h-4 text-rose-600" />
-                  <span className="hidden sm:inline">Hapus Semua</span>
-                </button>
-              </Tooltip>
-            )}
+
           </div>
 
           {/* BARIS 2 (BAWAH MOBILE) */}
@@ -2725,24 +2711,7 @@ export function AttendanceHistory({
         />
       )}
 
-      {/* MODAL KONFIRMASI HAPUS RIWAYAT PRESENSI & UJI */}
-      <ModernConfirmDialog
-        isOpen={showClearAllModal}
-        title="Bersihkan Riwayat Presensi Uji Lampau?"
-        message="Semua catatan riwayat presensi dan pengajuan izin dummy lampau (sebelum hari ini) akan dibersihkan. Presensi hari ini tetap dipertahankan untuk pengujian."
-        confirmText="Bersihkan Data Uji"
-        cancelText="Batal"
-        variant="danger"
-        onConfirm={() => {
-          AppStorage.clearPastTestHistory();
-          if (onClearAllAttendance) {
-            onClearAllAttendance();
-          }
-          setShowClearAllModal(false);
-          window.location.reload();
-        }}
-        onCancel={() => setShowClearAllModal(false)}
-      />
+
 
     </div>
   );

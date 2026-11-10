@@ -18,7 +18,6 @@ import {
   ShieldCheck,
   User as UserIcon,
   ChevronDown,
-  Trash2,
 } from 'lucide-react';
 import { LeaveRequest, LeaveCategory, User } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
@@ -64,7 +63,6 @@ export function TeamLeaveApprovals({
   const hasActiveFilters = filterCategory !== 'ALL' || filterStatus !== 'ALL' || specificDateFilter !== '';
 
   // Delete & Reject Dialogs
-  const [deleteTarget, setDeleteTarget] = useState<LeaveRequest | null>(null);
   const [isRejectModalFullScreen, setIsRejectModalFullScreen] = useState(false);
   const [rejectDialog, setRejectDialog] = useState<{
     isOpen: boolean;
@@ -126,16 +124,7 @@ export function TeamLeaveApprovals({
     }
   };
 
-  const handleDelete = () => {
-    if (deleteTarget) {
-      AppStorage.deleteLeaveRequest(deleteTarget.id);
-      if (onDelete) {
-        onDelete(deleteTarget.id);
-      }
-      setDeleteTarget(null);
-      notifyUpdated();
-    }
-  };
+
 
   const handleCopyWA = async (leave: LeaveRequest) => {
     const text = generateWhatsAppLeaveRecap(leave);
@@ -510,15 +499,7 @@ export function TeamLeaveApprovals({
                               </button>
                             </>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => setDeleteTarget(req)}
-                            className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition-all cursor-pointer flex items-center justify-center shadow-2xs active:scale-95"
-                            title="Hapus Pengajuan Izin"
-                            aria-label="Hapus Pengajuan Izin"
-                          >
-                            <Trash2 className="w-4 h-4 stroke-[2]" />
-                          </button>
+
                         </div>
                       </td>
                     </tr>
@@ -623,21 +604,7 @@ export function TeamLeaveApprovals({
         profile={simpleProfilePopup}
       />
 
-      {/* Dialog Konfirmasi Hapus Pengajuan Izin */}
-      <ModernConfirmDialog
-        isOpen={!!deleteTarget}
-        title="Hapus Pengajuan Izin"
-        message={
-          deleteTarget
-            ? `Apakah Anda yakin ingin menghapus data perizinan ${categoryLabels[deleteTarget.category] || deleteTarget.category} dari "${deleteTarget.userName}" (${formatShortDate(deleteTarget.startDate)} s/d ${formatShortDate(deleteTarget.endDate)})? Data yang dihapus tidak dapat dipulihkan.`
-            : ''
-        }
-        variant="danger"
-        confirmText="Hapus Pengajuan"
-        cancelText="Batal"
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
-      />
+
     </div>
   );
 }
