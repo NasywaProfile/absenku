@@ -122,7 +122,7 @@ export function EditAttendanceModal({
       ...record,
       clockInLocationStatus: effectiveLocationStatus,
       clockInStatus: isOffSelected ? 'ON_TIME' : attendanceStatus,
-      clockInTime: isOffSelected ? undefined : `${clockInTime} WIB`,
+      clockInTime: isOffSelected ? '' : `${clockInTime} WIB`,
       clockInLateMinutes: !isOffSelected && attendanceStatus === 'LATE' ? Math.max(1, lateMinutes) : 0,
       clockInDistanceMeter:
         isOffSelected

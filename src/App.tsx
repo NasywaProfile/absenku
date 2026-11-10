@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AuthPage } from './components/auth/AuthPage.tsx';
 import { AppShell } from './components/layout/AppShell.tsx';
 import { NeoBrutalistDashboard } from './components/dashboard/NeoBrutalistDashboard.tsx';
@@ -201,7 +201,8 @@ export default function App() {
           if (freshCurrent) {
             setCurrentUser(freshCurrent);
             setSessionUser(freshCurrent);
-            AppStorage.saveCurrentUser(freshCurrent);
+            AppStorage.setCurrentUserId(freshCurrent.id);
+            AppStorage.updateUser(freshCurrent);
           } else if (activeUserId !== 'usr_super_admin') {
             // User sudah dihapus oleh Super Admin
             handleLogout();
@@ -372,6 +373,8 @@ export default function App() {
             id: sl.id ? String(sl.id) : `dt_${uId}_${tDate}`,
             userId: uId,
             userName: sl.userName || sl.nama_karyawan || sl.user_name || '',
+            userAvatar: sl.userAvatar || sl.foto_karyawan || '',
+            employmentType: sl.employmentType || sl.tipe_kepegawaian || 'CONTRACT',
             date: tDate,
             tasks: mappedTasks,
             notes: sl.notes || sl.catatan || '',
