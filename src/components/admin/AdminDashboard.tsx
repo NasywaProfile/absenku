@@ -50,7 +50,7 @@ import {
 import { EmployeeDetailDrawer } from './EmployeeDetailDrawer.tsx';
 import { EditAttendanceModal } from './EditAttendanceModal.tsx';
 import { AppStorage } from '../../lib/storage.ts';
-import { getDailyStatus, getCalendarCell, isOffCategory } from '../../lib/attendance-status.ts';
+import { getDailyStatus, getCalendarCell, isOffCategory, getApprovedLeaveForDate } from '../../lib/attendance-status.ts';
 import { EmptyStateTaskIllustration } from '../common/Illustrations.tsx';
 import { Tooltip } from '../ui/tooltip.tsx';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
@@ -199,7 +199,7 @@ export function AdminDashboard({
         return false;
       });
 
-      return Boolean(tagged.length === 0 || isTagged || isCreator);
+      return Boolean(isTagged || isCreator);
     });
   }, [chatTopics, currentUser, users]);
 
@@ -2016,141 +2016,140 @@ export function AdminDashboard({
                 </div>
               </div>
 
-              {/* Grid Status & Waktu */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Jam Presensi Masuk</span>
-                  <p className="font-bold text-slate-900 text-sm">{selectedAttendanceDetail.clockInTime} WIB</p>
-                  <p className="text-[11px] text-slate-500">{formatIndonesianDate(selectedAttendanceDetail.date)}</p>
-                </div>
+              {/* Grid Status, Waktu, & Lokasi (Sinkron dengan Izin/Sakit/Cuti & Presensi Edit) */}
+              {(() => {
+                const leaves = AppStorage.getLeaveRequests();
+                const approvedLeave = getApprovedLeaveForDate(
+                  leaves,
+                  { id: selectedAttendanceDetail.userId, name: selectedAttendanceDetail.userName },
+                  selectedAttendanceDetail.date
+                );
+                const isSick = approvedLeave?.category === 'SICK';
+                const isLeave = approvedLeave?.category === 'LEAVE';
+                const isOff = isSick || isLeave;
 
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status Kehadiran</span>
-                  <div>
-                    {(() => {
-                      const isWfh = selectedAttendanceDetail.workMode === 'WFH' || selectedAttendanceDetail.clockInLocationStatus === 'WFH_APPROVED';
-                      const isDinas = selectedAttendanceDetail.workMode === 'DINAS' || selectedAttendanceDetail.clockInLocationStatus === 'DINAS_APPROVED';
-                      const isLate = selectedAttendanceDetail.clockInStatus === 'LATE';
-                      const lateMin = selectedAttendanceDetail.clockInLateMinutes || 0;
+                const isWfh = !isOff && (selectedAttendanceDetail.workMode === 'WFH' || selectedAttendanceDetail.clockInLocationStatus === 'WFH_APPROVED' || approvedLeave?.category === 'WFH');
+                const isDinas = !isOff && (selectedAttendanceDetail.workMode === 'DINAS' || selectedAttendanceDetail.clockInLocationStatus === 'DINAS_APPROVED' || approvedLeave?.category === 'BUSINESS_TRIP');
+                const isLate = !isOff && selectedAttendanceDetail.clockInStatus === 'LATE';
+                const lateMin = selectedAttendanceDetail.clockInLateMinutes || 0;
 
-                      if (isWfh) {
-                        return (
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${
-                            isLate && lateMin > 0
-                              ? 'bg-[#FEF3C7] text-[#B45309] border border-amber-300'
-                              : 'bg-[#E0E7FF] text-[#4338CA] border border-indigo-200'
-                          }`}>
-                            <span>WFH</span>
-                            {isLate && lateMin > 0 ? (
-                              <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded-md">
-                                • Terlambat ({lateMin}m)
-                              </span>
-                            ) : null}
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Jam Presensi Masuk</span>
+                        <p className="font-bold text-slate-900 text-sm">
+                          {isOff ? 'Bebas Presensi (OFF)' : `${selectedAttendanceDetail.clockInTime} WIB`}
+                        </p>
+                        <p className="text-[11px] text-slate-500">{formatIndonesianDate(selectedAttendanceDetail.date)}</p>
+                      </div>
+
+                      <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status Kehadiran</span>
+                        <div>
+                          {isSick ? (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1">
+                              <span>Sakit</span>
+                            </span>
+                          ) : isLeave ? (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200 inline-flex items-center gap-1">
+                              <span>Cuti / Izin</span>
+                            </span>
+                          ) : isWfh ? (
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${
+                              isLate && lateMin > 0
+                                ? 'bg-[#FEF3C7] text-[#B45309] border border-amber-300'
+                                : 'bg-[#E0E7FF] text-[#4338CA] border border-indigo-200'
+                            }`}>
+                              <span>WFH</span>
+                              {isLate && lateMin > 0 ? (
+                                <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded-md">
+                                  • Terlambat ({lateMin}m)
+                                </span>
+                              ) : null}
+                            </span>
+                          ) : isDinas ? (
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${
+                              isLate && lateMin > 0
+                                ? 'bg-[#FEF3C7] text-[#B45309] border border-amber-300'
+                                : 'bg-purple-50 text-purple-800 border border-purple-200'
+                            }`}>
+                              <span>Dinas Luar</span>
+                              {isLate && lateMin > 0 ? (
+                                <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded-md">
+                                  • Terlambat ({lateMin}m)
+                                </span>
+                              ) : null}
+                            </span>
+                          ) : isLate ? (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A] inline-flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-[#B45309]" />
+                              <span>Terlambat {lateMin > 0 ? `(${lateMin}m)` : ''}</span>
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#DCFCE7] text-[#15803D] border border-[#86EFAC] inline-flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-[#15803D]" />
+                              <span>Hadir</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Mode Kerja & Lokasi Geofence */}
+                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mode Kerja &amp; Lokasi</span>
+                        {isSick ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+                            <span>Sakit</span>
                           </span>
-                        );
-                      }
-
-                      if (isDinas) {
-                        return (
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${
-                            isLate && lateMin > 0
-                              ? 'bg-[#FEF3C7] text-[#B45309] border border-amber-300'
-                              : 'bg-purple-50 text-purple-800 border border-purple-200'
-                          }`}>
+                        ) : isLeave ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
+                            <span>Cuti / Izin</span>
+                          </span>
+                        ) : isWfh ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
+                            <Laptop className="w-3 h-3 text-sky-600" />
+                            <span>Rumah / WFH</span>
+                          </span>
+                        ) : isDinas ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            <MapPin className="w-3 h-3 text-amber-600" />
                             <span>Dinas Luar</span>
-                            {isLate && lateMin > 0 ? (
-                              <span className="text-[10px] font-extrabold text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded-md">
-                                • Terlambat ({lateMin}m)
-                              </span>
-                            ) : null}
                           </span>
-                        );
-                      }
-
-                      if (isLate) {
-                        return (
-                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A] inline-flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-[#B45309]" />
-                            <span>Terlambat {lateMin > 0 ? `(${lateMin}m)` : ''}</span>
+                        ) : selectedAttendanceDetail.clockInLocationStatus === 'IN_OFFICE' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                            <Building2 className="w-3 h-3 text-teal-600" />
+                            <span>Di Kantor</span>
                           </span>
-                        );
-                      }
-
-                      return (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#DCFCE7] text-[#15803D] border border-[#86EFAC] inline-flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-[#15803D]" />
-                          <span>Hadir</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+                            <MapPin className="w-3 h-3 text-rose-600" />
+                            <span>Di Luar Kantor</span>
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-600 flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                        <span>
+                          {isSick
+                            ? 'Karyawan sedang sakit (bebas presensi)'
+                            : isLeave
+                            ? 'Karyawan sedang cuti / izin resmi (bebas presensi)'
+                            : isWfh
+                            ? `Lokasi WFH Terdaftar${selectedAttendanceDetail.clockInDistanceMeter > 0 ? ` (${Math.round(selectedAttendanceDetail.clockInDistanceMeter)}m dari kantor)` : ''}`
+                            : isDinas
+                            ? 'Lokasi Tugas Dinas Luar Terdaftar'
+                            : selectedAttendanceDetail.clockInLocationStatus === 'IN_OFFICE'
+                            ? `Dalam Radius Geofence Kantor${selectedAttendanceDetail.clockInDistanceMeter > 0 ? ` (${Math.round(selectedAttendanceDetail.clockInDistanceMeter)}m)` : ''}`
+                            : `Di Luar Radius Kantor${selectedAttendanceDetail.clockInDistanceMeter > 0 ? ` (${Math.round(selectedAttendanceDetail.clockInDistanceMeter)}m)` : ''}`}
                         </span>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-
-              {/* Mode Kerja & Lokasi Geofence */}
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mode Kerja &amp; Lokasi</span>
-                  {(() => {
-                    const isWfh = selectedAttendanceDetail.workMode === 'WFH' || selectedAttendanceDetail.clockInLocationStatus === 'WFH_APPROVED';
-                    const isDinas = selectedAttendanceDetail.workMode === 'DINAS' || selectedAttendanceDetail.clockInLocationStatus === 'DINAS_APPROVED';
-                    const inOffice = selectedAttendanceDetail.clockInLocationStatus === 'IN_OFFICE';
-
-                    if (isWfh) {
-                      return (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
-                          <Laptop className="w-3 h-3 text-sky-600" />
-                          <span>Rumah / WFH</span>
-                        </span>
-                      );
-                    }
-                    if (isDinas) {
-                      return (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                          <MapPin className="w-3 h-3 text-amber-600" />
-                          <span>Dinas Luar</span>
-                        </span>
-                      );
-                    }
-                    if (inOffice) {
-                      return (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
-                          <Building2 className="w-3 h-3 text-teal-600" />
-                          <span>Di Kantor</span>
-                        </span>
-                      );
-                    }
-                    return (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
-                        <MapPin className="w-3 h-3 text-rose-600" />
-                        <span>Di Luar Kantor</span>
-                      </span>
-                    );
-                  })()}
-                </div>
-                <div className="text-xs text-slate-600 flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-                  <span>
-                    {(() => {
-                      const isWfh = selectedAttendanceDetail.workMode === 'WFH' || selectedAttendanceDetail.clockInLocationStatus === 'WFH_APPROVED';
-                      const isDinas = selectedAttendanceDetail.workMode === 'DINAS' || selectedAttendanceDetail.clockInLocationStatus === 'DINAS_APPROVED';
-                      const inOffice = selectedAttendanceDetail.clockInLocationStatus === 'IN_OFFICE';
-                      const dist = selectedAttendanceDetail.clockInDistanceMeter > 0 ? `${Math.round(selectedAttendanceDetail.clockInDistanceMeter)}m` : '';
-
-                      if (isWfh) {
-                        return `Lokasi WFH Terdaftar${dist ? ` (${dist} dari kantor)` : ''}`;
-                      }
-                      if (isDinas) {
-                        return 'Lokasi Tugas Dinas Luar Terdaftar';
-                      }
-                      if (inOffice) {
-                        return `Dalam Radius Geofence Kantor${dist ? ` (${dist})` : ''}`;
-                      }
-                      return `Di Luar Radius Kantor${dist ? ` (${dist})` : ''}`;
-                    })()}
-                  </span>
-                </div>
-              </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* Bukti Foto Selfie Presensi Masuk (Jika Ada) */}
               {selectedAttendanceDetail.clockInPhoto && (
@@ -2487,10 +2486,16 @@ export function AdminDashboard({
             if (onUpdateAttendanceRecord) {
               onUpdateAttendanceRecord(updated);
             }
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('absenku:attendance_updated', { detail: updated }));
+              window.dispatchEvent(new CustomEvent('absenku:leaves_updated'));
+            }
             setEditingAttendanceRecord(null);
             if (returnToAttendanceDetailOnClose) {
               setSelectedAttendanceDetail(updated);
               setReturnToAttendanceDetailOnClose(null);
+            } else if (selectedAttendanceDetail && selectedAttendanceDetail.id === updated.id) {
+              setSelectedAttendanceDetail(updated);
             }
           }}
         />

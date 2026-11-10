@@ -138,7 +138,7 @@ export function NeoBrutalistDashboard({
         return false;
       });
 
-      return Boolean(tagged.length === 0 || isTagged || isCreator);
+      return Boolean(isTagged || isCreator);
     });
   }, [chatTopicsList, currentUser, users]);
 

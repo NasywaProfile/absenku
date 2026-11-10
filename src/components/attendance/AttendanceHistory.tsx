@@ -45,7 +45,6 @@ import { SimpleProfileModal, SimpleProfileData } from '../common/SimpleProfileMo
 import { TeamMembersModal, TeamMemberItem } from '../common/TeamMembersModal.tsx';
 import { EditAttendanceModal } from '../admin/EditAttendanceModal.tsx';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
-import { SAMPLE_FALLBACK_PDF } from '../../lib/open-media.ts';
 import {
   getDailyStatus,
   getStatusStyle,
@@ -519,12 +518,9 @@ export function AttendanceHistory({
         );
 
         const isSick = st === 'Sakit';
-        const attachmentName =
-          matchedLeave?.attachmentName || (isSick ? 'Surat_Keterangan_Dokter.pdf' : undefined);
-        const attachmentData =
-          matchedLeave?.attachmentData || (isSick ? SAMPLE_FALLBACK_PDF : undefined);
-        const attachmentType =
-          matchedLeave?.attachmentType || (isSick ? 'application/pdf' : undefined);
+        const attachmentName = matchedLeave?.attachmentName;
+        const attachmentData = matchedLeave?.attachmentData;
+        const attachmentType = matchedLeave?.attachmentType;
 
         list.push({
           id: userObj?.id || matchedLeave?.userId,
@@ -559,12 +555,9 @@ export function AttendanceHistory({
         if (!addedNames.has(l.userName)) {
           const userObj = users.find((u) => u.id === l.userId || safeLower(u.name) === safeLower(l.userName));
           const isSick = l.category === 'SICK';
-          const attachmentName =
-            l.attachmentName || (isSick ? 'Surat_Keterangan_Dokter.pdf' : undefined);
-          const attachmentData =
-            l.attachmentData || (isSick ? SAMPLE_FALLBACK_PDF : undefined);
-          const attachmentType =
-            l.attachmentType || (isSick ? 'application/pdf' : undefined);
+          const attachmentName = l.attachmentName;
+          const attachmentData = l.attachmentData;
+          const attachmentType = l.attachmentType;
 
           list.push({
             id: l.userId || userObj?.id,

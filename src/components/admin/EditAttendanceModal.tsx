@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   MapPin,
   Clock,
@@ -83,6 +83,30 @@ export function EditAttendanceModal({
     return clean.length >= 4 ? clean.substring(0, 5) : '08:00';
   });
   const [isFullScreen, setIsFullScreen] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !record) return;
+    const leaves = AppStorage.getLeaveRequests();
+    const l = getApprovedLeaveForDate(leaves, { id: record.userId, name: record.userName }, record.date);
+    if (l) {
+      setLeaveCategory(l.category);
+    } else if (record.clockInLocationStatus === 'WFH_APPROVED' || record.workMode === 'WFH') {
+      setLeaveCategory('WFH');
+    } else if (record.clockInLocationStatus === 'DINAS_APPROVED' || record.workMode === 'DINAS') {
+      setLeaveCategory('BUSINESS_TRIP');
+    } else {
+      setLeaveCategory('NONE');
+    }
+
+    setLocationStatus(record.clockInLocationStatus === 'OUT_OF_RANGE' ? 'OUT_OF_RANGE' : 'IN_OFFICE');
+    setAttendanceStatus(record.clockInStatus || 'ON_TIME');
+    setLateMinutes(record.clockInLateMinutes || 0);
+    setNotes(record.notes || l?.reason || '');
+
+    const raw = record.clockInTime || '08:00';
+    const clean = raw.replace(/\s*WIB/i, '').trim();
+    setClockInTime(clean.length >= 4 ? clean.substring(0, 5) : '08:00');
+  }, [record, isOpen]);
 
   // Cuti/Izin & Sakit = OFF (bebas presensi). WFH & Dinas Luar tetap bekerja.
   const isOffSelected = leaveCategory === 'LEAVE' || leaveCategory === 'SICK';

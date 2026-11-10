@@ -498,12 +498,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
 
       // Access Control: Admin/Superadmin memiliki akses pemantauan penuh,
       // topik umum tanpa tag terbuka untuk semua, atau khusus akun yang ditandai / pembuat
-      const isAssignee = Boolean(
-        isAdminOrSuperAdmin ||
-        tagged.length === 0 ||
-        isTagged ||
-        isCreator
-      );
+      const isAssignee = Boolean(isTagged || isCreator);
 
       if (!isAssignee) {
         return false;
