@@ -580,6 +580,11 @@ export default function App() {
   const executeResetData = () => {
     AppStorage.resetToDefault();
     loadData();
+    window.dispatchEvent(new CustomEvent('absenku:attendance_updated'));
+    window.dispatchEvent(new CustomEvent('absenku:leaves_updated'));
+    window.dispatchEvent(new CustomEvent('absenku:tasks_updated'));
+    window.dispatchEvent(new CustomEvent('absenku:chat_updated'));
+    window.dispatchEvent(new CustomEvent('absenku:users_updated'));
   };
 
   const handleSaveOfficeConfig = (newCfg: OfficeConfig) => {

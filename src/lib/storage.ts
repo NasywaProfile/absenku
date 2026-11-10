@@ -178,13 +178,13 @@ try {
 }
 
 // Bersihkan semua data dummy karyawan dan seluruh historinya (hanya sisakan Super Admin)
-const PURGE_FLAG = 'absenku_clean_superadmin_v11';
+const PURGE_FLAG = 'absenku_clean_fresh_start_20261110_all_history_cleared';
 try {
   const isPurged = localStorage.getItem(PURGE_FLAG);
   if (!isPurged) {
     // Inisialisasi bersih: hanya Super Admin, seluruh histori dummy karyawan dibersihkan
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID);
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, 'usr_super_admin');
     localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.DAILY_TASKS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify([]));
@@ -194,6 +194,8 @@ try {
     localStorage.setItem(STORAGE_KEYS.IDEAS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.CHAT_TOPICS, JSON.stringify([]));
     localStorage.removeItem('absenku_offline_queue');
+    localStorage.removeItem('absenku_deleted_task_ids');
+    localStorage.removeItem('absenku_auth_token');
 
     if (!localStorage.getItem(STORAGE_KEYS.OFFICE_CONFIG)) {
       localStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(INITIAL_OFFICE_CONFIG));
@@ -389,6 +391,8 @@ export const AppStorage = {
     localStorage.setItem(STORAGE_KEYS.IDEAS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.CHAT_TOPICS, JSON.stringify([]));
     localStorage.removeItem('absenku_offline_queue');
+    localStorage.removeItem('absenku_deleted_task_ids');
+    localStorage.removeItem('absenku_auth_token');
   },
 
   getUserById(id: string): User | null {
@@ -416,7 +420,7 @@ export const AppStorage = {
       (u) =>
         u.email.toLowerCase() === cleanId ||
         u.id.toLowerCase() === cleanId ||
-        (cleanId === 'superadmin' && u.role === 'SUPER_ADMIN')
+        ((cleanId === 'superadmin' || cleanId === 'superadmin@gmail.com') && u.role === 'SUPER_ADMIN')
     );
     if (!found) return null;
     // Password WAJIB diisi dan harus cocok (tidak ada lagi bypass dengan password kosong)

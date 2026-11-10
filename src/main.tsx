@@ -81,7 +81,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 // Pastikan browser memuat versi aplikasi paling mutakhir tanpa cache lawas
-const BUILD_VERSION = 'absenku_v20261110_rev1';
+const BUILD_VERSION = 'absenku_v20261110_clean_fresh_start';
 
 if (typeof window !== 'undefined') {
   if ('serviceWorker' in navigator) {
