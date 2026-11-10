@@ -794,12 +794,12 @@ export function MyLeaveRequests({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setCancelTargetId(req.id);
+                            setSelectedLeaveDetail(req);
                           }}
-                          title="Hapus Pengajuan (Uji Coba)"
-                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-rose-200 shadow-2xs active:scale-95"
+                          className="px-3.5 py-1.5 bg-[#F0F5FA] group-hover:bg-[#1E3A8A] text-[#1E3A8A] group-hover:text-white font-bold rounded-xl text-xs transition-all duration-150 shadow-2xs cursor-pointer border border-blue-200/50"
+                          title="Lihat Rincian Pengajuan"
                         >
-                          <Trash2 className="w-4 h-4 mx-auto" />
+                          Detail
                         </button>
                       </td>
                     </tr>
@@ -883,9 +883,7 @@ export function MyLeaveRequests({
                 onClick={() => executeCancelLeave(cancelTargetId)}
                 className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs active:scale-95"
               >
-                {leaves.find((l) => l.id === cancelTargetId)?.status === 'APPROVED'
-                  ? 'Ya, Hapus (Test)'
-                  : 'Ya, Batalkan'}
+                Ya, Batalkan
               </button>
             </div>
           </div>
@@ -1239,19 +1237,19 @@ export function MyLeaveRequests({
               )}
             </div>
 
-            <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-end gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  executeCancelLeave(selectedLeaveDetail.id);
-                }}
-                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition-colors flex items-center gap-1.5"
-                title="Hapus pengajuan izin ini (Uji Coba)"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Hapus Pengajuan (Uji Coba)</span>
-              </button>
-            </div>
+            {selectedLeaveDetail.status === 'PENDING' && (
+              <div className="px-6 py-4.5 border-t border-slate-100 bg-white flex items-center justify-end gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    executeCancelLeave(selectedLeaveDetail.id);
+                  }}
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition-colors"
+                >
+                  Batalkan Pengajuan Ini
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
