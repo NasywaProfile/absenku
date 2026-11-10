@@ -240,7 +240,7 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                       </div>
 
                       {/* Kanan / Bawah pada Mobile: Badge Waktu Presensi Masuk (Atas) & Badge Lokasi (Bawah) */}
-                      <div className="flex items-center flex-wrap sm:flex-col sm:items-end gap-1.5 sm:gap-1 shrink-0 w-full sm:w-auto">
+                      <div className="flex flex-col sm:items-end gap-1.5 sm:gap-1 shrink-0 w-full sm:w-auto">
                         {member.clockInTime ? (
                           (() => {
                             const isLate =
@@ -257,7 +257,7 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
 
                             return (
                               <span
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border shadow-2xs ${
+                                className={`flex sm:inline-flex items-center justify-center gap-1.5 px-3 py-1 sm:py-0.5 rounded-full text-xs font-semibold border shadow-2xs w-full sm:w-auto text-center ${
                                   isLate
                                     ? 'bg-[#FEF3C7] text-[#B45309] border-[#FCD34D]'
                                     : 'bg-[#DCFCE7] text-[#15803D] border-[#86EFAC]'
@@ -276,7 +276,7 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                           })()
                         ) : member.statusBadge ? (
                           <span
-                            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border shadow-2xs ${getStatusBadgeStyle(
+                            className={`flex sm:inline-flex items-center justify-center gap-1 px-3 py-1 rounded-full text-xs font-semibold border shadow-2xs w-full sm:w-auto text-center ${getStatusBadgeStyle(
                               member.statusColor
                             )}`}
                           >
@@ -306,7 +306,7 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
 
                           return (
                             <span
-                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getLocationBadgeStyle(
+                              className={`flex sm:inline-flex items-center justify-center gap-1 px-3 py-1 sm:py-0.5 rounded-full text-[10px] font-bold border w-full sm:w-auto text-center ${getLocationBadgeStyle(
                                 member.locationBadge
                               )}`}
                             >
