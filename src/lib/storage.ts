@@ -178,7 +178,7 @@ try {
 }
 
 // Bersihkan semua data dummy karyawan dan seluruh historinya (hanya sisakan Super Admin)
-const PURGE_FLAG = 'absenku_clean_fresh_start_20261110_all_history_cleared';
+const PURGE_FLAG = 'absenku_clean_fresh_start_20261110_v6_superadmin_pure_zero_history';
 try {
   const isPurged = localStorage.getItem(PURGE_FLAG);
   if (!isPurged) {
