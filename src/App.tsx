@@ -41,6 +41,7 @@ export default function App() {
   const [showResetAppModal, setShowResetAppModal] = useState<boolean>(false);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState<string | null>(null);
   const [isClockInModalOpen, setIsClockInModalOpen] = useState<boolean>(false);
+  const [isOnboardingRegistration, setIsOnboardingRegistration] = useState<boolean>(false);
 
   // Muat state dari persistent local storage
   const loadData = useCallback(() => {
@@ -873,7 +874,8 @@ export default function App() {
   if (!sessionUser) {
     return (
       <AuthPage
-        onLoginSuccess={(loggedInUser) => {
+        onLoginSuccess={(loggedInUser, isRegistration = false) => {
+          setIsOnboardingRegistration(Boolean(isRegistration));
           setActiveTab('dashboard'); // Selalu arahkan langsung ke halaman beranda saat login
           setSessionUser(loggedInUser);
           setCurrentUser(loggedInUser);
@@ -902,34 +904,44 @@ export default function App() {
 
   const isAdmin = currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN';
 
-  // Karyawan diarahkan ke form onboarding biodata HANYA jika akun belum aktif dan belum pernah mengisi biodata
+  // Karyawan diarahkan ke form onboarding biodata HANYA setelah mendaftar akun baru
   const isEmployeeProfileIncomplete =
     !isAdmin &&
-    currentUser.status !== 'ACTIVE' &&
+    isOnboardingRegistration &&
     currentUser.isProfileComplete !== true;
 
-  // 1. JIKA KARYAWAN BELUM MELENGKAPI BIODATA DIRI: TAMPILKAN HALAMAN BIODATA DIRI SEBAGAI HALAMAN UTAMA
+  // 1. JIKA KARYAWAN BARU SELESAI DAFTAR AKUN: TAMPILKAN HALAMAN ISI DETAIL BIODATA DIRI
   if (isEmployeeProfileIncomplete) {
     return (
       <CompleteProfileModal
         currentUser={currentUser}
-        onComplete={handleCompleteProfile}
-        onLogout={handleLogout}
+        onComplete={(updated) => {
+          setIsOnboardingRegistration(false);
+          handleCompleteProfile(updated);
+        }}
+        onLogout={() => {
+          setIsOnboardingRegistration(false);
+          handleLogout();
+        }}
       />
     );
   }
 
-  // 2. JIKA STATUS AKUN MASIH PENDING APPROVAL (Setelah biodata diisi, tampilkan Halaman Menyinkronkan Akun)
+  // 2. JIKA STATUS AKUN MASIH PENDING APPROVAL (Saat tombol Masuk diklik / setelah isi biodata): TAMPILKAN HALAMAN MENUNGGU VERIFIKASI
   if (currentUser.status === 'PENDING_APPROVAL') {
     return (
       <PendingApprovalScreen
         currentUser={currentUser}
         onApproved={(approvedUser) => {
+          setIsOnboardingRegistration(false);
           setCurrentUser(approvedUser);
           setSessionUser(approvedUser);
           loadData();
         }}
-        onLogout={handleLogout}
+        onLogout={() => {
+          setIsOnboardingRegistration(false);
+          handleLogout();
+        }}
       />
     );
   }
@@ -1244,12 +1256,18 @@ export default function App() {
         />
       )}
 
-      {/* Onboarding Wajib Isi Data Diri: Tetap muncul saat login dengan akun yang sama jika belum isi biodata */}
+      {/* Onboarding Wajib Isi Data Diri: Muncul setelah pendaftaran akun baru */}
       {isEmployeeProfileIncomplete && (
         <CompleteProfileModal
           currentUser={currentUser}
-          onComplete={handleCompleteProfile}
-          onLogout={handleLogout}
+          onComplete={(updated) => {
+            setIsOnboardingRegistration(false);
+            handleCompleteProfile(updated);
+          }}
+          onLogout={() => {
+            setIsOnboardingRegistration(false);
+            handleLogout();
+          }}
         />
       )}
 

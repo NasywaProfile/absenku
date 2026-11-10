@@ -9,10 +9,11 @@ import {
 import { AppStorage } from '../../lib/storage.ts';
 import { ApiClient } from '../../lib/api-client.ts';
 import { User as UserType } from '../../types/index.ts';
+import { hashPassword, verifyPassword } from '../../lib/crypto-utils.ts';
 import { InteractiveDoodleScene } from '../common/InteractiveDoodleScene.tsx';
 
 interface AuthPageProps {
-  onLoginSuccess: (user: UserType) => void;
+  onLoginSuccess: (user: UserType, isRegistration?: boolean) => void;
 }
 
 export function AuthPage({ onLoginSuccess }: AuthPageProps) {
@@ -54,12 +55,12 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
     setIsLoading(true);
 
     // 0. Cek terlebih dahulu jika akun lokal berstatus PENDING_APPROVAL dan password valid
-    // Pengguna yang belum diverifikasi tetap diarahkan ke halaman menunggu verifikasi
+    // Pengguna yang belum diverifikasi tetap diarahkan ke halaman menunggu verifikasi (bukan ke isi biodata)
     const localPending = AppStorage.authenticate(loginIdentifier, loginPassword);
     if (localPending && localPending.status === 'PENDING_APPROVAL') {
       AppStorage.setSessionUser(localPending.id);
       setIsLoading(false);
-      onLoginSuccess(localPending);
+      onLoginSuccess(localPending, false);
       return;
     }
 
@@ -98,7 +99,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
         AppStorage.updateUser(apiUser);
         AppStorage.setSessionUser(apiUser.id);
         setIsLoading(false);
-        onLoginSuccess(apiUser);
+        onLoginSuccess(apiUser, false);
         return;
       }
     } catch (apiErr: any) {
@@ -108,7 +109,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
         if (localUser && localUser.status === 'PENDING_APPROVAL') {
           AppStorage.setSessionUser(localUser.id);
           setIsLoading(false);
-          onLoginSuccess(localUser);
+          onLoginSuccess(localUser, false);
           return;
         }
 
@@ -136,7 +137,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
             AppStorage.updateUser(pendingUser);
             AppStorage.setSessionUser(pendingUser.id);
             setIsLoading(false);
-            onLoginSuccess(pendingUser);
+            onLoginSuccess(pendingUser, false);
             return;
           }
         } catch {}
@@ -155,7 +156,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
         if (localUser) {
           AppStorage.setSessionUser(localUser.id);
           setIsLoading(false);
-          onLoginSuccess(localUser);
+          onLoginSuccess(localUser, false);
           return;
         }
       }
@@ -166,19 +167,16 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
     }
 
     // Fallback autentikasi lokal
-    setTimeout(() => {
-      const user = AppStorage.authenticate(loginIdentifier, loginPassword);
-
-      if (!user) {
-        setIsLoading(false);
-        setErrorMsg('Email/username atau password tidak sesuai.');
-        return;
-      }
-
-      AppStorage.setSessionUser(user.id);
+    const user = AppStorage.authenticate(loginIdentifier, loginPassword);
+    if (!user) {
       setIsLoading(false);
-      onLoginSuccess(user);
-    }, 250);
+      setErrorMsg('Email/username atau password tidak sesuai.');
+      return;
+    }
+
+    AppStorage.setSessionUser(user.id);
+    setIsLoading(false);
+    onLoginSuccess(user, false);
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -198,50 +196,68 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
 
     setIsLoading(true);
 
+    const cleanEmail = regEmail.trim().toLowerCase();
+    const cleanName = regName.trim();
+    const now = new Date();
+    const localYear = now.getFullYear();
+    const localMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const localDay = String(now.getDate()).padStart(2, '0');
+    const localDateStr = `${localYear}-${localMonth}-${localDay}`;
+    const localTimeStr = `${localDateStr} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
     try {
       const regRes = await ApiClient.register({
-        name: regName.trim(),
-        email: regEmail.trim(),
+        name: cleanName,
+        email: cleanEmail,
         password: regPassword,
         department: regDepartment.trim() || 'Operasional',
         position: 'Staf',
       });
 
-      if (regRes && regRes.user) {
-        if (regRes.token) {
-          ApiClient.setToken(regRes.token);
-        }
-        const now = new Date();
-        const localYear = now.getFullYear();
-        const localMonth = String(now.getMonth() + 1).padStart(2, '0');
-        const localDay = String(now.getDate()).padStart(2, '0');
-        const localDateStr = `${localYear}-${localMonth}-${localDay}`;
-        const localTimeStr = `${localDateStr} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const resUser = regRes?.user || regRes?.data;
+      const assignedId = resUser?.id || `usr_${Date.now()}`;
 
-        const newUser: UserType = {
-          id: regRes.user.id,
-          name: regRes.user.name,
-          email: regRes.user.email,
-          role: regRes.user.role || 'EMPLOYEE',
-          status: regRes.user.status || 'PENDING_APPROVAL',
-          employmentType: regRes.user.employment_type || 'CONTRACT',
-          department: regRes.user.department || 'Operasional',
-          position: regRes.user.position || 'Staf',
-          avatar: regRes.user.avatar || '',
-          phone: regRes.user.phone || '',
-          joinDate: regRes.user.join_date || regRes.user.registered_at?.substring(0, 10) || localDateStr,
-          leaveBalance: regRes.user.leave_balance ?? 12,
-          registeredAt: regRes.user.registered_at || localTimeStr,
-          isProfileComplete: false,
-        };
-
-        AppStorage.updateUser(newUser);
-        AppStorage.setSessionUser(newUser.id);
-        setIsLoading(false);
-        onLoginSuccess(newUser);
-        return;
+      if (regRes?.token) {
+        ApiClient.setToken(regRes.token);
       }
+
+      const newUser: UserType = {
+        id: assignedId,
+        name: cleanName,
+        email: cleanEmail,
+        password: hashPassword(regPassword),
+        role: 'EMPLOYEE',
+        status: 'PENDING_APPROVAL',
+        employmentType: (resUser?.tipe_kepegawaian || resUser?.employment_type || 'CONTRACT') as any,
+        department: resUser?.divisi || resUser?.department || regDepartment.trim() || 'Operasional',
+        position: resUser?.jabatan || resUser?.position || 'Staf',
+        avatar: resUser?.foto_profil || resUser?.avatar || '',
+        phone: resUser?.nomor_telepon || resUser?.phone || '',
+        joinDate: resUser?.tanggal_bergabung || resUser?.join_date || localDateStr,
+        leaveBalance: 12,
+        registeredAt: resUser?.waktu_daftar || resUser?.registered_at || localTimeStr,
+        isProfileComplete: false,
+      };
+
+      AppStorage.updateUser(newUser);
+      AppStorage.setSessionUser(newUser.id);
+      setIsLoading(false);
+      // PENTING: Pendaftaran akun baru langsung mengarahkan ke form isi detail biodata diri (isRegistration: true)
+      onLoginSuccess(newUser, true);
+      return;
     } catch (apiErr: any) {
+      // Jika email sudah terdaftar dalam status PENDING_APPROVAL
+      const localMatched = AppStorage.getUsers().find((u) => u.email?.toLowerCase() === cleanEmail);
+      if (localMatched && localMatched.status === 'PENDING_APPROVAL') {
+        const isPwMatch = !localMatched.password || verifyPassword(regPassword, localMatched.password);
+        if (isPwMatch) {
+          AppStorage.setSessionUser(localMatched.id);
+          setIsLoading(false);
+          onLoginSuccess(localMatched, true);
+          return;
+        }
+      }
+
       if (apiErr.status === 422 || apiErr.status === 400) {
         setIsLoading(false);
         setErrorMsg(apiErr.message || 'Gagal mendaftarkan akun. Email mungkin sudah terdaftar.');
@@ -249,26 +265,24 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
       }
     }
 
-    // Fallback pendaftaran lokal
-    setTimeout(() => {
-      const res = AppStorage.registerEmployee({
-        name: regName.trim(),
-        email: regEmail.trim(),
-        password: regPassword,
-        department: regDepartment.trim() || 'Operasional',
-        position: 'Staf',
-      });
+    // Fallback pendaftaran lokal jika server offline
+    const res = AppStorage.registerEmployee({
+      name: cleanName,
+      email: cleanEmail,
+      password: regPassword,
+      department: regDepartment.trim() || 'Operasional',
+      position: 'Staf',
+    });
 
-      setIsLoading(false);
+    setIsLoading(false);
 
-      if (!res.success || !res.user) {
-        setErrorMsg(res.error || 'Gagal mendaftarkan akun.');
-        return;
-      }
+    if (!res.success || !res.user) {
+      setErrorMsg(res.error || 'Gagal mendaftarkan akun.');
+      return;
+    }
 
-      AppStorage.setSessionUser(res.user.id);
-      onLoginSuccess(res.user);
-    }, 250);
+    AppStorage.setSessionUser(res.user.id);
+    onLoginSuccess(res.user, true);
   };
 
   const handleResetPasswordSubmit = (e: React.FormEvent) => {
