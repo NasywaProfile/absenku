@@ -1074,7 +1074,7 @@ export function AttendanceHistory({
       else if (r.category === 'BUSINESS_TRIP' || r.statusText === 'Dinas Luar') businessTrip++;
     });
 
-    return { leave, wfh, sick, businessTrip };
+    return { all: personalRows.length, leave, wfh, sick, businessTrip };
   }, [personalRows]);
 
   // Filter Absensi Pribadi berdasarkan Kategori (1. Izin / Cuti s/d 4. Dinas Luar) & Pencarian
@@ -2040,18 +2040,18 @@ export function AttendanceHistory({
             </div>
 
             {/* Category Filter Pills (dengan jumlah total angka riwayat per kategori) */}
-            <div className="flex items-center gap-1.5 overflow-x-auto max-w-full pb-1 sm:pb-0 scrollbar-none">
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto max-w-full pb-1 sm:pb-0 scrollbar-none">
               <Tooltip content="Tampilkan semua riwayat presensi pribadi" position="top">
                 <button
                   type="button"
                   onClick={() => setPersonalCategoryFilter('ALL')}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                  className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                     personalCategoryFilter === 'ALL'
-                      ? 'bg-[#1E3A8A] hover:bg-[#172554] text-white shadow-xs font-bold'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80'
+                      ? 'bg-[#1E3A8A] text-white font-bold shadow-2xs'
+                      : 'bg-blue-50/80 text-[#1E3A8A] hover:bg-blue-100 border border-blue-200/60 font-semibold'
                   }`}
                 >
-                  Semua
+                  Semua ({personalCategoryCounts.all})
                 </button>
               </Tooltip>
 
@@ -2061,10 +2061,10 @@ export function AttendanceHistory({
                   onClick={() =>
                     setPersonalCategoryFilter(personalCategoryFilter === 'LEAVE' ? 'ALL' : 'LEAVE')
                   }
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                  className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                     personalCategoryFilter === 'LEAVE'
-                      ? 'bg-[#1E3A8A] hover:bg-[#172554] text-white shadow-xs font-bold'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80'
+                      ? 'bg-[#1E3A8A] text-white font-bold shadow-2xs'
+                      : 'bg-blue-50/80 text-[#1E3A8A] hover:bg-blue-100 border border-blue-200/60 font-semibold'
                   }`}
                 >
                   Izin / Cuti ({personalCategoryCounts.leave})
@@ -2077,10 +2077,10 @@ export function AttendanceHistory({
                   onClick={() =>
                     setPersonalCategoryFilter(personalCategoryFilter === 'WFH' ? 'ALL' : 'WFH')
                   }
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                  className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                     personalCategoryFilter === 'WFH'
-                      ? 'bg-[#1E3A8A] hover:bg-[#172554] text-white shadow-xs font-bold'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80'
+                      ? 'bg-[#1E3A8A] text-white font-bold shadow-2xs'
+                      : 'bg-blue-50/80 text-[#1E3A8A] hover:bg-blue-100 border border-blue-200/60 font-semibold'
                   }`}
                 >
                   WFH ({personalCategoryCounts.wfh})
@@ -2093,10 +2093,10 @@ export function AttendanceHistory({
                   onClick={() =>
                     setPersonalCategoryFilter(personalCategoryFilter === 'SICK' ? 'ALL' : 'SICK')
                   }
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                  className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                     personalCategoryFilter === 'SICK'
-                      ? 'bg-[#1E3A8A] hover:bg-[#172554] text-white shadow-xs font-bold'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80'
+                      ? 'bg-[#1E3A8A] text-white font-bold shadow-2xs'
+                      : 'bg-blue-50/80 text-[#1E3A8A] hover:bg-blue-100 border border-blue-200/60 font-semibold'
                   }`}
                 >
                   Sakit ({personalCategoryCounts.sick})
@@ -2111,10 +2111,10 @@ export function AttendanceHistory({
                       personalCategoryFilter === 'BUSINESS_TRIP' ? 'ALL' : 'BUSINESS_TRIP'
                     )
                   }
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                  className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                     personalCategoryFilter === 'BUSINESS_TRIP'
-                      ? 'bg-[#1E3A8A] hover:bg-[#172554] text-white shadow-xs font-bold'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80'
+                      ? 'bg-[#1E3A8A] text-white font-bold shadow-2xs'
+                      : 'bg-blue-50/80 text-[#1E3A8A] hover:bg-blue-100 border border-blue-200/60 font-semibold'
                   }`}
                 >
                   Dinas Luar ({personalCategoryCounts.businessTrip})
