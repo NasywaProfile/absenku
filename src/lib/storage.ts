@@ -177,14 +177,16 @@ try {
   } catch (_) {}
 }
 
-// Bersihkan semua data dummy karyawan dan seluruh historinya (hanya sisakan Super Admin)
-const PURGE_FLAG = 'absenku_clean_fresh_start_20261110_v6_superadmin_pure_zero_history';
+// Bersihkan semua data dummy karyawan dan seluruh historinya (hanya sisakan Super Admin, WAJIB LOGIN DULU)
+const PURGE_FLAG = 'absenku_clean_fresh_start_20261110_v7_require_login_first';
 try {
   const isPurged = localStorage.getItem(PURGE_FLAG);
   if (!isPurged) {
-    // Inisialisasi bersih: hanya Super Admin, seluruh histori dummy karyawan dibersihkan
+    // Inisialisasi bersih: hanya Super Admin, seluruh histori dummy dibersihkan total
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
-    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, 'usr_super_admin');
+    // WAJIB: Jangan set CURRENT_USER_ID agar siapa pun yang membuka web langsung ke halaman login!
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID);
+    localStorage.removeItem('absenku_current_user_id_v10');
     localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.DAILY_TASKS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify([]));
@@ -378,7 +380,8 @@ export const AppStorage = {
     }
     const superAdminOnly = [superAdmin];
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(superAdminOnly));
-    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, superAdmin.id);
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID);
+    localStorage.removeItem('absenku_current_user_id_v10');
     localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.DAILY_TASKS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify([]));
