@@ -965,14 +965,17 @@ export function AdminDashboard({
                     return (
                       <div className={`w-full py-2.5 px-3.5 sm:px-4 border rounded-2xl shadow-2xs transition-all ${cardBgClass}`}>
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
-                          {/* Kolom Kiri: Presensi Masuk (Atas) & Lokasi (Bawah) */}
-                          <div className="min-w-0 text-left space-y-0.5">
-                            <h4 className="font-bold text-xs sm:text-sm text-slate-900 tracking-tight">
-                              Presensi Masuk ({timeShort} WIB)
-                            </h4>
-                            <div className="flex items-center gap-1 text-[11px] sm:text-xs text-slate-600 font-medium">
-                              <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                              <span className="truncate">{locationText}</span>
+                          {/* Sebelahan: Presensi Masuk & Lokasi */}
+                          <div className="min-w-0 text-left">
+                            <div className="flex items-center flex-wrap gap-1.5 sm:gap-2">
+                              <h4 className="font-bold text-xs sm:text-sm text-slate-900 tracking-tight">
+                                Presensi Masuk ({timeShort} WIB)
+                              </h4>
+                              <span className="text-slate-300 text-xs">•</span>
+                              <div className="flex items-center gap-1 text-[11px] sm:text-xs text-slate-600 font-medium">
+                                <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span className="truncate">{locationText}</span>
+                              </div>
                             </div>
                           </div>
 
