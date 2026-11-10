@@ -82,8 +82,12 @@ export default function App() {
     setTasks(loadedTasks);
   }, []);
 
+  const isSyncingRef = useRef(false);
+
   // Sinkronisasi data dari backend API (MySQL di server VPS)
   const syncWithBackend = useCallback(async () => {
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
     try {
       const token = ApiClient.getToken();
       if (!token) return;
@@ -241,7 +245,7 @@ export default function App() {
             mergedLeaves.push(mappedLeave);
           }
         }
-        AppStorage.saveLeaves(mergedLeaves);
+        AppStorage.saveLeaves(mergedLeaves, true);
         setLeaves(mergedLeaves);
       }
 
@@ -279,7 +283,7 @@ export default function App() {
             mergedAtt.push(mappedAtt);
           }
         }
-        AppStorage.saveAttendanceRecords(mergedAtt);
+        AppStorage.saveAttendanceRecords(mergedAtt, true);
         setRecords(mergedAtt);
       }
 
@@ -459,6 +463,8 @@ export default function App() {
       loadData();
     } catch {
       // offline / abaikan jika jaringan tidak stabil
+    } finally {
+      isSyncingRef.current = false;
     }
   }, [loadData]);
 
@@ -469,7 +475,6 @@ export default function App() {
 
     const handleSync = () => {
       loadData();
-      syncWithBackend();
     };
 
     window.addEventListener('absenku:leaves_updated', handleSync);

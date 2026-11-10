@@ -836,12 +836,12 @@ export const AppStorage = {
     }
   },
 
-  saveAttendanceRecords(records: AttendanceRecord[]): void {
+  saveAttendanceRecords(records: AttendanceRecord[], silent: boolean = false): void {
     const filtered = records.filter(
-      (r) => r.userId !== 'usr_super_admin' && r.userName?.toLowerCase() !== 'super admin'
+      (r) => r.userId !== 'usr_super_admin' && (r.userName || '').toLowerCase() !== 'super admin'
     );
     safeSetItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(filtered));
-    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+    if (!silent && typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
       window.dispatchEvent(new CustomEvent('absenku:attendance_updated'));
     }
   },
@@ -2019,7 +2019,7 @@ export const AppStorage = {
     return this.getLeaves();
   },
 
-  saveLeaves(leaves: LeaveRequest[]): void {
+  saveLeaves(leaves: LeaveRequest[], silent: boolean = false): void {
     const sanitized = leaves.map((l) => {
       if (l.attachmentData && l.attachmentData.startsWith('data:') && l.attachmentData.length > 500) {
         const attId = `leave_att_${l.id}`;
@@ -2032,7 +2032,7 @@ export const AppStorage = {
       return l;
     });
     safeSetItem(STORAGE_KEYS.LEAVES, JSON.stringify(sanitized));
-    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+    if (!silent && typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
       window.dispatchEvent(new CustomEvent('absenku:leaves_updated'));
     }
   },

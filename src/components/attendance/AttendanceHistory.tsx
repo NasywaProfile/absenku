@@ -125,6 +125,9 @@ const LOCATION_TAG_CONFIG: Record<
   },
 };
 
+// Helper konversi string ke lowercase yang aman dari null / undefined
+const safeLower = (str?: string | null): string => (str ? String(str).toLowerCase().trim() : '');
+
 // Data row untuk Tampilan Matriks Grid Kehadiran sesuai referensi gambar screenshot (image_5f53700d.png)
 interface MatrixRow {
   index: number;
@@ -179,7 +182,7 @@ export function AttendanceHistory({
     const storageRecs = AppStorage.getAttendanceRecords();
     const source = storageRecs.length > 0 ? storageRecs : (propAttendanceRecords || propRecords || []);
     return source.filter(
-      (r) => r.userId !== 'usr_super_admin' && r.userName?.toLowerCase() !== 'super admin'
+      (r) => r.userId !== 'usr_super_admin' && safeLower(r.userName) !== 'super admin'
     );
   }, [propAttendanceRecords, propRecords, dataVersion]);
 
@@ -187,7 +190,7 @@ export function AttendanceHistory({
     const storageLeaves = AppStorage.getLeaveRequests();
     const source = storageLeaves.length > 0 ? storageLeaves : (propLeaves || []);
     return source.filter(
-      (l) => l.userId !== 'usr_super_admin' && l.userName?.toLowerCase() !== 'super admin'
+      (l) => l.userId !== 'usr_super_admin' && safeLower(l.userName) !== 'super admin'
     );
   }, [propLeaves, dataVersion]);
 
@@ -263,13 +266,13 @@ export function AttendanceHistory({
     const allRecords = attendanceRecords || [];
     allRecords
       .filter((rec) => {
-        const u = users.find((usr) => usr.id === rec.userId || usr.name.toLowerCase() === rec.userName.toLowerCase());
+        const u = users.find((usr) => usr.id === rec.userId || safeLower(usr.name) === safeLower(rec.userName));
         return rec.date === row.rawDate && rec.clockInTime && u?.role !== 'SUPER_ADMIN';
       })
       .forEach((rec) => {
         if (!addedNames.has(rec.userName)) {
           const matchedUser = users.find(
-            (usr) => usr.id === rec.userId || usr.name.toLowerCase() === rec.userName.toLowerCase()
+            (usr) => usr.id === rec.userId || safeLower(usr.name) === safeLower(rec.userName)
           );
 
           const ds = getDailyStatus({
@@ -283,8 +286,8 @@ export function AttendanceHistory({
           // Cocokkan status persis sama dengan tabel matriks
           const empCol = employeeColumns.find(
             (col) =>
-              col.toLowerCase() === rec.userName.toLowerCase() ||
-              (matchedUser && col.toLowerCase() === matchedUser.name.toLowerCase())
+              safeLower(col) === safeLower(rec.userName) ||
+              (matchedUser && safeLower(col) === safeLower(matchedUser.name))
           );
           const tableStatus = empCol ? row.statuses[empCol] : null;
           const lateMin =
@@ -355,7 +358,7 @@ export function AttendanceHistory({
           const userDailyTask = dailyTasks?.find(
             (t) =>
               (t.userId === (rec.userId || matchedUser?.id) ||
-                t.userName?.toLowerCase() === rec.userName.toLowerCase()) &&
+                safeLower(t.userName) === safeLower(rec.userName)) &&
               t.date === row.rawDate
           );
           const tasks =
@@ -403,19 +406,19 @@ export function AttendanceHistory({
         const userRec = (attendanceRecords || []).find(
           (r) =>
             r.date === row.rawDate &&
-            (r.userName.toLowerCase() === fullName.toLowerCase() ||
-              r.userName.toLowerCase() === colName.toLowerCase())
+            (safeLower(r.userName) === safeLower(fullName) ||
+              safeLower(r.userName) === safeLower(colName))
         );
         const userObj = users.find(
           (u) =>
-            u.name.toLowerCase() === fullName.toLowerCase() ||
-            u.name.toLowerCase() === colName.toLowerCase()
+            safeLower(u.name) === safeLower(fullName) ||
+            safeLower(u.name) === safeLower(colName)
         );
         const userDailyTask = dailyTasks?.find(
           (t) =>
             (t.userId === (userRec?.userId || userObj?.id) ||
-              t.userName?.toLowerCase() === fullName.toLowerCase() ||
-              t.userName?.toLowerCase() === colName.toLowerCase()) &&
+              safeLower(t.userName) === safeLower(fullName) ||
+              safeLower(t.userName) === safeLower(colName)) &&
             t.date === row.rawDate
         );
 
@@ -496,11 +499,11 @@ export function AttendanceHistory({
 
         // Cari pengajuan cuti/sakit yang cocok
         const matchedLeave = (leaves || []).find((l) => {
-          const u = users.find((usr) => usr.id === l.userId || usr.name.toLowerCase() === l.userName.toLowerCase());
+          const u = users.find((usr) => usr.id === l.userId || safeLower(usr.name) === safeLower(l.userName));
           const isNameMatch =
-            (u && (u.name.toLowerCase() === fullName.toLowerCase() || u.name.toLowerCase().includes(colName.toLowerCase()))) ||
-            l.userName.toLowerCase() === fullName.toLowerCase() ||
-            l.userName.toLowerCase().includes(colName.toLowerCase());
+            (u && (safeLower(u.name) === safeLower(fullName) || safeLower(u.name).includes(safeLower(colName)))) ||
+            safeLower(l.userName) === safeLower(fullName) ||
+            safeLower(l.userName).includes(safeLower(colName));
           return (
             l.status === 'APPROVED' &&
             row.rawDate >= l.startDate &&
@@ -511,8 +514,8 @@ export function AttendanceHistory({
 
         const userObj = users.find(
           (u) =>
-            u.name.toLowerCase() === fullName.toLowerCase() ||
-            u.name.toLowerCase().includes(colName.toLowerCase())
+            safeLower(u.name) === safeLower(fullName) ||
+            safeLower(u.name).includes(safeLower(colName))
         );
 
         const isSick = st === 'Sakit';
@@ -542,7 +545,7 @@ export function AttendanceHistory({
     // 2. Ambil dari leaves yang disetujui untuk tanggal ini (khusus Cuti / Sakit / Izin)
     (leaves || [])
       .filter((l) => {
-        const u = users.find((usr) => usr.id === l.userId || usr.name.toLowerCase() === l.userName.toLowerCase());
+        const u = users.find((usr) => usr.id === l.userId || safeLower(usr.name) === safeLower(l.userName));
         return (
           l.status === 'APPROVED' &&
           l.category !== 'WFH' &&
@@ -554,7 +557,7 @@ export function AttendanceHistory({
       })
       .forEach((l) => {
         if (!addedNames.has(l.userName)) {
-          const userObj = users.find((u) => u.id === l.userId || u.name.toLowerCase() === l.userName.toLowerCase());
+          const userObj = users.find((u) => u.id === l.userId || safeLower(u.name) === safeLower(l.userName));
           const isSick = l.category === 'SICK';
           const attachmentName =
             l.attachmentName || (isSick ? 'Surat_Keterangan_Dokter.pdf' : undefined);
@@ -660,14 +663,14 @@ export function AttendanceHistory({
 
     // Riwayat presensi hanya mencakup tanggal hari ini ke belakang (<= todayDateStr)
     (attendanceRecords || []).forEach((r) => {
-      const u = users.find((usr) => usr.id === r.userId || usr.name.toLowerCase() === r.userName?.toLowerCase());
+      const u = users.find((usr) => usr.id === r.userId || safeLower(usr.name) === safeLower(r.userName));
       if (r.date && r.date <= todayDateStr && u?.role !== 'SUPER_ADMIN') {
         dateSet.add(r.date);
       }
     });
 
     (leaves || []).forEach((l) => {
-      const u = users.find((usr) => usr.id === l.userId || usr.name.toLowerCase() === l.userName?.toLowerCase());
+      const u = users.find((usr) => usr.id === l.userId || safeLower(usr.name) === safeLower(l.userName));
       if (l.status === 'APPROVED' && l.startDate && l.endDate && u?.role !== 'SUPER_ADMIN') {
         const [sy, sm, sd] = l.startDate.split('-').map(Number);
         const [ey, em, ed] = l.endDate.split('-').map(Number);
@@ -701,7 +704,7 @@ export function AttendanceHistory({
       const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6) && rawDate !== todayDateStr;
 
       const dayRecords = (attendanceRecords || []).filter((r) => {
-        const u = users.find((usr) => usr.id === r.userId || usr.name.toLowerCase() === r.userName?.toLowerCase());
+        const u = users.find((usr) => usr.id === r.userId || safeLower(usr.name) === safeLower(r.userName));
         return r.date === rawDate && u?.role !== 'SUPER_ADMIN';
       });
 
@@ -712,8 +715,8 @@ export function AttendanceHistory({
       employeeColumns.forEach((emp) => {
         const matchedUser = users.find(
           (u) =>
-            u.name.toLowerCase() === emp.toLowerCase() ||
-            u.name.toLowerCase().includes(emp.toLowerCase())
+            safeLower(u.name) === safeLower(emp) ||
+            safeLower(u.name).includes(safeLower(emp))
         );
 
         const ds = getDailyStatus({
@@ -753,7 +756,7 @@ export function AttendanceHistory({
       // Karyawan yang benar-benar tercatat hadir (tidak berstatus OFF)
       const clockedInRecords = dayRecords.filter((r) => {
         if (!r.clockInTime) return false;
-        const u = users.find((usr) => usr.id === r.userId || usr.name.toLowerCase() === r.userName?.toLowerCase());
+        const u = users.find((usr) => usr.id === r.userId || safeLower(usr.name) === safeLower(r.userName));
         const ds = getDailyStatus({
           user: { id: u?.id || r.userId, name: u?.name || r.userName },
           date: rawDate,
@@ -949,11 +952,11 @@ export function AttendanceHistory({
             if (status !== 'Tidak Hadir' && status !== 'Libur') return true;
             // Atau ada catatan absensi/cuti pada tanggal tersebut
             const hasRec = (attendanceRecords || []).some(
-              (rec) => rec.date === r.rawDate && (rec.userName.toLowerCase().includes(empLower) || empLower.includes(rec.userName.toLowerCase()))
+              (rec) => rec.date === r.rawDate && (safeLower(rec.userName).includes(empLower) || empLower.includes(safeLower(rec.userName)))
             );
             if (hasRec) return true;
             const hasLeave = (leaves || []).some(
-              (l) => r.rawDate >= l.startDate && r.rawDate <= l.endDate && (l.userName.toLowerCase().includes(empLower) || empLower.includes(l.userName.toLowerCase()))
+              (l) => r.rawDate >= l.startDate && r.rawDate <= l.endDate && (safeLower(l.userName).includes(empLower) || empLower.includes(safeLower(l.userName)))
             );
             if (hasLeave) return true;
           }
@@ -992,10 +995,10 @@ export function AttendanceHistory({
     const todayDateStr = getCurrentDateString();
     return baseMatrixRows.map((row) => {
       const myRecord = attendanceRecords.find(
-        (r) => (r.userId === currentUser.id || r.userName.toLowerCase() === currentUser.name.toLowerCase()) && r.date === row.rawDate
+        (r) => (r.userId === currentUser.id || safeLower(r.userName) === safeLower(currentUser.name)) && r.date === row.rawDate
       );
       const myTaskLog = dailyTasks?.find(
-        (t) => (t.userId === currentUser.id || t.userName?.toLowerCase() === currentUser.name.toLowerCase()) && t.date === row.rawDate
+        (t) => (t.userId === currentUser.id || safeLower(t.userName) === safeLower(currentUser.name)) && t.date === row.rawDate
       );
 
       const ds = getDailyStatus({
@@ -1108,24 +1111,24 @@ export function AttendanceHistory({
         } catch {}
 
         // 2. Status & Nama
-        if (r.statusText.toLowerCase().includes(q)) return true;
-        if (currentUser.name.toLowerCase().includes(q)) return true;
+        if (safeLower(r.statusText).includes(q)) return true;
+        if (safeLower(currentUser.name).includes(q)) return true;
 
         // 3. Lokasi
-        if (r.locationMode.toLowerCase().includes(q)) return true;
+        if (safeLower(r.locationMode).includes(q)) return true;
 
         // 4. Catatan / Rangkuman tugas
-        if (r.taskSummary.toLowerCase().includes(q)) return true;
+        if (safeLower(r.taskSummary).includes(q)) return true;
 
         // 5. Sinonim Status & Lokasi
         if ((q === 'hadir' || q === 'masuk' || q === 'tepat waktu') && r.hasCheckmark) return true;
-        if ((q === 'telat' || q === 'terlambat') && r.statusText.toLowerCase().includes('terlambat')) return true;
-        if ((q === 'kantor' || q === 'office' || q === 'wfo') && r.locationMode.toLowerCase().includes('kantor')) return true;
-        if ((q === 'wfh' || q === 'rumah') && (r.locationMode.toLowerCase().includes('wfh') || r.locationMode.toLowerCase().includes('rumah'))) return true;
-        if ((q === 'dinas' || q === 'dinas luar') && r.locationMode.toLowerCase().includes('dinas')) return true;
-        if ((q === 'luar' || q === 'luar kantor' || q === 'di luar kantor' || q === 'radius') && r.locationMode.toLowerCase().includes('luar')) return true;
-        if ((q === 'cuti' || q === 'izin') && (r.statusText.toLowerCase().includes('izin') || r.statusText.toLowerCase().includes('cuti'))) return true;
-        if (q === 'sakit' && r.statusText.toLowerCase().includes('sakit')) return true;
+        if ((q === 'telat' || q === 'terlambat') && safeLower(r.statusText).includes('terlambat')) return true;
+        if ((q === 'kantor' || q === 'office' || q === 'wfo') && safeLower(r.locationMode).includes('kantor')) return true;
+        if ((q === 'wfh' || q === 'rumah') && (safeLower(r.locationMode).includes('wfh') || safeLower(r.locationMode).includes('rumah'))) return true;
+        if ((q === 'dinas' || q === 'dinas luar') && safeLower(r.locationMode).includes('dinas')) return true;
+        if ((q === 'luar' || q === 'luar kantor' || q === 'di luar kantor' || q === 'radius') && safeLower(r.locationMode).includes('luar')) return true;
+        if ((q === 'cuti' || q === 'izin') && (safeLower(r.statusText).includes('izin') || safeLower(r.statusText).includes('cuti'))) return true;
+        if (q === 'sakit' && safeLower(r.statusText).includes('sakit')) return true;
 
         return false;
       });
@@ -1679,8 +1682,8 @@ export function AttendanceHistory({
                         onClick={() => {
                           const matchedUser = users.find(
                             (u) =>
-                              u.name.toLowerCase().includes(colName.toLowerCase()) ||
-                              (colName === 'Alis' && (u.name.toLowerCase().includes('nasywa') || u.name.toLowerCase().includes('alis')))
+                              safeLower(u.name).includes(safeLower(colName)) ||
+                              (colName === 'Alis' && (safeLower(u.name).includes('nasywa') || safeLower(u.name).includes('alis')))
                           );
                           const fullName = matchedUser?.name || employeeNamesMap[colName] || colName;
                           const avatar = matchedUser?.avatar || employeeAvatarMap[colName] || sampleAvatars[0];
@@ -2450,8 +2453,8 @@ export function AttendanceHistory({
               {(() => {
                 const matchedUser = users.find(
                   (u) =>
-                    u.name.toLowerCase().includes(selectedCellInfo.name.toLowerCase()) ||
-                    selectedCellInfo.name.toLowerCase().includes(u.name.toLowerCase())
+                    safeLower(u.name).includes(safeLower(selectedCellInfo.name)) ||
+                    safeLower(selectedCellInfo.name).includes(safeLower(u.name))
                 );
                 const rawDate =
                   allMatrixRows.find((r) => r.dateStr === selectedCellInfo.date)?.rawDate ||
@@ -2460,13 +2463,13 @@ export function AttendanceHistory({
                 const userDailyTask = (dailyTasks || []).find(
                   (t) =>
                     (t.userId === matchedUser?.id ||
-                      t.userName?.toLowerCase() === selectedCellInfo.name.toLowerCase()) &&
+                      safeLower(t.userName) === safeLower(selectedCellInfo.name)) &&
                     t.date === rawDate
                 );
 
                 const existingRec = (attendanceRecords || []).find(
                   (r) =>
-                    (r.userId === matchedUser?.id || r.userName.toLowerCase() === selectedCellInfo.name.toLowerCase()) &&
+                    (r.userId === matchedUser?.id || safeLower(r.userName) === safeLower(selectedCellInfo.name)) &&
                     r.date === rawDate
                 );
 
@@ -2516,13 +2519,13 @@ export function AttendanceHistory({
                 if (!isAdmin) return null;
 
                 const isSelf =
-                  selectedCellInfo.name.toLowerCase() === currentUser.name.toLowerCase() ||
+                  safeLower(selectedCellInfo.name) === safeLower(currentUser.name) ||
                   Boolean(
                     users.find(
                       (u) =>
                         u.id === currentUser.id &&
-                        (u.name.toLowerCase().includes(selectedCellInfo.name.toLowerCase()) ||
-                          selectedCellInfo.name.toLowerCase().includes(u.name.toLowerCase()))
+                        (safeLower(u.name).includes(safeLower(selectedCellInfo.name)) ||
+                          safeLower(selectedCellInfo.name).includes(safeLower(u.name)))
                     )
                   );
 
@@ -2536,8 +2539,8 @@ export function AttendanceHistory({
                     onClick={() => {
                       const matchedUser = users.find(
                         (u) =>
-                          u.name.toLowerCase().includes(selectedCellInfo.name.toLowerCase()) ||
-                          selectedCellInfo.name.toLowerCase().includes(u.name.toLowerCase())
+                          safeLower(u.name).includes(safeLower(selectedCellInfo.name)) ||
+                          safeLower(selectedCellInfo.name).includes(safeLower(u.name))
                       );
                       const rawDate =
                         allMatrixRows.find((r) => r.dateStr === selectedCellInfo.date)?.rawDate ||
@@ -2598,13 +2601,13 @@ export function AttendanceHistory({
         onEditMember={(member) => {
           const isSelf =
             member.id === currentUser.id ||
-            member.name.toLowerCase() === currentUser.name.toLowerCase();
+            safeLower(member.name) === safeLower(currentUser.name);
           if (isSelf) return;
 
           const matchedUser = users.find(
             (u) =>
-              u.name.toLowerCase().includes(member.name.toLowerCase()) ||
-              member.name.toLowerCase().includes(u.name.toLowerCase())
+              safeLower(u.name).includes(safeLower(member.name)) ||
+              safeLower(member.name).includes(safeLower(u.name))
           );
 
           const rawDate = teamMembersModalData.date || getCurrentDateString();

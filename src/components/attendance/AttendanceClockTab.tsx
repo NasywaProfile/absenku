@@ -635,7 +635,7 @@ export function AttendanceClockTab({
                               cancelText: 'Batal',
                               onConfirm: () => {
                                 AppStorage.clearTodayAttendance();
-                                if (onRefresh) onRefresh();
+                                if (onRefreshData) onRefreshData();
                                 setConfirmModal((prev) => ({ ...prev, isOpen: false }));
                               },
                             });
