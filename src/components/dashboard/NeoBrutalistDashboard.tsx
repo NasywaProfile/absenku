@@ -928,13 +928,13 @@ export function NeoBrutalistDashboard({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* View Switcher: Kartu Grid vs Tabel Detail */}
-            <div className="flex items-center p-1 bg-slate-100/80 rounded-xl border border-slate-200/80 text-xs font-semibold">
+            <div className="flex items-center p-1 bg-slate-100/80 rounded-xl border border-slate-200/80 text-xs font-semibold shrink-0">
               <button
                 type="button"
                 onClick={() => setTaskViewMode('CARDS')}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
                   taskViewMode === 'CARDS'
                     ? 'bg-white text-slate-900 shadow-2xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
@@ -945,7 +945,7 @@ export function NeoBrutalistDashboard({
               <button
                 type="button"
                 onClick={() => setTaskViewMode('TABLE')}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
                   taskViewMode === 'TABLE'
                     ? 'bg-white text-slate-900 shadow-2xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
@@ -958,9 +958,10 @@ export function NeoBrutalistDashboard({
             <button
               type="button"
               onClick={() => onNavigateTab('tasks_my')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 hover:text-[#1E3A8A] bg-slate-50 border border-slate-200 rounded-xl transition-colors cursor-pointer shrink-0"
+              title="Buka Tugas Saya"
+              className="inline-flex items-center justify-center gap-1.5 p-2 sm:px-3 sm:py-1.5 text-xs font-bold text-slate-700 hover:text-[#1E3A8A] bg-slate-50 border border-slate-200 rounded-xl transition-colors cursor-pointer shrink-0"
             >
-              <span>Buka Tugas Saya</span>
+              <span className="hidden sm:inline">Buka Tugas Saya</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
