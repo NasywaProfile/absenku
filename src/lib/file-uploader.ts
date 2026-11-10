@@ -230,7 +230,6 @@ export async function uploadHybridFile(
         ? `${(import.meta as any).env.VITE_API_URL}/upload`
         : null),
       '/api/upload',
-      'https://in-time.duckdns.org/api/upload',
     ].filter(Boolean) as string[];
 
     for (const endpoint of uploadEndpoints) {
