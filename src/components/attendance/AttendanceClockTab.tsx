@@ -615,9 +615,9 @@ export function AttendanceClockTab({
                           </div>
                         </div>
 
-                        {/* Kolom Kanan / Bawah pada mobile: Badge Status Keterlambatan / Tepat Waktu */}
-                        <div className="self-start sm:self-center shrink-0">
-                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-bold border shadow-2xs ${badgeBg}`}>
+                        {/* Kolom Kanan / Bawah pada mobile: Badge Status Keterlambatan / Tepat Waktu (Lebar penuh di mobile tanpa space kosong) */}
+                        <div className="w-full sm:w-auto self-stretch sm:self-center shrink-0">
+                          <div className={`flex sm:inline-flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold border shadow-2xs w-full sm:w-auto text-center ${badgeBg}`}>
                             {badgeIcon}
                             <span>{badgeText}</span>
                           </div>

@@ -677,9 +677,9 @@ export function NeoBrutalistDashboard({
                           </div>
                         </div>
 
-                        {/* Kolom Kanan / Bawah pada mobile: Badge Status Keterlambatan / Tepat Waktu */}
-                        <div className="self-start sm:self-center shrink-0">
-                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-bold border shadow-2xs ${badgeBg}`}>
+                        {/* Kolom Kanan / Bawah pada mobile: Badge Status Keterlambatan / Tepat Waktu (Lebar penuh di mobile tanpa space kosong) */}
+                        <div className="w-full sm:w-auto self-stretch sm:self-center shrink-0">
+                          <div className={`flex sm:inline-flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold border shadow-2xs w-full sm:w-auto text-center ${badgeBg}`}>
                             {badgeIcon}
                             <span>{badgeText}</span>
                           </div>
@@ -928,7 +928,7 @@ export function NeoBrutalistDashboard({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2 w-full sm:w-auto shrink-0">
             {/* View Switcher: Kartu Grid vs Tabel Detail */}
             <div className="flex items-center p-1 bg-slate-100/80 rounded-xl border border-slate-200/80 text-xs font-semibold shrink-0">
               <button
@@ -959,7 +959,7 @@ export function NeoBrutalistDashboard({
               type="button"
               onClick={() => onNavigateTab('tasks_my')}
               title="Buka Tugas Saya"
-              className="inline-flex items-center justify-center gap-1.5 p-2 sm:px-3 sm:py-1.5 text-xs font-bold text-slate-700 hover:text-[#1E3A8A] bg-slate-50 border border-slate-200 rounded-xl transition-colors cursor-pointer shrink-0"
+              className="inline-flex items-center justify-center gap-1.5 p-2 sm:px-3 sm:py-1.5 text-xs font-bold text-slate-700 hover:text-[#1E3A8A] bg-slate-50 border border-slate-200 rounded-xl transition-colors cursor-pointer shrink-0 ml-auto sm:ml-0"
             >
               <span className="hidden sm:inline">Buka Tugas Saya</span>
               <ArrowRight className="w-3.5 h-3.5" />
