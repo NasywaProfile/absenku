@@ -603,6 +603,33 @@ export function AdminDashboard({
         </div>
       </div>
 
+      {/* Banner Pendaftaran Akun Baru Menunggu Persetujuan Admin */}
+      {pendingRegistrations.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200/90 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 border border-amber-200 text-amber-800 flex items-center justify-center shrink-0">
+              <UserCheck className="w-5 h-5 text-amber-700" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-amber-900">
+                Ada {pendingRegistrations.length} Pendaftaran Akun Baru Menunggu Persetujuan
+              </p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Calon karyawan telah mendaftar dan menunggu verifikasi dari Admin / Super Admin.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigateTab('employee_approvals')}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs shrink-0 cursor-pointer self-start sm:self-auto"
+          >
+            <span>Tinjau & Verifikasi Pendaftar</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* 2. BARIS 1: 2-COLUMN EQUAL GRID (Sekilas Ruang Obrolan & Kalender Presensi) - 100% SAMA DENGAN BERANDA KARYAWAN */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
         

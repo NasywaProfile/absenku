@@ -81,7 +81,7 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
   if (!isOpen) return null;
 
   const filteredMembers = members.filter((m) => {
-    if (!m || !m.name || m.name === 'Rekan Tim') return false;
+    if (!m || !m.name || m.name.toLowerCase().includes('rekan tim')) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (

@@ -9,6 +9,7 @@ import {
 import { AppStorage } from '../../lib/storage.ts';
 import { ApiClient } from '../../lib/api-client.ts';
 import { User as UserType } from '../../types/index.ts';
+import { hashPassword } from '../../lib/crypto-utils.ts';
 import { InteractiveDoodleScene } from '../common/InteractiveDoodleScene.tsx';
 
 interface AuthPageProps {
@@ -93,6 +94,58 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
       }
     } catch (apiErr: any) {
       if (apiErr.status === 403) {
+        // Cek jika akun berstatus PENDING_APPROVAL dan password cocok, izinkan masuk ke PendingApprovalScreen
+        const cleanIdent = loginIdentifier.trim().toLowerCase();
+        let localMatched = AppStorage.getUsers().find(
+          (u) =>
+            (u.email && u.email.toLowerCase() === cleanIdent) ||
+            (u.name && u.name.toLowerCase().trim() === cleanIdent)
+        );
+
+        // Jika belum ada di local, coba ambil status akun dari server MySQL
+        if (!localMatched) {
+          try {
+            const serverStatus = await ApiClient.checkUserStatus(undefined, cleanIdent);
+            if (serverStatus && serverStatus.status === 'PENDING_APPROVAL') {
+              localMatched = {
+                id: serverStatus.id || `usr_${Date.now()}`,
+                name: serverStatus.name || serverStatus.user?.name || cleanIdent,
+                email: serverStatus.email || serverStatus.user?.email || cleanIdent,
+                password: hashPassword(loginPassword),
+                role: (serverStatus.role as any) || 'EMPLOYEE',
+                status: 'PENDING_APPROVAL',
+                employmentType: 'CONTRACT',
+                department: serverStatus.user?.department || 'Operasional',
+                position: serverStatus.user?.position || 'Staf',
+                avatar: serverStatus.user?.avatar || '',
+                phone: serverStatus.user?.phone || '',
+                joinDate: new Date().toISOString().substring(0, 10),
+                leaveBalance: 12,
+                registeredAt: new Date().toISOString(),
+                isProfileComplete: Boolean(serverStatus.profil_lengkap),
+              };
+              AppStorage.updateUser(localMatched);
+            }
+          } catch {
+            // silent
+          }
+        }
+
+        if (localMatched && localMatched.status === 'PENDING_APPROVAL') {
+          const hashed = hashPassword(loginPassword);
+          const isPwMatch =
+            !localMatched.password ||
+            localMatched.password === loginPassword ||
+            localMatched.password === hashed;
+
+          if (isPwMatch) {
+            AppStorage.setSessionUser(localMatched.id);
+            setIsLoading(false);
+            onLoginSuccess(localMatched);
+            return;
+          }
+        }
+
         setIsLoading(false);
         const msg =
           apiErr.message && !apiErr.message.toLowerCase().includes('fetch')
@@ -174,6 +227,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
           id: regRes.user.id,
           name: regRes.user.name,
           email: regRes.user.email,
+          password: hashPassword(regPassword),
           role: regRes.user.role || 'EMPLOYEE',
           status: regRes.user.status || 'PENDING_APPROVAL',
           employmentType: regRes.user.employment_type || 'CONTRACT',

@@ -279,19 +279,25 @@ export const AppStorage = {
         return u;
       });
 
-      // Deduplikasi ketat: jika suatu akun sudah ACTIVE, hapus duplikat atau status PENDING_APPROVAL untuk email/nama yang sama
+      // Hapus data dummy 'Rekan Tim' jika masih tersisa
+      const beforeFilterCount = parsed.length;
+      parsed = parsed.filter(
+        (u) => !u.name || !u.name.toLowerCase().includes('rekan tim')
+      );
+      if (parsed.length !== beforeFilterCount) {
+        changed = true;
+      }
+
+      // Deduplikasi ketat: jika suatu akun sudah ACTIVE, hapus duplikat atau status PENDING_APPROVAL untuk email yang sama
       const activeEmails = new Set<string>();
-      const activeNames = new Set<string>();
       for (const u of parsed) {
-        if (u.status === 'ACTIVE') {
-          if (u.email) activeEmails.add(u.email.trim().toLowerCase());
-          if (u.name) activeNames.add(u.name.trim().toLowerCase());
+        if (u.status === 'ACTIVE' && u.email) {
+          activeEmails.add(u.email.trim().toLowerCase());
         }
       }
 
       const deduped: User[] = [];
       const seenEmails = new Set<string>();
-      const seenNames = new Set<string>();
       const seenIds = new Set<string>();
 
       // Utamakan akun ACTIVE
@@ -304,18 +310,11 @@ export const AppStorage = {
       for (const u of sorted) {
         const uId = u.id;
         const uEmail = u.email ? u.email.trim().toLowerCase() : '';
-        const uName = u.name ? u.name.trim().toLowerCase() : '';
 
-        // Jika u berstatus PENDING_APPROVAL tapi sudah ada akun ACTIVE dengan email atau nama yang sama, hapus
-        if (u.status === 'PENDING_APPROVAL') {
-          if (uEmail && activeEmails.has(uEmail)) {
-            changed = true;
-            continue;
-          }
-          if (uName && activeNames.has(uName)) {
-            changed = true;
-            continue;
-          }
+        // Jika u berstatus PENDING_APPROVAL tapi sudah ada akun ACTIVE dengan email yang sama, lewati
+        if (u.status === 'PENDING_APPROVAL' && uEmail && activeEmails.has(uEmail)) {
+          changed = true;
+          continue;
         }
 
         if (uId && seenIds.has(uId)) {
@@ -326,14 +325,9 @@ export const AppStorage = {
           changed = true;
           continue;
         }
-        if (uName && seenNames.has(uName)) {
-          changed = true;
-          continue;
-        }
 
         if (uId) seenIds.add(uId);
         if (uEmail) seenEmails.add(uEmail);
-        if (uName) seenNames.add(uName);
         deduped.push(u);
       }
       parsed = deduped;
@@ -348,8 +342,11 @@ export const AppStorage = {
     }
   },
 
-  saveUsers(users: User[]): void {
+  saveUsers(users: User[], silent: boolean = false): void {
     safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    if (!silent && typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('absenku:users_updated'));
+    }
   },
 
   getCurrentUserId(): string | null {

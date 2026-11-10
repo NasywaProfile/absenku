@@ -45,26 +45,23 @@ export default function App() {
   // Muat state dari persistent local storage
   const loadData = useCallback(() => {
     const loadedUsers = AppStorage.getUsers();
-    // Deduplikasi users: utamakan akun ACTIVE agar jika ada antrean pending lama dengan nama/email sama langsung tertimpa
+    // Deduplikasi users: utamakan akun ACTIVE jika ada duplikasi email/id
     const sorted = [...loadedUsers].sort((a, b) => {
       if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
       if (a.status !== 'ACTIVE' && b.status === 'ACTIVE') return 1;
       return 0;
     });
     const dedupedUsers: User[] = [];
-    const seen = new Set<string>();
-    const seenNames = new Set<string>();
+    const seenEmails = new Set<string>();
+    const seenIds = new Set<string>();
     for (const u of sorted) {
       const emailKey = u.email ? u.email.trim().toLowerCase() : '';
-      const nameKey = u.name ? u.name.trim().toLowerCase() : '';
       const idKey = u.id;
-      if (emailKey && seen.has(emailKey)) continue;
-      if (nameKey && seenNames.has(nameKey)) continue;
-      if (idKey && seen.has(idKey)) continue;
+      if (emailKey && seenEmails.has(emailKey)) continue;
+      if (idKey && seenIds.has(idKey)) continue;
 
-      if (emailKey) seen.add(emailKey);
-      if (nameKey) seenNames.add(nameKey);
-      if (idKey) seen.add(idKey);
+      if (emailKey) seenEmails.add(emailKey);
+      if (idKey) seenIds.add(idKey);
       dedupedUsers.push(u);
     }
     const curUser = AppStorage.getCurrentUser();
@@ -99,9 +96,10 @@ export default function App() {
         const serverUserIds = new Set(serverUsers.map((su) => su.id));
         const serverUserEmails = new Set(serverUsers.map((su) => (su.email || '').toLowerCase()));
 
-        // Prune users yang sudah dihapus dari database server
+        // Prune users yang sudah dihapus dari database server (KECUALI Super Admin & pendaftar PENDING_APPROVAL)
         const validLocalUsers = localUsers.filter((u) => {
           if (u.id === 'usr_super_admin' || u.role === 'SUPER_ADMIN') return true;
+          if (u.status === 'PENDING_APPROVAL') return true; // Jangan hapus pendaftar yang sedang menunggu persetujuan!
           return serverUserIds.has(u.id) || serverUserEmails.has((u.email || '').toLowerCase());
         });
 
@@ -121,7 +119,7 @@ export default function App() {
           const mappedStatus =
             su.id === 'usr_super_admin'
               ? 'ACTIVE'
-              : (su.status || (existingLocal ? existingLocal.status : 'ACTIVE'));
+              : (su.status || su.status_akun || su.status_pengguna || (existingLocal ? existingLocal.status : 'PENDING_APPROVAL'));
 
           const mappedUser: User = {
             id: su.id,
@@ -167,25 +165,21 @@ export default function App() {
 
         const dedupedMerged: User[] = [];
         const seenEmails = new Set<string>();
-        const seenNames = new Set<string>();
         const seenIds = new Set<string>();
 
         for (const u of mergedUsers) {
           const uId = u.id;
           const emailKey = u.email ? u.email.trim().toLowerCase() : '';
-          const nameKey = u.name ? u.name.trim().toLowerCase() : '';
 
           if (uId && seenIds.has(uId)) continue;
           if (emailKey && seenEmails.has(emailKey)) continue;
-          if (nameKey && seenNames.has(nameKey)) continue;
 
           if (uId) seenIds.add(uId);
           if (emailKey) seenEmails.add(emailKey);
-          if (nameKey) seenNames.add(nameKey);
 
           dedupedMerged.push(u);
         }
-        AppStorage.saveUsers(dedupedMerged);
+        AppStorage.saveUsers(dedupedMerged, true);
         setUsers(dedupedMerged);
 
         // Jika user yang sedang login mengalami update status atau tipe kepegawaian (misal di-update admin di device lain), perbarui otomatis

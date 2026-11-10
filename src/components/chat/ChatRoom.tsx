@@ -807,7 +807,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
         (user.email && user.email.toLowerCase().trim() === cleanUid)
       );
       // Hapus data dummy: Jangan tampilkan jika user tidak ada di sistem atau bernama "Rekan Tim"
-      if (!u || u.name === 'Rekan Tim') return;
+      if (!u || !u.name || u.name.toLowerCase().includes('rekan tim')) return;
 
       const dedupeKey = u.email ? u.email.toLowerCase().trim() : u.id;
       if (seen.has(dedupeKey)) return;
@@ -837,7 +837,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
     const rawTagged = safeParseJsonArray(taggedIds);
     const cleanLower = rawTagged.map((id) => String(id).toLowerCase().trim());
     const taggedUsers = (users || []).filter((u) => 
-      u.name !== 'Rekan Tim' && (
+      u.name && !u.name.toLowerCase().includes('rekan tim') && (
         (u.id && cleanLower.includes(u.id.toLowerCase())) ||
         (u.name && cleanLower.includes(u.name.toLowerCase().trim())) ||
         (u.email && cleanLower.includes(u.email.toLowerCase().trim()))
