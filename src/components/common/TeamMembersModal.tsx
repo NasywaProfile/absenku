@@ -211,9 +211,9 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                     )}
 
                     {/* Baris Utama: Info Profil & Badges Status */}
-                    <div className="flex items-center justify-between gap-2.5 w-full">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 w-full">
                       {/* Kiri: Foto Profil & Informasi Karyawan */}
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto flex-1">
                         <div className="relative w-11 h-11 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-2xs group-hover:scale-105 transition-transform duration-200">
                           <img
                             src={avatarSrc}
@@ -239,8 +239,8 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                         </div>
                       </div>
 
-                      {/* Kanan: Badge Waktu Presensi Masuk (Atas) & Badge Lokasi (Bawah) */}
-                      <div className="flex flex-col items-end gap-1 shrink-0">
+                      {/* Kanan / Bawah pada Mobile: Badge Waktu Presensi Masuk (Atas) & Badge Lokasi (Bawah) */}
+                      <div className="flex items-center flex-wrap sm:flex-col sm:items-end gap-1.5 sm:gap-1 shrink-0 w-full sm:w-auto">
                         {member.clockInTime ? (
                           (() => {
                             const isLate =
