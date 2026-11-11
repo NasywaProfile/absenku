@@ -10,10 +10,12 @@ const TOKEN_KEY = 'absenku_auth_token';
 
 export const ApiClient = {
   getToken(): string | null {
+    if (typeof localStorage === 'undefined') return null;
     return localStorage.getItem(TOKEN_KEY);
   },
 
   setToken(token: string | null): void {
+    if (typeof localStorage === 'undefined') return;
     if (token) {
       localStorage.setItem(TOKEN_KEY, token);
     } else {
@@ -102,39 +104,14 @@ export const ApiClient = {
   },
 
   async updateProfile(data: any) {
-    try {
-      const res = await this.request<{ message: string; user: any; token?: string }>('/profile', {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
-      if (res && res.token) {
-        this.setToken(res.token);
-      }
-      return res;
-    } catch (err: any) {
-      if (err?.status === 401 || err?.status === 404 || err?.status === 405) {
-        try {
-          const directRes = await this.request<{ message: string; user: any; token?: string }>('/profile/direct', {
-            method: 'POST',
-            body: JSON.stringify(data),
-          });
-          if (directRes && directRes.token) {
-            this.setToken(directRes.token);
-          }
-          return directRes;
-        } catch {
-          const directResPut = await this.request<{ message: string; user: any; token?: string }>('/profile/direct', {
-            method: 'PUT',
-            body: JSON.stringify(data),
-          });
-          if (directResPut && directResPut.token) {
-            this.setToken(directResPut.token);
-          }
-          return directResPut;
-        }
-      }
-      throw err;
+    const res = await this.request<{ message: string; user: any; token?: string }>('/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (res && res.token) {
+      this.setToken(res.token);
     }
+    return res;
   },
 
   async checkUserStatus(id?: string, email?: string) {
@@ -168,17 +145,10 @@ export const ApiClient = {
   async approveUser(userId: string, role?: string, email?: string) {
     const targetRole = role || 'EMPLOYEE';
     const payload = { role: targetRole, peran: targetRole, email };
-    try {
-      return await this.request(`/users/${userId}/approve`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      return await this.request(`/users/${userId}/approve/direct`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      }).catch(() => null);
-    }
+    return this.request(`/users/${userId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
 
   async updateUserRole(userId: string, role: string, email?: string) {

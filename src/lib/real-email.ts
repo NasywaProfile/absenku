@@ -3,6 +3,8 @@
  * Mengirimkan email sungguhan langsung ke Gmail inbox penerima
  */
 
+import { ApiClient } from './api-client';
+
 export interface RealEmailPayload {
   to: string;
   subject: string;
@@ -20,6 +22,11 @@ export async function sendRealEmail(payload: RealEmailPayload): Promise<boolean>
     return false;
   }
 
+  const token = ApiClient.getToken();
+  if (!token) {
+    return false;
+  }
+
   try {
     const targetUrl = API_BASE.endsWith('/') ? `${API_BASE}send-email` : `${API_BASE}/send-email`;
     const response = await fetch(targetUrl, {
@@ -27,6 +34,7 @@ export async function sendRealEmail(payload: RealEmailPayload): Promise<boolean>
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
     });

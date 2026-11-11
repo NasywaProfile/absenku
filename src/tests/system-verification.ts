@@ -477,7 +477,7 @@ assert(AppStorage.authenticate('alissa@gmail.com', 'Password123!')?.id === updat
 
 const storedAlissa = AppStorage.getUserById(updatedUser!.id);
 assert(
-  !!storedAlissa?.password && storedAlissa.password.startsWith('$enc$v1$'),
+  !!storedAlissa?.password && storedAlissa.password.startsWith('$enc$v2$'),
   'Password karyawan tersimpan sebagai hash (bukan plaintext)'
 );
 
@@ -485,7 +485,7 @@ assert(
 const saLogin = AppStorage.authenticate('superadmin', 'SuperAdminabsenkuMantap');
 assert(saLogin?.role === 'SUPER_ADMIN', 'Super Admin dapat login dengan password yang benar');
 assert(
-  AppStorage.getUserById(saLogin!.id)!.password!.startsWith('$enc$v1$'),
+  AppStorage.getUserById(saLogin!.id)!.password!.startsWith('$enc$v2$'),
   'Password plaintext lama otomatis dimigrasi ke hash setelah login'
 );
 assert(

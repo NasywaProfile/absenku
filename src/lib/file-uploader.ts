@@ -1,6 +1,7 @@
 import { uploadToCloudinary } from './cloudinary';
 import { compressImageFile } from './image-compression';
 import { storeAttachmentInIDB } from './attachment-storage';
+import { ApiClient } from './api-client';
 
 export const FILE_SIZE_LIMITS = {
   IMAGE: 5 * 1024 * 1024,      // Maksimal 5 MB untuk foto/gambar
@@ -9,14 +10,15 @@ export const FILE_SIZE_LIMITS = {
 };
 
 export const ALLOWED_EXTENSIONS = {
-  image: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'],
+  image: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
   video: ['mp4', 'webm', 'mov', 'mkv'],
   document: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', 'csv', 'txt'],
 };
 
-// Ekstensi berbahaya yang wajib ditolak demi keamanan server
+// Ekstensi berbahaya yang wajib ditolak demi keamanan server & pencegahan XSS
 export const BLOCKED_EXTENSIONS = [
-  'exe', 'bat', 'cmd', 'sh', 'php', 'js', 'mjs', 'msi', 'vbs', 'scr', 'com', 'pif', 'py', 'jar'
+  'exe', 'bat', 'cmd', 'sh', 'php', 'phtml', 'phar', 'svg', 'html', 'htm', 'xhtml',
+  'js', 'mjs', 'msi', 'vbs', 'scr', 'com', 'pif', 'py', 'jar'
 ];
 
 export type FileCategory = 'image' | 'video' | 'document' | 'unknown';
@@ -239,8 +241,17 @@ export async function uploadHybridFile(
         formData.append('file', file);
         formData.append('category', 'document');
 
+        const token = ApiClient.getToken();
+        const headers: Record<string, string> = {
+          Accept: 'application/json',
+        };
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+
         const response = await fetch(endpoint, {
           method: 'POST',
+          headers,
           body: formData,
         });
 

@@ -104,7 +104,36 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
       }
     } catch (apiErr: any) {
       if (apiErr.status === 403) {
-        // Cek jika akun berstatus PENDING_APPROVAL di lokal dengan password valid
+        if (apiErr.data?.token) {
+          ApiClient.setToken(apiErr.data.token);
+        }
+
+        // Cek jika akun berstatus PENDING_APPROVAL dari respon login terverifikasi atau lokal
+        const pendingServerUser = apiErr.data?.status === 'PENDING_APPROVAL' ? apiErr.data?.user : null;
+        if (pendingServerUser) {
+          const pendingUser: UserType = {
+            id: pendingServerUser.id || `usr_${Date.now()}`,
+            name: pendingServerUser.name || pendingServerUser.nama || loginIdentifier.split('@')[0],
+            email: pendingServerUser.email || loginIdentifier.trim().toLowerCase(),
+            role: (pendingServerUser.role || pendingServerUser.peran || 'EMPLOYEE') as any,
+            status: 'PENDING_APPROVAL',
+            employmentType: pendingServerUser.employment_type || pendingServerUser.tipe_kepegawaian || 'CONTRACT',
+            department: pendingServerUser.department || 'Operasional',
+            position: pendingServerUser.position || 'Staf',
+            avatar: pendingServerUser.avatar || '',
+            phone: '',
+            joinDate: new Date().toISOString().substring(0, 10),
+            leaveBalance: 12,
+            registeredAt: '',
+            isProfileComplete: Boolean(pendingServerUser.profil_lengkap ?? pendingServerUser.is_profile_complete ?? true),
+          };
+          AppStorage.updateUser(pendingUser);
+          AppStorage.setSessionUser(pendingUser.id);
+          setIsLoading(false);
+          onLoginSuccess(pendingUser, false);
+          return;
+        }
+
         const localUser = AppStorage.authenticate(loginIdentifier, loginPassword);
         if (localUser && localUser.status === 'PENDING_APPROVAL') {
           AppStorage.setSessionUser(localUser.id);
@@ -112,35 +141,6 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
           onLoginSuccess(localUser, false);
           return;
         }
-
-        // Cek jika status di server adalah pending
-        const cleanEmail = loginIdentifier.trim().toLowerCase();
-        try {
-          const serverStatus = await ApiClient.checkUserStatus(undefined, cleanEmail).catch(() => null);
-          if (serverStatus && (serverStatus.status === 'PENDING_APPROVAL' || serverStatus.status === 'pending' || serverStatus.status === 'PENDING')) {
-            const pendingUser: UserType = {
-              id: serverStatus.id || `usr_${Date.now()}`,
-              name: serverStatus.name || serverStatus.user?.name || loginIdentifier.split('@')[0],
-              email: serverStatus.email || cleanEmail,
-              role: (serverStatus.role || 'EMPLOYEE') as any,
-              status: 'PENDING_APPROVAL',
-              employmentType: serverStatus.user?.employment_type || 'CONTRACT',
-              department: serverStatus.user?.department || 'Operasional',
-              position: serverStatus.user?.position || 'Staf',
-              avatar: serverStatus.user?.avatar || '',
-              phone: serverStatus.user?.phone || '',
-              joinDate: serverStatus.user?.join_date || new Date().toISOString().substring(0, 10),
-              leaveBalance: 12,
-              registeredAt: serverStatus.user?.registered_at || '',
-              isProfileComplete: Boolean(serverStatus.profil_lengkap ?? serverStatus.user?.is_profile_complete ?? true),
-            };
-            AppStorage.updateUser(pendingUser);
-            AppStorage.setSessionUser(pendingUser.id);
-            setIsLoading(false);
-            onLoginSuccess(pendingUser, false);
-            return;
-          }
-        } catch {}
 
         setIsLoading(false);
         const msg =

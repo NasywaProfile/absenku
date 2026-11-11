@@ -850,19 +850,8 @@ export const AppStorage = {
     }
   },
 
-  recordClockIn(newRecord: AttendanceRecord): void {
-    if (newRecord.userId === 'usr_super_admin' || newRecord.userName?.toLowerCase() === 'super admin') {
-      return;
-    }
-    const records = this.getAttendanceRecords();
-    // Cegah duplikasi di hari yang sama untuk user yang sama
-    const filtered = records.filter(
-      (r) => !(r.userId === newRecord.userId && r.date === newRecord.date)
-    );
-    filtered.unshift(newRecord);
-    this.saveAttendanceRecords(filtered);
-
-    // Kirim presensi ke Laravel Backend & MySQL
+  syncAttendanceToServer(newRecord: AttendanceRecord): void {
+    // Kirim presensi ke Laravel Backend & MySQL lalu sinkronkan nilai otoritatif dari server
     ApiClient.clockIn({
       id: newRecord.id,
       user_id: newRecord.userId,
@@ -877,7 +866,47 @@ export const AppStorage = {
       clock_in_late_minutes: newRecord.clockInLateMinutes,
       work_mode: newRecord.workMode,
       notes: newRecord.notes,
-    }).catch(() => {});
+    })
+      .then((res: any) => {
+        const srv = res?.record;
+        if (!srv) return;
+        const currentRecords = this.getAttendanceRecords();
+        const synced = currentRecords.map((r) => {
+          if (r.userId === newRecord.userId && r.date === newRecord.date) {
+            return {
+              ...r,
+              id: srv.id || r.id,
+              clockInTime: srv.jam_masuk || srv.clock_in_time || r.clockInTime,
+              clockInDistanceMeter: srv.jarak_meter ?? srv.clock_in_distance_meter ?? r.clockInDistanceMeter,
+              clockInLocationStatus: (srv.status_lokasi || srv.clock_in_location_status || r.clockInLocationStatus) as any,
+              clockInStatus: (srv.status_kehadiran || srv.clock_in_status || r.clockInStatus) as any,
+              clockInLateMinutes: srv.menit_keterlambatan ?? srv.clock_in_late_minutes ?? r.clockInLateMinutes,
+              workMode: (srv.mode_kerja || srv.work_mode || r.workMode) as any,
+              syncStatus: 'SYNCED' as const,
+            };
+          }
+          return r;
+        });
+        this.saveAttendanceRecords(synced);
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+          window.dispatchEvent(new CustomEvent('absenku:attendance_updated'));
+        }
+      })
+      .catch(() => {});
+  },
+
+  recordClockIn(newRecord: AttendanceRecord): void {
+    if (newRecord.userId === 'usr_super_admin' || newRecord.userName?.toLowerCase() === 'super admin') {
+      return;
+    }
+    const records = this.getAttendanceRecords();
+    // Cegah duplikasi di hari yang sama untuk user yang sama
+    const filtered = records.filter(
+      (r) => !(r.userId === newRecord.userId && r.date === newRecord.date)
+    );
+    filtered.unshift(newRecord);
+    this.saveAttendanceRecords(filtered);
+    this.syncAttendanceToServer(newRecord);
   },
 
   saveAttendanceRecord(newRecord: AttendanceRecord): void {
@@ -891,23 +920,7 @@ export const AppStorage = {
       records.unshift(newRecord);
     }
     this.saveAttendanceRecords(records);
-
-    // Kirim presensi ke Laravel Backend & MySQL
-    ApiClient.clockIn({
-      id: newRecord.id,
-      user_id: newRecord.userId,
-      pengguna_id: newRecord.userId,
-      date: newRecord.date,
-      clock_in_time: newRecord.clockInTime,
-      clock_in_lat: newRecord.clockInLat,
-      clock_in_lng: newRecord.clockInLng,
-      clock_in_distance_meter: newRecord.clockInDistanceMeter,
-      clock_in_location_status: newRecord.clockInLocationStatus,
-      clock_in_status: newRecord.clockInStatus,
-      clock_in_late_minutes: newRecord.clockInLateMinutes,
-      work_mode: newRecord.workMode,
-      notes: newRecord.notes,
-    }).catch(() => {});
+    this.syncAttendanceToServer(newRecord);
   },
 
   clearTodayAttendance(): void {
