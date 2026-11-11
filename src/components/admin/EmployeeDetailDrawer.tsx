@@ -180,18 +180,8 @@ export function EmployeeDetailDrawer({
             </div>
           </div>
 
-          {/* Sisi Kanan: Action Buttons (Hapus jika Super Admin & Close Silang) */}
-          <div className="shrink-0 flex items-center justify-end gap-1.5">
-            {canDelete && (
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirm(true)}
-                className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-full border border-rose-200 transition-colors cursor-pointer shrink-0 shadow-2xs"
-                title="Hapus Akun Karyawan"
-              >
-                <Trash2 className="w-4 h-4 text-rose-600" />
-              </button>
-            )}
+          {/* Sisi Kanan: Close Silang (tombol Hapus Akun tetap di pojok kanan bawah footer) */}
+          <div className="w-10 shrink-0 flex items-center justify-end">
             <button
               type="button"
               onClick={onClose}
