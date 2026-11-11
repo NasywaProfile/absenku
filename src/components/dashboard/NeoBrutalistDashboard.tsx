@@ -447,31 +447,31 @@ export function NeoBrutalistDashboard({
         <div className="bg-white rounded-[28px] border border-slate-200/90 p-6 shadow-xs flex flex-col justify-between h-full">
           <div>
             {/* Header Kalender */}
-            <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-slate-100 min-h-[44px]">
-              <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-2 pb-3.5 mb-4 border-b border-slate-100 min-h-[44px]">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 text-[#1E3A8A] flex items-center justify-center shrink-0">
                   <Calendar className="w-4 h-4" />
                 </div>
-                <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                <h2 className="text-base font-bold text-slate-900 tracking-tight whitespace-nowrap">
                   Kalender Presensi
                 </h2>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center justify-between sm:justify-end gap-1 w-full sm:w-auto bg-slate-50/90 sm:bg-transparent border border-slate-200/70 sm:border-0 rounded-xl sm:rounded-none px-2 py-1 sm:p-0 shrink-0">
                 <button
                   type="button"
                   onClick={handlePrevMonth}
-                  className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer"
+                  className="p-1.5 sm:p-1 hover:bg-white sm:hover:bg-slate-100 text-slate-500 sm:text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer"
                   title="Bulan Sebelumnya"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <span className="text-xs font-bold text-slate-700 px-1 capitalize">
+                <span className="text-xs font-bold text-slate-700 px-2 sm:px-1 capitalize whitespace-nowrap">
                   {currentMonthName}
                 </span>
                 <button
                   type="button"
                   onClick={handleNextMonth}
-                  className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer"
+                  className="p-1.5 sm:p-1 hover:bg-white sm:hover:bg-slate-100 text-slate-500 sm:text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer"
                   title="Bulan Berikutnya"
                 >
                   <ChevronRight className="w-4 h-4" />
