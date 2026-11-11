@@ -1398,7 +1398,7 @@ export function AdminDashboard({
               </h2>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Menampilkan 1 tugas terbaru dari tiap proses kerja tim
+              Menampilkan 1 tugas terbaru dari tiap proses
             </p>
           </div>
 

@@ -543,7 +543,7 @@ export function AdminEmployeeManagement({
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
           {/* Table Header Banner */}
           <div className="p-3.5 sm:p-4 bg-slate-50/80 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
-            <div>
+            <div className="w-full sm:w-auto text-center sm:text-left">
               <h3 className="text-sm font-bold text-slate-800">Daftar Permohonan Registrasi Akun</h3>
             </div>
             <span className="w-full sm:w-auto text-center px-3 py-1.5 sm:py-1 rounded-full text-xs font-bold bg-white text-slate-800 border border-slate-200 shadow-2xs whitespace-nowrap shrink-0">
