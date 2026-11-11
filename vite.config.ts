@@ -40,9 +40,13 @@ const emailApiPlugin = (): Plugin => ({
           const fromName = 'in-Time';
 
           // 1. Opsi Utama: Resend REST API (Deliverability tertinggi saat domain resmi terverifikasi)
-          // Catatan: Jika domain masih sandbox 'onboarding@resend.dev', Resend membatasi penerima hanya ke pemilik akun.
+          // Catatan: Jika domain masih sandbox 'onboarding@resend.dev', Resend membatasi penerima hanya ke allowlist di env.
           const isSandbox = !process.env.RESEND_FROM_EMAIL || process.env.RESEND_FROM_EMAIL === 'onboarding@resend.dev';
-          const isAllowedByResend = !isSandbox || to.toLowerCase() === 'naswa.wijaya31@gmail.com' || to.toLowerCase() === 'nasywadavina384@gmail.com';
+          const sandboxAllowlist = (process.env.RESEND_SANDBOX_ALLOWLIST || '')
+            .split(',')
+            .map((s) => s.trim().toLowerCase())
+            .filter(Boolean);
+          const isAllowedByResend = !isSandbox || sandboxAllowlist.includes(to.toLowerCase());
 
           if (resendApiKey && !isSandbox && isAllowedByResend) {
             try {

@@ -260,8 +260,8 @@ export function EmployeeDetailDrawer({
                       title="Ubah peran akun staf"
                     >
                       <option value="EMPLOYEE">Karyawan</option>
-                      <option value="ADMIN">Admin</option>
-                      <option value="SUPER_ADMIN">Superadmin</option>
+                      {isSuperAdmin && <option value="ADMIN">Admin</option>}
+                      {isSuperAdmin && <option value="SUPER_ADMIN">Superadmin</option>}
                     </select>
                   </div>
                   <div className="flex items-center justify-between py-1 border-b border-slate-200/50">

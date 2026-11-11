@@ -1,8 +1,8 @@
 import { Page, expect } from '@playwright/test';
 
-export const SUPER = { email: 'superadmin@gmail.com', password: 'SuperAdminabsenkuMantap', name: 'Super Admin' };
-export const ADMIN = { id: 'usr_e2e_admin', email: 'budi.admin@gmail.com', password: 'AdminBudi123', name: 'Budi Admin' };
-export const EMP = { id: 'usr_e2e_emp', email: 'alissa.karyawan@gmail.com', password: 'Karyawan123', name: 'Alissa Karyawan' };
+export const SUPER = { email: process.env.E2E_SUPER_EMAIL || 'e2e.superadmin@absenku.test', password: process.env.E2E_SUPER_PASSWORD || 'E2eSuperPass#2026!', name: 'Super Admin' };
+export const ADMIN = { id: 'usr_e2e_admin', email: process.env.E2E_ADMIN_EMAIL || 'e2e.admin@absenku.test', password: process.env.E2E_ADMIN_PASSWORD || 'E2eAdminPass#2026!', name: 'Budi Admin' };
+export const EMP = { id: 'usr_e2e_emp', email: process.env.E2E_EMP_EMAIL || 'e2e.emp@absenku.test', password: process.env.E2E_EMP_PASSWORD || 'E2eEmpPass#2026!', name: 'Alissa Karyawan' };
 
 const baseUser = {
   status: 'ACTIVE',
@@ -35,16 +35,22 @@ export async function resetAndSeed(page: Page) {
   );
   await page.reload();
   await page.evaluate(
-    ({ admin, emp, base }) => {
-      const key = 'absenku_users_v9';
+    ({ superUser, admin, emp, base }) => {
+      const key = 'absenku_users_v10';
       const users = JSON.parse(localStorage.getItem(key) || '[]');
+      const saIdx = users.findIndex((u: any) => u.id === 'usr_super_admin' || u.role === 'SUPER_ADMIN');
+      if (saIdx >= 0) {
+        users[saIdx] = { ...users[saIdx], email: superUser.email, password: superUser.password };
+      } else {
+        users.unshift({ ...base, id: 'usr_super_admin', name: superUser.name, email: superUser.email, password: superUser.password, role: 'SUPER_ADMIN', position: 'Super Administrator' });
+      }
       users.push(
         { ...base, id: admin.id, name: admin.name, email: admin.email, password: admin.password, role: 'ADMIN', position: 'Admin Operasional' },
         { ...base, id: emp.id, name: emp.name, email: emp.email, password: emp.password, role: 'EMPLOYEE', position: 'Frontend Developer' }
       );
       localStorage.setItem(key, JSON.stringify(users));
     },
-    { admin: ADMIN, emp: EMP, base: baseUser }
+    { superUser: SUPER, admin: ADMIN, emp: EMP, base: baseUser }
   );
   await page.reload();
 }

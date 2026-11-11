@@ -110,7 +110,7 @@ export function AttendanceClockTab({
 
   const [currentCoords, setCurrentCoords] = useState<Coordinates | null>(null);
   const [distanceMeters, setDistanceMeters] = useState<number | null>(null);
-  const [isWithinRadius, setIsWithinRadius] = useState<boolean>(true);
+  const [isWithinRadius, setIsWithinRadius] = useState<boolean>(false);
   const [workMode, setWorkMode] = useState<WorkMode>('WFO');
   const [clockInNotes, setClockInNotes] = useState('');
 
@@ -233,6 +233,18 @@ export function AttendanceClockTab({
     if (isOffToday) {
       return;
     }
+    if (!currentCoords) {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Sinyal GPS Belum Terdeteksi',
+        message: 'Presensi wajib menggunakan koordinat GPS nyata dari perangkat Anda. Aktifkan izin lokasi browser lalu klik Segarkan GPS.',
+        variant: 'warning',
+        confirmText: 'Mengerti',
+        hideCancel: true,
+        onConfirm: () => setConfirmModal((prev) => ({ ...prev, isOpen: false })),
+      });
+      return;
+    }
     const today = getCurrentDateString();
     const time = getCurrentTimeString();
     const punctuality = calculateClockInPunctuality(
@@ -268,8 +280,8 @@ export function AttendanceClockTab({
       employmentType: currentUser.employmentType,
       date: today,
       clockInTime: time,
-      clockInLat: currentCoords?.latitude || officeConfig.latitude,
-      clockInLng: currentCoords?.longitude || officeConfig.longitude,
+      clockInLat: currentCoords.latitude,
+      clockInLng: currentCoords.longitude,
       clockInDistanceMeter: distanceMeters !== null ? distanceMeters : 0,
       clockInLocationStatus: locationStatus,
       clockInStatus: isLate ? 'LATE' : 'ON_TIME',
@@ -283,6 +295,28 @@ export function AttendanceClockTab({
     setDataVersion((v) => v + 1);
     onRefreshData();
   };
+
+  // Tampilkan feedback apabila server menolak catatan presensi (mis. duplikat 409 / GPS tidak valid 422)
+  useEffect(() => {
+    const onAttendanceErr = (e: Event) => {
+      const msg = (e as CustomEvent<{ message?: string }>)?.detail?.message;
+      if (msg) {
+        setConfirmModal({
+          isOpen: true,
+          title: 'Validasi Presensi Server',
+          message: msg,
+          variant: 'warning',
+          confirmText: 'Mengerti',
+          hideCancel: true,
+          onConfirm: () => setConfirmModal((prev) => ({ ...prev, isOpen: false })),
+        });
+        setDataVersion((v) => v + 1);
+        onRefreshData();
+      }
+    };
+    window.addEventListener('absenku:attendance_error', onAttendanceErr);
+    return () => window.removeEventListener('absenku:attendance_error', onAttendanceErr);
+  }, [onRefreshData]);
 
   // Auto-detect pergantian hari (setelah lewat 23:59:59) agar absensi otomatis ter-reset untuk hari baru
   useEffect(() => {

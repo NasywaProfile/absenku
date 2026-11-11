@@ -75,7 +75,7 @@ export function AdminEmployeeManagement({
   // Form Tambah Karyawan Baru
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('Absenku123!');
+  const [newPassword, setNewPassword] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newDept, setNewDept] = useState('Teknologi & Engineering');
   const [newPosition, setNewPosition] = useState('Software Engineer');
@@ -140,7 +140,15 @@ export function AdminEmployeeManagement({
     e.preventDefault();
     if (!newName.trim() || !newEmail.trim()) return;
 
-    const pwd = newPassword.trim() || 'Absenku123!';
+    const pwd = newPassword.trim();
+    if (pwd.length < 8) {
+      setDialogMessage({
+        title: 'Kata Sandi Terlalu Lemah',
+        message: 'Harap isi kata sandi awal minimal 8 karakter.',
+        variant: 'warning',
+      });
+      return;
+    }
 
     // 1. Simpan ke database MySQL backend server
     try {
@@ -187,7 +195,7 @@ export function AdminEmployeeManagement({
       setShowAddModal(false);
       setNewName('');
       setNewEmail('');
-      setNewPassword('Absenku123!');
+      setNewPassword('');
       setNewPhone('');
       setNewRole('EMPLOYEE');
       setNewBankAccount('');
@@ -468,8 +476,8 @@ export function AdminEmployeeManagement({
                           title="Ubah peran akun staf (Karyawan / Admin / Superadmin)"
                         >
                           <option value="EMPLOYEE">Karyawan</option>
-                          <option value="ADMIN">Admin</option>
-                          <option value="SUPER_ADMIN">Superadmin</option>
+                          {isSuperAdmin && <option value="ADMIN">Admin</option>}
+                          {isSuperAdmin && <option value="SUPER_ADMIN">Superadmin</option>}
                         </select>
 
                         {/* Status Badge (Klik untuk Ubah Status Aktif / Tidak Aktif) */}
@@ -622,8 +630,8 @@ export function AdminEmployeeManagement({
                               className="w-full text-xs font-bold bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 text-slate-800 rounded-xl px-2.5 py-1.5 focus:outline-hidden focus:ring-2 focus:ring-[#1E3A8A] focus:border-[#1E3A8A] shadow-2xs cursor-pointer transition-colors"
                             >
                               <option value="EMPLOYEE">Karyawan</option>
-                              <option value="ADMIN">Admin</option>
-                              <option value="SUPER_ADMIN">Superadmin</option>
+                              {isSuperAdmin && <option value="ADMIN">Admin</option>}
+                              {isSuperAdmin && <option value="SUPER_ADMIN">Superadmin</option>}
                             </select>
                           </div>
                         </td>
@@ -789,11 +797,12 @@ export function AdminEmployeeManagement({
                     Password Awal
                   </label>
                   <input
-                    type="text"
+                    type="password"
                     required
+                    minLength={8}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Default: Absenku123!"
+                    placeholder="Minimal 8 karakter yang kuat"
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900"
                   />
                 </div>
@@ -825,8 +834,8 @@ export function AdminEmployeeManagement({
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 font-bold"
                   >
                     <option value="EMPLOYEE">Karyawan</option>
-                    <option value="ADMIN">Admin</option>
-                    <option value="SUPER_ADMIN">Superadmin</option>
+                    {isSuperAdmin && <option value="ADMIN">Admin</option>}
+                    {isSuperAdmin && <option value="SUPER_ADMIN">Superadmin</option>}
                   </select>
                 </div>
               </div>

@@ -481,15 +481,28 @@ assert(
   'Password karyawan tersimpan sebagai hash (bukan plaintext)'
 );
 
-// Migrasi plaintext lama milik Super Admin ke hash setelah login pertama
-const saLogin = AppStorage.authenticate('superadmin', 'SuperAdminabsenkuMantap');
+// Pastikan tidak ada password default hardcoded di bundle INITIAL_USERS
+const initialSa = AppStorage.getUsers().find((u) => u.role === 'SUPER_ADMIN');
+assert(!initialSa?.password, 'INITIAL_USERS Super Admin tidak menyimpan password default hardcoded');
+
+// Uji login dengan password plaintext lama lalu migrasi otomatis menjadi hash
+const testSaPlainPass = 'TestSuperAdminLocal#2026!';
+const saSeeded = {
+  ...initialSa!,
+  email: 'sa.test@absenku.local',
+  password: testSaPlainPass,
+};
+AppStorage.updateUser(saSeeded);
+
+assert(AppStorage.authenticate('sa.test@absenku.local') === null, 'Login superadmin tanpa password DITOLAK');
+const saLogin = AppStorage.authenticate('sa.test@absenku.local', testSaPlainPass);
 assert(saLogin?.role === 'SUPER_ADMIN', 'Super Admin dapat login dengan password yang benar');
 assert(
   AppStorage.getUserById(saLogin!.id)!.password!.startsWith('$enc$v2$'),
   'Password plaintext lama otomatis dimigrasi ke hash setelah login'
 );
 assert(
-  AppStorage.authenticate('superadmin', 'SuperAdminabsenkuMantap')?.role === 'SUPER_ADMIN',
+  AppStorage.authenticate('sa.test@absenku.local', testSaPlainPass)?.role === 'SUPER_ADMIN',
   'Super Admin tetap bisa login setelah migrasi hash'
 );
 
@@ -504,12 +517,12 @@ assert(
   'Reset password dengan nama parsial / tidak sama persis DITOLAK'
 );
 assert(
-  AppStorage.resetPasswordSelfService('nasywadavina384@gmail.com', 'Super Admin', 'SuperAdminBaru123').success === true &&
-    AppStorage.authenticate('nasywadavina384@gmail.com', 'SuperAdminBaru123') !== null,
+  AppStorage.resetPasswordSelfService('sa.test@absenku.local', 'Super Admin', 'SuperAdminBaru123').success === true &&
+    AppStorage.authenticate('sa.test@absenku.local', 'SuperAdminBaru123') !== null,
   'Reset password akun Super Admin dengan data valid berhasil'
 );
 // Kembalikan password Super Admin ke semula untuk suite pengetesan berikutnya
-AppStorage.resetPasswordSelfService('nasywadavina384@gmail.com', 'Super Admin', 'SuperAdminabsenkuMantap');
+AppStorage.resetPasswordSelfService('sa.test@absenku.local', 'Super Admin', testSaPlainPass);
 assert(
   AppStorage.resetPasswordSelfService('alissa@gmail.com', 'Alissa Anastasia', 'BaruAman1').success === true &&
     AppStorage.authenticate('alissa@gmail.com', 'BaruAman1') !== null &&
@@ -633,7 +646,7 @@ const empNotif = emailsAfterCreate.find(
   (e) => e.toEmail === budiAdmin.email && e.category === 'TASK_ASSIGNED'
 );
 const picNotif = emailsAfterCreate.find(
-  (e) => (e.toEmail === 'nasywadavina384@gmail.com' || e.toEmail === 'superadmin@gmail.com') && e.category === 'TASK_ASSIGNED'
+  (e) => e.toEmail === 'sa.test@absenku.local' && e.category === 'TASK_ASSIGNED'
 );
 
 assert(!!empNotif, 'Email notifikasi penugasan baru terkirim ke karyawan yang ditugaskan');
@@ -655,7 +668,7 @@ AppStorage.updateTaskStatus(testTask.id, 'DONE', {
 
 const emailsAfterSubmit = AppStorage.getEmailNotifications();
 const picSubmitNotif = emailsAfterSubmit.find(
-  (e) => (e.toEmail === 'nasywadavina384@gmail.com' || e.toEmail === 'superadmin@gmail.com') && e.category === 'TASK_SUBMITTED'
+  (e) => e.toEmail === 'sa.test@absenku.local' && e.category === 'TASK_SUBMITTED'
 );
 const empSubmitConfirm = emailsAfterSubmit.find(
   (e) => e.toEmail === budiAdmin.email && e.category === 'TASK_SUBMITTED'
@@ -671,7 +684,7 @@ assert(!!empSubmitConfirm, 'Email konfirmasi pengumpulan terkirim ke karyawan');
 // 3. Admin / PIC meminta revisi (IN_PROGRESS)
 AppStorage.updateTaskStatus(testTask.id, 'IN_PROGRESS', {
   reviewNotes: 'Mohon tambahkan sanitasi input pada form registrasi.',
-  activityUser: { id: 'usr_super_admin', name: 'Super Admin', email: 'nasywadavina384@gmail.com', role: 'SUPER_ADMIN' },
+  activityUser: { id: 'usr_super_admin', name: 'Super Admin', email: 'sa.test@absenku.local', role: 'SUPER_ADMIN' },
 });
 
 const emailsAfterRevision = AppStorage.getEmailNotifications();
@@ -687,7 +700,7 @@ assert(
 // 4. Admin / PIC menyetujui tugas (REVIEWED / ACC Selesai)
 AppStorage.updateTaskStatus(testTask.id, 'REVIEWED', {
   reviewNotes: 'Pengerjaan sangat baik dan siap dideploy ke server produksi.',
-  activityUser: { id: 'usr_super_admin', name: 'Super Admin', email: 'nasywadavina384@gmail.com', role: 'SUPER_ADMIN' },
+  activityUser: { id: 'usr_super_admin', name: 'Super Admin', email: 'sa.test@absenku.local', role: 'SUPER_ADMIN' },
 });
 
 const emailsAfterApprove = AppStorage.getEmailNotifications();
@@ -695,7 +708,7 @@ const empApproveNotif = emailsAfterApprove.find(
   (e) => e.toEmail === budiAdmin.email && e.category === 'TASK_APPROVED'
 );
 const picApproveNotif = emailsAfterApprove.find(
-  (e) => (e.toEmail === 'nasywadavina384@gmail.com' || e.toEmail === 'superadmin@gmail.com') && e.category === 'TASK_APPROVED'
+  (e) => e.toEmail === 'sa.test@absenku.local' && e.category === 'TASK_APPROVED'
 );
 
 assert(!!empApproveNotif, 'Email tugas disetujui (ACC) terkirim ke karyawan');

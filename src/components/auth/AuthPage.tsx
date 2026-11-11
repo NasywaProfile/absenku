@@ -31,12 +31,6 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [regDepartment, setRegDepartment] = useState('');
 
-  // Lupa Password state
-  const [resetEmail, setResetEmail] = useState('');
-  const [resetName, setResetName] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [showNewPassword, setShowNewPassword] = useState(false);
-
   // Feedback states
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -285,41 +279,6 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
     onLoginSuccess(res.user, true);
   };
 
-  const handleResetPasswordSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    if (!resetEmail.trim() || !newPassword) {
-      setErrorMsg('Harap isi email terdaftar dan password baru.');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setErrorMsg('Password baru minimal terdiri dari 6 karakter.');
-      return;
-    }
-
-    setIsLoading(true);
-
-    setTimeout(() => {
-      const res = AppStorage.resetPasswordSelfService(resetEmail.trim(), resetName.trim(), newPassword);
-      setIsLoading(false);
-
-      if (!res.success) {
-        setErrorMsg(res.message || 'Gagal mengatur ulang password.');
-        return;
-      }
-
-      setSuccessMsg('Kata sandi berhasil diperbarui! Silakan masuk dengan password baru Anda.');
-      setNewPassword('');
-      setTimeout(() => {
-        setSuccessMsg(null);
-        setAuthMode('LOGIN');
-      }, 1500);
-    }, 400);
-  };
-
   return (
     <div className="min-h-screen lg:h-screen w-full bg-[#F3F6FA] lg:bg-white flex flex-col lg:flex-row font-sans text-slate-900 antialiased selection:bg-[#0D1C42] selection:text-white overflow-x-hidden">
       
@@ -554,69 +513,22 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
               </form>
             )}
 
-            {/* 3. FORM LUPA PASSWORD */}
+            {/* 3. INFO LUPA PASSWORD (TERVERIFIKASI ADMIN) */}
             {authMode === 'FORGOT_PASSWORD' && (
-              <form onSubmit={handleResetPasswordSubmit} className="space-y-3.5 sm:space-y-4">
-                <div className="space-y-1 text-left">
-                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
-                    Email Terdaftar <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
-                    placeholder="contoh: superadmin@gmail.com"
-                    className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
-                  />
+              <div className="space-y-4">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-700 leading-relaxed space-y-2 text-left">
+                  <p className="font-bold text-slate-900">
+                    Reset Kata Sandi Memerlukan Verifikasi Admin
+                  </p>
+                  <p>
+                    Demi keamanan akun dan data perusahaan, pengaturan ulang kata sandi tidak dilakukan secara bebas dari halaman login.
+                  </p>
+                  <p className="text-slate-600 text-xs">
+                    Silakan hubungi <strong>Super Admin</strong> atau <strong>Admin HR</strong> perusahaan untuk menetapkan kata sandi sementara bagi akun Anda.
+                  </p>
                 </div>
 
-                <div className="space-y-1 text-left">
-                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
-                    Nama Lengkap Terdaftar <span className="text-slate-400 text-[10px] sm:text-xs font-normal">(Opsional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={resetName}
-                    onChange={(e) => setResetName(e.target.value)}
-                    placeholder="Contoh: Super Admin"
-                    className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
-                  />
-                </div>
-
-                <div className="space-y-1 text-left">
-                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
-                    Password Baru
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showNewPassword ? 'text' : 'password'}
-                      required
-                      minLength={6}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Minimal 6 karakter"
-                      className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 pr-8 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#1E3A8A] p-1 cursor-pointer transition-colors"
-                    >
-                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-3 sm:py-3.5 px-6 bg-[#1E3A8A] hover:bg-[#152a65] active:scale-[0.99] disabled:opacity-50 text-white font-bold rounded-full text-sm shadow-md shadow-blue-950/15 transition-all duration-200 cursor-pointer mt-3.5 sm:mt-4"
-                >
-                  {isLoading ? 'Memproses...' : 'Simpan Password Baru'}
-                </button>
-
-                <div className="flex justify-center items-center pt-2">
+                <div className="flex justify-center items-center pt-1">
                   <button
                     type="button"
                     onClick={() => {
@@ -630,7 +542,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
                     <span>Kembali ke Halaman Masuk</span>
                   </button>
                 </div>
-              </form>
+              </div>
             )}
 
           </div>

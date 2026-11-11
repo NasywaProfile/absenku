@@ -243,11 +243,6 @@ export const AppStorage = {
           sa.email = INITIAL_USERS[0].email;
           changed = true;
         }
-        // Pastikan password superadmin terisi
-        if (!sa.password) {
-          sa.password = 'SuperAdminabsenkuMantap';
-          changed = true;
-        }
       }
 
       // Sinkronkan joinDate setiap akun dengan tanggal pembuatan akun (registeredAt / id timestamp)
@@ -419,8 +414,7 @@ export const AppStorage = {
     const found = users.find(
       (u) =>
         u.email.toLowerCase() === cleanId ||
-        u.id.toLowerCase() === cleanId ||
-        ((cleanId === 'superadmin' || cleanId === 'superadmin@gmail.com') && u.role === 'SUPER_ADMIN')
+        u.id.toLowerCase() === cleanId
     );
     if (!found) return null;
     // Password WAJIB diisi dan harus cocok (tidak ada lagi bypass dengan password kosong)
@@ -892,7 +886,43 @@ export const AppStorage = {
           window.dispatchEvent(new CustomEvent('absenku:attendance_updated'));
         }
       })
-      .catch(() => {});
+      .catch((err: any) => {
+        // Jika server menolak presensi (403/409/422), batalkan record lokal palsu & pakai record otoritatif server jika ada
+        if (err && [403, 409, 422].includes(err.status)) {
+          const currentRecords = this.getAttendanceRecords();
+          const srv = err.data?.record;
+          let reconciled: AttendanceRecord[];
+          if (err.status === 409 && srv) {
+            reconciled = currentRecords.map((r) =>
+              r.userId === newRecord.userId && r.date === newRecord.date
+                ? {
+                    ...r,
+                    id: srv.id || r.id,
+                    clockInTime: srv.jam_masuk || srv.clock_in_time || r.clockInTime,
+                    clockInDistanceMeter: srv.jarak_meter ?? srv.clock_in_distance_meter ?? r.clockInDistanceMeter,
+                    clockInLocationStatus: (srv.status_lokasi || srv.clock_in_location_status || r.clockInLocationStatus) as any,
+                    clockInStatus: (srv.status_kehadiran || srv.clock_in_status || r.clockInStatus) as any,
+                    clockInLateMinutes: srv.menit_keterlambatan ?? srv.clock_in_late_minutes ?? r.clockInLateMinutes,
+                    workMode: (srv.mode_kerja || srv.work_mode || r.workMode) as any,
+                    syncStatus: 'SYNCED' as const,
+                  }
+                : r
+            );
+          } else {
+            reconciled = currentRecords.filter(
+              (r) => !(r.userId === newRecord.userId && r.date === newRecord.date && r.id === newRecord.id)
+            );
+          }
+          this.saveAttendanceRecords(reconciled);
+          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+            window.dispatchEvent(
+              new CustomEvent('absenku:attendance_error', {
+                detail: { message: err.message || 'Presensi ditolak oleh server.' },
+              })
+            );
+          }
+        }
+      });
   },
 
   recordClockIn(newRecord: AttendanceRecord): void {
@@ -1284,7 +1314,7 @@ export const AppStorage = {
         actor: {
           id: curUser?.id || newTask.createdBy || 'usr_super_admin',
           name: curUser?.name || 'Super Admin',
-          email: curUser?.email || 'nasywadavina384@gmail.com',
+          email: curUser?.email || this.getUsers().find((u) => u.role === 'SUPER_ADMIN')?.email || 'admin@perusahaan.local',
           role: curUser?.role || 'SUPER_ADMIN',
         },
         notes: newTask.description,
@@ -1332,7 +1362,7 @@ export const AppStorage = {
             actor: {
               id: curUser?.id || (updatedTask as TaskItem).createdBy || 'usr_super_admin',
               name: curUser?.name || 'Super Admin',
-              email: curUser?.email || 'nasywadavina384@gmail.com',
+              email: curUser?.email || this.getUsers().find((u) => u.role === 'SUPER_ADMIN')?.email || 'admin@perusahaan.local',
               role: curUser?.role || 'SUPER_ADMIN',
             },
             notes: (updatedTask as TaskItem).description,
@@ -1365,7 +1395,7 @@ export const AppStorage = {
       users.find((u) => u.role === 'ADMIN') || {
         id: 'usr_super_admin',
         name: 'Super Admin',
-        email: 'nasywadavina384@gmail.com',
+        email: 'admin@perusahaan.local',
         role: 'SUPER_ADMIN' as const,
       };
 
@@ -1396,7 +1426,7 @@ export const AppStorage = {
           {
             id: task.assignedTo || 'usr_emp_01',
             name: task.assignedName || 'Karyawan Pelaksana',
-            email: 'nasywadavina384@gmail.com',
+            email: 'karyawan@perusahaan.local',
             role: 'EMPLOYEE' as const,
             status: 'ACTIVE' as const,
             employmentType: 'PERMANENT' as const,
@@ -1808,7 +1838,7 @@ export const AppStorage = {
         const actor = {
           id: actorUser?.id || cur?.id || 'usr_super_admin',
           name: actorUser?.name || cur?.name || 'Super Admin',
-          email: actorUser?.email || cur?.email || 'nasywadavina384@gmail.com',
+          email: actorUser?.email || cur?.email || this.getUsers().find((u) => u.role === 'SUPER_ADMIN')?.email || 'admin@perusahaan.local',
           role: actorUser?.role || cur?.role || 'SUPER_ADMIN',
         };
         if (status === 'IN_PROGRESS' && oldStatusTarget === 'TODO') {
@@ -2151,7 +2181,7 @@ export const AppStorage = {
     const targetAdmins =
       adminUsers.length > 0
         ? adminUsers
-        : [{ id: 'usr_super_admin', email: 'nasywadavina384@gmail.com', name: 'Super Admin', role: 'SUPER_ADMIN' as const, employmentType: 'PERMANENT' as const }];
+        : [{ id: 'usr_super_admin', email: 'admin@perusahaan.local', name: 'Super Admin', role: 'SUPER_ADMIN' as const, employmentType: 'PERMANENT' as const }];
 
     targetAdmins.forEach((admin) => {
       this.addEmailNotification({
@@ -2270,7 +2300,7 @@ export const AppStorage = {
 
       // Kirim email notifikasi persetujuan ke email karyawan pemohon izin
       const targetUser = this.getUsers().find((u) => u.id === approvedLeave?.userId);
-      const empEmail = targetUser?.email || 'nasywadavina384@gmail.com';
+      const empEmail = targetUser?.email || '';
       const categoryLabel =
         approvedLeave.category === 'BUSINESS_TRIP'
           ? 'Dinas Luar'
@@ -2317,7 +2347,7 @@ export const AppStorage = {
 
       // Kirim email notifikasi penolakan ke email karyawan pemohon izin
       const targetUser = this.getUsers().find((u) => u.id === rejectedLeave?.userId);
-      const empEmail = targetUser?.email || 'nasywadavina384@gmail.com';
+      const empEmail = targetUser?.email || '';
       const categoryLabel =
         rejectedLeave.category === 'BUSINESS_TRIP'
           ? 'Dinas Luar'
@@ -2508,12 +2538,14 @@ export const AppStorage = {
       let rawTo = sanitizedNotification.toEmail?.trim();
 
       // Jika alamat email dummy / contoh yang tidak bisa menerima email asli:
+      const superAdminEmail = users.find((u) => u.role === 'SUPER_ADMIN')?.email || '';
       if (
         !rawTo ||
         !rawTo.includes('@') ||
         rawTo.toLowerCase() === 'superadmin@gmail.com' ||
         rawTo.toLowerCase().endsWith('@kantor.id') ||
-        rawTo.toLowerCase().endsWith('@absenku.id')
+        rawTo.toLowerCase().endsWith('@absenku.id') ||
+        rawTo.toLowerCase().endsWith('.local')
       ) {
         // Coba cari dari nama / ID user di biodata diri yang sudah diinputkan
         const matchedUser =
@@ -2526,7 +2558,8 @@ export const AppStorage = {
           matchedUser.email.includes('@') &&
           matchedUser.email.toLowerCase() !== 'superadmin@gmail.com' &&
           !matchedUser.email.toLowerCase().endsWith('@kantor.id') &&
-          !matchedUser.email.toLowerCase().endsWith('@absenku.id')
+          !matchedUser.email.toLowerCase().endsWith('@absenku.id') &&
+          !matchedUser.email.toLowerCase().endsWith('.local')
         ) {
           rawTo = matchedUser.email.trim();
         } else {
@@ -2538,18 +2571,20 @@ export const AppStorage = {
                 u.email &&
                 u.email.includes('@') &&
                 !u.email.toLowerCase().endsWith('@kantor.id') &&
-                !u.email.toLowerCase().endsWith('@absenku.id')
+                !u.email.toLowerCase().endsWith('@absenku.id') &&
+                !u.email.toLowerCase().endsWith('.local')
             );
-            rawTo = realEmp?.email || 'nasywadavina384@gmail.com';
+            rawTo = realEmp?.email || superAdminEmail;
           } else {
             const realPic = users.find(
               (u) =>
                 (u.role === 'SUPER_ADMIN' || u.role === 'ADMIN') &&
                 u.email &&
                 u.email.includes('@') &&
-                u.email.toLowerCase() !== 'superadmin@gmail.com'
+                u.email.toLowerCase() !== 'superadmin@gmail.com' &&
+                !u.email.toLowerCase().endsWith('.local')
             );
-            rawTo = realPic?.email || 'nasywadavina384@gmail.com';
+            rawTo = realPic?.email || superAdminEmail;
           }
         }
       }

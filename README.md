@@ -73,12 +73,15 @@ npx playwright test
 ```
 
 ### 2. Backend (Laravel 11 + MySQL)
-Pastikan Apache & MySQL aktif di **XAMPP Control Panel**.
+Pastikan Apache & MySQL aktif di **XAMPP Control Panel** (atau layanan MySQL di server).
 ```bash
 cd ../absenku-backend
 
-# Jalankan migrasi dan seeder database
-php artisan migrate:fresh --seed
+# Jalankan migrasi tabel (TANPA migrate:fresh di produksi!)
+php artisan migrate
+
+# Atur akun Super Admin awal melalui .env (SEED_SUPER_ADMIN_EMAIL & SEED_SUPER_ADMIN_PASSWORD) atau command berikut:
+php artisan absenku:set-superadmin
 
 # Jalankan server API backend (port 8000)
 php artisan serve --port=8000
@@ -86,10 +89,9 @@ php artisan serve --port=8000
 
 ---
 
-## 🔐 Akun Pengujian Default
+## 🔒 Keamanan & Deployment Produksi
 
-| Peran | Email | Kata Sandi |
-| :--- | :--- | :--- |
-| **Super Admin** | `superadmin@gmail.com` | `SuperAdminabsenkuMantap` |
-| **Admin** | `budi.admin@gmail.com` | `AdminBudi123` |
-| **Karyawan** | `alissa.karyawan@gmail.com` | `Karyawan123` |
+- **Jangan gunakan akun/password default** di repositori publik. Gunakan `php artisan absenku:set-superadmin` di server untuk menetapkan email & kata sandi kuat khusus pemilik sistem.
+- **Jangan pernah menjalankan `php artisan migrate:fresh`** di server produksi (otomatis diblokir saat `APP_ENV=production`).
+- **Aktifkan HTTPS** serta setel `APP_ENV=production`, `APP_DEBUG=false`, `APP_FORCE_HTTPS=true`, `SESSION_SECURE_COOKIE=true`, dan `CORS_ALLOWED_ORIGINS=https://domain-anda` pada `.env` backend.
+- **Aktifkan backup database otomatis** dengan `php artisan db:backup` dan Laravel scheduler cron (`* * * * * php artisan schedule:run`).
