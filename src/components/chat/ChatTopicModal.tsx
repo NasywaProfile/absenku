@@ -625,11 +625,11 @@ export function ChatTopicModal({
           <button
             type="button"
             onClick={() => setShowTagTeammatesModal(true)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-[#1E3A8A] hover:bg-blue-100 border border-blue-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+            className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-blue-50 text-[#1E3A8A] hover:bg-blue-100 border border-blue-200 transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
             title="Tambah atau kelola rekan yang ditag ke ruang obrolan ini"
+            aria-label="Tag Rekan"
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>+ Tag Rekan</span>
           </button>
         </div>
       </div>
