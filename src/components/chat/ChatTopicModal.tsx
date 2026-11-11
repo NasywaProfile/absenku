@@ -695,9 +695,10 @@ export function ChatTopicModal({
                     fileType: item.file.fileType,
                   })}
                   className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer shrink-0 ml-2"
+                  title={`Buka ${item.file.name} di tab baru`}
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Unduh</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Buka</span>
                 </button>
               </div>
             ) : (

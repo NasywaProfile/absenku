@@ -598,10 +598,10 @@ export function TaskDetailModal({
               }
             }}
             className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer"
-            title="Buka / Unduh di tab baru"
+            title={`Buka ${att.name} di tab baru`}
           >
-            {isLink ? <ExternalLink className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
-            <span>{isLink ? 'Buka' : 'Unduh'}</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Buka</span>
           </button>
         </div>
       </div>

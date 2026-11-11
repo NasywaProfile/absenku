@@ -16,7 +16,7 @@ import {
   Calendar,
   FileSpreadsheet,
   Trash2,
-  Download,
+  ExternalLink,
   AlertCircle,
   User as UserIcon,
   Loader2,
@@ -38,7 +38,7 @@ import { uploadToCloudinary } from '../../lib/cloudinary.ts';
 import { uploadHybridFile } from '../../lib/file-uploader.ts';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 import { SimpleProfileModal, SimpleProfileData } from '../common/SimpleProfileModal.tsx';
-import { openAttachmentDirectly, downloadMediaFile } from '../../lib/open-media.ts';
+import { openAttachmentDirectly } from '../../lib/open-media.ts';
 
 interface LeaveManagementProps {
   currentUser: User;
@@ -1157,15 +1157,17 @@ export function LeaveManagement({
                       <button
                         type="button"
                         onClick={() =>
-                          downloadMediaFile(
-                            selectedLeaveDetail.attachmentData || '',
-                            selectedLeaveDetail.attachmentName || 'lampiran_izin'
-                          )
+                          openAttachmentDirectly({
+                            url: selectedLeaveDetail.attachmentData,
+                            name: selectedLeaveDetail.attachmentName || 'lampiran_izin',
+                            type: 'FILE',
+                          })
                         }
                         className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-lg text-xs cursor-pointer transition-all active:scale-95"
+                        title={`Buka ${selectedLeaveDetail.attachmentName || 'lampiran'} di tab baru`}
                       >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Unduh</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Buka</span>
                       </button>
                     )}
                   </div>
