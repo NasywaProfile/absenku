@@ -1706,13 +1706,13 @@ export function KanbanBoard({
 
                 {/* Lampiran File & Link Saat Admin Membuat Tugas */}
                 <div className="space-y-2 pt-1">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2">
                     <span className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                       Lampiran Berkas &amp; Tautan Referensi (Opsional)
                     </span>
-                    <div className="flex items-center gap-1.5">
-                      <label className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl font-bold text-[11px] cursor-pointer shadow-2xs transition-colors">
-                        <Paperclip className="w-3 h-3 text-indigo-600" />
+                    <div className="flex items-center gap-2 shrink-0">
+                      <label className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl font-bold text-[11px] cursor-pointer shadow-2xs transition-colors">
+                        <Paperclip className="w-3 h-3 text-indigo-600 shrink-0" />
                         <span>+ File</span>
                         <input
                           type="file"
@@ -1724,9 +1724,9 @@ export function KanbanBoard({
                       <button
                         type="button"
                         onClick={() => setShowCreateAddLink(!showCreateAddLink)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl font-bold text-[11px] cursor-pointer shadow-2xs transition-colors"
+                        className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl font-bold text-[11px] cursor-pointer shadow-2xs transition-colors"
                       >
-                        <Globe className="w-3 h-3 text-indigo-600" />
+                        <Globe className="w-3 h-3 text-indigo-600 shrink-0" />
                         <span>+ Link</span>
                       </button>
                     </div>
