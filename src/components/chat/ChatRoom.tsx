@@ -1505,18 +1505,18 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
                         onChange={(e) => setNewLinkTitle(e.target.value)}
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                       />
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
                         <input
                           type="url"
                           placeholder="https://example.com"
                           value={newLinkUrl}
                           onChange={(e) => setNewLinkUrl(e.target.value)}
-                          className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium"
+                          className="min-w-0 flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium"
                         />
                         <button
                           type="button"
                           onClick={handleAddTopicLink}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg cursor-pointer"
+                          className="shrink-0 whitespace-nowrap px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg cursor-pointer"
                         >
                           Simpan Link
                         </button>

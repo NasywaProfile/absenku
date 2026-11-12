@@ -41,7 +41,7 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [showResetAppModal, setShowResetAppModal] = useState<boolean>(false);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState<string | null>(null);
-  const [taskSyncErrorMessage, setTaskSyncErrorMessage] = useState<string | null>(null);
+  const [syncErrorNotice, setSyncErrorNotice] = useState<{ title: string; message: string } | null>(null);
   const [isClockInModalOpen, setIsClockInModalOpen] = useState<boolean>(false);
   const [isOnboardingRegistration, setIsOnboardingRegistration] = useState<boolean>(false);
 
@@ -211,6 +211,7 @@ export default function App() {
       const serverLeaves = await ApiClient.getLeaves().catch(() => null);
       if (Array.isArray(serverLeaves) && serverLeaves.length > 0) {
         const localLeaves = AppStorage.getLeaveRequests();
+        const pendingLeaveIds = new Set(AppStorage.getPendingLeaveSyncIds().map(String));
         const mergedLeaves = [...localLeaves];
         for (const sl of serverLeaves) {
           const mappedLeave: LeaveRequest = {
@@ -238,7 +239,9 @@ export default function App() {
             (l) => l.id === sl.id || (l.userId === mappedLeave.userId && l.startDate === mappedLeave.startDate && l.category === mappedLeave.category)
           );
           if (idx >= 0) {
-            mergedLeaves[idx] = { ...mergedLeaves[idx], ...mappedLeave };
+            if (!pendingLeaveIds.has(String(mergedLeaves[idx].id))) {
+              mergedLeaves[idx] = { ...mergedLeaves[idx], ...mappedLeave };
+            }
           } else {
             mergedLeaves.push(mappedLeave);
           }
@@ -484,13 +487,20 @@ export default function App() {
     const handleTaskSyncError = (evt: Event) => {
       const detail = (evt as CustomEvent<{ message?: string }>).detail;
       if (detail?.message) {
-        setTaskSyncErrorMessage(detail.message);
+        setSyncErrorNotice({ title: 'Gagal Menyimpan Tugas', message: detail.message });
+      }
+    };
+    const handleLeaveSyncError = (evt: Event) => {
+      const detail = (evt as CustomEvent<{ message?: string }>).detail;
+      if (detail?.message) {
+        setSyncErrorNotice({ title: 'Gagal Mengirim Pengajuan Izin', message: detail.message });
       }
     };
 
     window.addEventListener('absenku:leaves_updated', handleSync);
     window.addEventListener('absenku:tasks_updated', handleSync);
     window.addEventListener('absenku:task_sync_error', handleTaskSyncError);
+    window.addEventListener('absenku:leave_sync_error', handleLeaveSyncError);
     window.addEventListener('absenku:users_updated', handleSync);
     window.addEventListener('absenku:attendance_updated', handleSync);
     window.addEventListener('storage', handleSync);
@@ -504,6 +514,7 @@ export default function App() {
       window.removeEventListener('absenku:leaves_updated', handleSync);
       window.removeEventListener('absenku:tasks_updated', handleSync);
       window.removeEventListener('absenku:task_sync_error', handleTaskSyncError);
+      window.removeEventListener('absenku:leave_sync_error', handleLeaveSyncError);
       window.removeEventListener('absenku:users_updated', handleSync);
       window.removeEventListener('absenku:attendance_updated', handleSync);
       window.removeEventListener('storage', handleSync);
@@ -1298,16 +1309,16 @@ export default function App() {
         onCancel={() => setAccessDeniedMessage(null)}
       />
 
-      {/* Dialog Error Sinkronisasi Penugasan */}
+      {/* Dialog Error Sinkronisasi Tugas / Pengajuan Izin */}
       <ModernConfirmDialog
-        isOpen={!!taskSyncErrorMessage}
+        isOpen={!!syncErrorNotice}
         variant="warning"
-        title="Gagal Menyimpan Tugas"
-        message={taskSyncErrorMessage || ''}
+        title={syncErrorNotice?.title || 'Gagal Menyimpan Data'}
+        message={syncErrorNotice?.message || ''}
         confirmText="Mengerti"
         hideCancel={true}
-        onConfirm={() => setTaskSyncErrorMessage(null)}
-        onCancel={() => setTaskSyncErrorMessage(null)}
+        onConfirm={() => setSyncErrorNotice(null)}
+        onCancel={() => setSyncErrorNotice(null)}
       />
 
       {/* Modern Confirm Dialog Reset Data Aplikasi */}

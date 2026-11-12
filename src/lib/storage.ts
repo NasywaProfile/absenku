@@ -48,6 +48,47 @@ import { sendRealEmail, generateEmailHtmlTemplate } from './real-email.ts';
 import { formatIndonesianDateShort } from './time-utils.ts';
 
 const PENDING_TASK_SYNC_KEY = 'absenku_pending_task_sync_v10';
+const PENDING_LEAVE_SYNC_KEY = 'absenku_pending_leave_sync_v10';
+
+function readPendingSyncIds(storageKey: string): string[] {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const now = Date.now();
+      return Object.entries(parsed)
+        .filter(([, ts]) => typeof ts === 'number' && now - ts < 10 * 60 * 1000)
+        .map(([id]) => String(id));
+    }
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function markPendingSyncId(storageKey: string, id: string): void {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const map: Record<string, number> =
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    map[String(id)] = Date.now();
+    localStorage.setItem(storageKey, JSON.stringify(map));
+  } catch {}
+}
+
+function clearPendingSyncId(storageKey: string, id: string): void {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      delete parsed[String(id)];
+      localStorage.setItem(storageKey, JSON.stringify(parsed));
+    }
+  } catch {}
+}
 
 function dispatchSafeWindowEvent(eventName: string, detail?: any): void {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') {
@@ -1954,43 +1995,27 @@ export const AppStorage = {
   },
 
   getPendingTaskSyncIds(): string[] {
-    try {
-      const raw = localStorage.getItem(PENDING_TASK_SYNC_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const now = Date.now();
-        return Object.entries(parsed)
-          .filter(([, ts]) => typeof ts === 'number' && now - ts < 10 * 60 * 1000)
-          .map(([id]) => String(id));
-      }
-      return Array.isArray(parsed) ? parsed.map(String) : [];
-    } catch {
-      return [];
-    }
+    return readPendingSyncIds(PENDING_TASK_SYNC_KEY);
   },
 
   markTaskPendingSync(taskId: string): void {
-    try {
-      const raw = localStorage.getItem(PENDING_TASK_SYNC_KEY);
-      const parsed = raw ? JSON.parse(raw) : {};
-      const map: Record<string, number> =
-        parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-      map[String(taskId)] = Date.now();
-      localStorage.setItem(PENDING_TASK_SYNC_KEY, JSON.stringify(map));
-    } catch {}
+    markPendingSyncId(PENDING_TASK_SYNC_KEY, taskId);
   },
 
   clearTaskPendingSync(taskId: string): void {
-    try {
-      const raw = localStorage.getItem(PENDING_TASK_SYNC_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        delete parsed[String(taskId)];
-        localStorage.setItem(PENDING_TASK_SYNC_KEY, JSON.stringify(parsed));
-      }
-    } catch {}
+    clearPendingSyncId(PENDING_TASK_SYNC_KEY, taskId);
+  },
+
+  getPendingLeaveSyncIds(): string[] {
+    return readPendingSyncIds(PENDING_LEAVE_SYNC_KEY);
+  },
+
+  markLeavePendingSync(leaveId: string): void {
+    markPendingSyncId(PENDING_LEAVE_SYNC_KEY, leaveId);
+  },
+
+  clearLeavePendingSync(leaveId: string): void {
+    clearPendingSyncId(PENDING_LEAVE_SYNC_KEY, leaveId);
   },
 
   getDeletedTaskIds(): string[] {
@@ -2249,6 +2274,7 @@ export const AppStorage = {
 
     leaves.unshift(newLeave);
     this.saveLeaves(leaves);
+    this.markLeavePendingSync(newLeave.id);
 
     // Kirim pengajuan ke Laravel Backend & MySQL
     ApiClient.createLeave({
@@ -2261,7 +2287,23 @@ export const AppStorage = {
       attachment_name: newLeave.attachmentName,
       attachment_data: newLeave.attachmentData,
       attachment_type: newLeave.attachmentType,
-    }).catch(() => {});
+    })
+      .then(() => {
+        this.clearLeavePendingSync(newLeave.id);
+      })
+      .catch((err: any) => {
+        const status = Number(err?.status || 0);
+        if (status >= 400) {
+          this.clearLeavePendingSync(newLeave.id);
+          const remaining = this.getLeaves().filter((l) => String(l.id) !== String(newLeave.id));
+          this.saveLeaves(remaining);
+          dispatchSafeWindowEvent('absenku:leaves_updated');
+          dispatchSafeWindowEvent('absenku:leave_sync_error', {
+            leaveId: newLeave.id,
+            message: err?.message || 'Gagal mengirim pengajuan izin ke server.',
+          });
+        }
+      });
 
     // TRIGGER EMAIL NOTIFIKASI OTOMATIS KE SEMUA ADMIN & SUPER ADMIN (WEB & EMAIL ASLI)
     const categoryLabels: Record<LeaveCategory, string> = {

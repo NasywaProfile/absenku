@@ -901,6 +901,27 @@ assert(
   'AppStorage.addTask menyimpan kartu baru serta menandainya dalam antrean sinkronisasi'
 );
 
+const leaveTestUser: User = {
+  ...AppStorage.getUsers()[0],
+  id: 'usr_emp_leave_sync',
+  name: 'Staf Uji Izin',
+  role: 'EMPLOYEE',
+};
+const createdLeave = AppStorage.submitLeaveRequest(leaveTestUser, {
+  category: 'SICK',
+  startDate: '2026-12-01',
+  endDate: '2026-12-01',
+  totalDays: 1,
+  reason: 'Sakit demam uji sinkronisasi',
+  attachmentName: 'surat_sakit.docx',
+  attachmentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+});
+assert(
+  AppStorage.getLeaveRequests().some((l) => l.id === createdLeave.id) &&
+    AppStorage.getPendingLeaveSyncIds().includes(createdLeave.id),
+  'AppStorage.submitLeaveRequest menyimpan pengajuan baru serta menandainya dalam antrean sinkronisasi'
+);
+
 // -----------------------------------------------------------------------------
 // REKAP HASIL AKHIR
 // -----------------------------------------------------------------------------
