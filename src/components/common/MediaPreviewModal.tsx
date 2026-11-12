@@ -21,6 +21,8 @@ import {
   openDataUrlInNewTab,
   resolveMediaUrl,
   dataUrlToBlob,
+  isSafeMediaUrl,
+  isSafeDataUrl,
   SAMPLE_FALLBACK_PDF,
 } from '../../lib/open-media.ts';
 
@@ -82,12 +84,21 @@ export function MediaPreviewModal({ media, onClose }: MediaPreviewModalProps) {
         }
 
         if (!isMounted) return;
+        if (!isSafeMediaUrl(finalUrl)) {
+          setResolvedUrl('');
+          setBlobUrl('');
+          return;
+        }
         setResolvedUrl(finalUrl);
 
         // 2. Jika berupa Base64 Data URL, konversi menjadi Blob URL asli
         // Browser seperti Chrome memblokir iframe dengan data:application/pdf sehingga tampak blank putih.
         // Blob URL (blob:http://...) didukung 100% dan membuka viewer PDF bawaan browser secara sempurna.
         if (finalUrl.startsWith('data:')) {
+          if (!isSafeDataUrl(finalUrl)) {
+            setBlobUrl('');
+            return;
+          }
           const mime = isPdf ? 'application/pdf' : isImg ? 'image/jpeg' : 'application/octet-stream';
           const blob = dataUrlToBlob(finalUrl, mime);
           currentBlob = URL.createObjectURL(blob);
@@ -100,7 +111,7 @@ export function MediaPreviewModal({ media, onClose }: MediaPreviewModalProps) {
       } catch (err) {
         console.warn('Gagal memuat pratinjau media:', err);
         if (isMounted) {
-          setBlobUrl(media.url);
+          setBlobUrl(isSafeMediaUrl(media.url) ? media.url : '');
         }
       } finally {
         if (isMounted) {
@@ -129,7 +140,7 @@ export function MediaPreviewModal({ media, onClose }: MediaPreviewModalProps) {
     if (isLink) {
       openExternalLink(resolvedUrl || media.url);
     } else if (blobUrl) {
-      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      openDataUrlInNewTab(blobUrl, media.name || 'lampiran_berkas');
     } else {
       openDataUrlInNewTab(resolvedUrl || media.url, media.name || 'lampiran_berkas');
     }

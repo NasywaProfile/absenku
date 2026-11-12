@@ -391,14 +391,14 @@ export function EmployeeBiodata({ currentUser, onUserUpdated }: EmployeeBiodataP
           const emailHtml = generateEmailHtmlTemplate({
             title: 'Konfirmasi Pembaruan Email Akun',
             recipientName: name.trim() || currentUser.name,
-            intro: `Halo <strong>${name.trim() || currentUser.name}</strong>, pemberitahuan ini mengonfirmasi bahwa alamat email untuk akun ${currentUser.role === 'SUPER_ADMIN' ? 'Super Administrator' : 'pengguna'} Anda pada platform operasional in-Time telah berhasil diperbarui dan diverifikasi.`,
+            intro: `Pemberitahuan ini mengonfirmasi bahwa alamat email untuk akun ${currentUser.role === 'SUPER_ADMIN' ? 'Super Administrator' : 'pengguna'} Anda pada platform operasional in-Time telah berhasil diperbarui dan diverifikasi.`,
             fields: [
               { label: 'Nama Pengguna', value: name.trim() || currentUser.name },
               { label: 'Peran Akun', value: currentUser.role === 'SUPER_ADMIN' ? 'Super Administrator' : currentUser.role === 'ADMIN' ? 'Administrator' : 'Karyawan' },
-              { label: 'Email Baru', value: `<strong>${newEmail}</strong>` },
+              { label: 'Email Baru', value: newEmail },
               { label: 'Email Sebelumnya', value: currentUser.email || '-' },
               { label: 'Waktu Pembaruan', value: `${dateFormatted}, ${timeFormatted}` },
-              { label: 'Status Akun', value: '<span style="color: #16a34a; font-weight: bold;">Aktif & Terverifikasi</span>' },
+              { label: 'Status Akun', value: 'Aktif & Terverifikasi' },
             ],
             actionText: 'Buka Portal in-Time',
             footerNote: 'Pemberitahuan resmi: Seluruh korespondensi dan notifikasi penugasan selanjutnya akan dikirimkan ke alamat email ini.',

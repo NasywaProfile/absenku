@@ -42,6 +42,14 @@ import {
   shiftDate,
 } from '../lib/attendance-status.ts';
 import { AppStorage } from '../lib/storage.ts';
+import {
+  isSafeDataUrl,
+  isSafeMediaUrl,
+  sanitizeExternalLinkUrl,
+  dataUrlToBlob,
+} from '../lib/open-media.ts';
+import { generateEmailHtmlTemplate } from '../lib/real-email.ts';
+import { generateStyledSpreadsheetHTML } from '../lib/csv-export.ts';
 
 let passedTests = 0;
 let failedTests = 0;
@@ -108,7 +116,7 @@ assert(farCheck.distanceMeter > 100, `Jarak terdeteksi ${farCheck.distanceMeter}
 // -----------------------------------------------------------------------------
 console.log('\n📊 SUITE 3: Kalkulasi Status Kehadiran Terpadu (attendance-status.ts)');
 
-const testUser = { id: 'usr_emp_1', name: 'Nasywa Dvina' };
+const testUser = { id: 'usr_emp_1', name: 'Rina Pratama' };
 const testDate = '2026-11-02'; // Hari Senin
 
 // 3.1. Hadir WFO Tepat Waktu (IN_OFFICE + ON_TIME)
@@ -717,6 +725,87 @@ assert(
   'Email ACC memuat catatan review dari PIC'
 );
 assert(!!picApproveNotif, 'Email penugasan selesai tercatat untuk arsip PIC');
+
+// -----------------------------------------------------------------------------
+// SUITE 11: KEAMANAN WEB (ANTI STORED-XSS, INJEKSI FORMULA EXCEL & SANITASI URL)
+// -----------------------------------------------------------------------------
+console.log('\n🛡️ SUITE 11: Sanitasi URL Lampiran, Template Email, & Spreadsheet Export');
+
+assert(
+  !isSafeDataUrl('data:text/html,<script>alert(1)</script>') &&
+    !isSafeDataUrl('data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==') &&
+    !isSafeDataUrl('data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9ImFsZXJ0KDEpIj48L3N2Zz4='),
+  'Data URL berbahaya (text/html & image/svg+xml) wajib ditolak'
+);
+
+assert(
+  isSafeDataUrl('data:application/pdf;base64,JVBERi0xLjMK') &&
+    isSafeDataUrl('data:image/png;base64,iVBORw0KGgo='),
+  'Data URL aman (PDF & PNG base64) diizinkan'
+);
+
+assert(
+  !isSafeMediaUrl('javascript:alert(1)') &&
+    !isSafeMediaUrl('java\nscript:alert(1)') &&
+    !isSafeMediaUrl('vbscript:msgbox(1)') &&
+    !isSafeMediaUrl('//evil.example/payload.js') &&
+    isSafeMediaUrl('https://cdn.example.com/file.pdf') &&
+    isSafeMediaUrl('/storage/uploads/dokumen.pdf') &&
+    isSafeMediaUrl('idb:doc_abc_123'),
+  'isSafeMediaUrl memblokir skema eksekusi skrip dan mengizinkan URL aman'
+);
+
+assert(
+  sanitizeExternalLinkUrl('javascript:alert(document.cookie)') === '' &&
+    sanitizeExternalLinkUrl('data:text/html,<script>alert(1)</script>') === '' &&
+    sanitizeExternalLinkUrl('indiekraf.co.id/docs') === 'https://indiekraf.co.id/docs' &&
+    sanitizeExternalLinkUrl('https://example.com') === 'https://example.com',
+  'sanitizeExternalLinkUrl menolak javascript:/data: dan menormalkan domain eksternal'
+);
+
+const unsafeBlob = dataUrlToBlob('data:text/html;base64,PHNjcmlwdD4=', 'text/html');
+assert(
+  unsafeBlob.size === 0 && unsafeBlob.type === 'application/octet-stream',
+  'dataUrlToBlob menolak konversi payload HTML menjadi Blob ber-MIME berbahaya'
+);
+
+const xssEmailHtml = generateEmailHtmlTemplate({
+  title: 'Alert <script>alert(1)</script>',
+  recipientName: 'Budi <img src=x onerror=alert(1)>',
+  intro: 'Tes <svg onload=alert(1)>',
+  fields: [{ label: '<b>Catatan</b>', value: '"><script>evil()</script>' }],
+  actionUrl: 'javascript:alert(1)',
+  footerNote: '<script>steal()</script>',
+});
+assert(
+  !xssEmailHtml.includes('<script>') &&
+    !xssEmailHtml.includes('<img src=x') &&
+    !xssEmailHtml.includes('<svg onload') &&
+    !xssEmailHtml.includes('javascript:alert') &&
+    xssEmailHtml.includes('&lt;script&gt;alert(1)&lt;/script&gt;'),
+  'Template email melakukan HTML escaping ketat dan membuang actionUrl javascript:'
+);
+
+const xssSheetHtml = generateStyledSpreadsheetHTML([
+  {
+    id: 'att_xss',
+    userId: 'usr_1',
+    userName: '=CMD|\'/C calc\'!A0',
+    department: '<script>alert(1)</script>',
+    date: '2026-11-12',
+    clockInTime: '08:00',
+    clockInStatus: 'ON_TIME',
+    clockInLateMinutes: 0,
+    workMode: 'WFO',
+    notes: '+1+1<img onerror=alert(1)>',
+  } as AttendanceRecord,
+]);
+assert(
+  !xssSheetHtml.includes('<script>alert(1)</script>') &&
+    xssSheetHtml.includes('&#39;=CMD|') &&
+    xssSheetHtml.includes('&#39;+1+1'),
+  'Ekspor spreadsheet mencegah injeksi HTML dan formula Excel (=, +)'
+);
 
 // -----------------------------------------------------------------------------
 // REKAP HASIL AKHIR

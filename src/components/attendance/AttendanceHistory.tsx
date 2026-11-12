@@ -954,7 +954,7 @@ export function AttendanceHistory({
           }
         }
 
-        // 5. Pencarian multi-kata (misal: "Nasywa Hadir", "Devi WFH", "Kantor Budi")
+        // 5. Pencarian multi-kata (misal: "Rina Hadir", "Devi WFH", "Kantor Budi")
         const tokens = q.split(/\s+/).filter(Boolean);
         if (tokens.length > 1) {
           const allTokensMatch = tokens.every((token) => {
@@ -1660,10 +1660,8 @@ export function AttendanceHistory({
                       <th
                         key={colName}
                         onClick={() => {
-                          const matchedUser = users.find(
-                            (u) =>
-                              safeLower(u.name).includes(safeLower(colName)) ||
-                              (colName === 'Alis' && (safeLower(u.name).includes('nasywa') || safeLower(u.name).includes('alis')))
+                          const matchedUser = users.find((u) =>
+                            safeLower(u.name).includes(safeLower(colName))
                           );
                           const fullName = matchedUser?.name || employeeNamesMap[colName] || colName;
                           const avatar = matchedUser?.avatar || employeeAvatarMap[colName] || sampleAvatars[0];

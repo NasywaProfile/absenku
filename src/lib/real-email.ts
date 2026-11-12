@@ -54,6 +54,23 @@ export async function sendRealEmail(payload: RealEmailPayload): Promise<boolean>
   }
 }
 
+function escapeHtmlText(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeActionUrl(url?: string): string | null {
+  if (!url) return null;
+  const trimmed = url.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  if (trimmed.includes('localhost') || trimmed.includes('127.0.0.1')) return null;
+  return escapeHtmlText(trimmed);
+}
+
 /**
  * Format HTML template profesional untuk notifikasi perizinan & tugas
  * Dioptimalkan untuk lolos filter anti-spam tanpa tautan localhost mencurigakan
@@ -69,29 +86,34 @@ export function generateEmailHtmlTemplate(params: {
 }): string {
   const { title, recipientName, intro, fields, actionUrl, actionText = 'Buka Aplikasi in-Time', footerNote } = params;
 
+  const safeTitle = escapeHtmlText(title);
+  const safeRecipientName = escapeHtmlText(recipientName);
+  const safeIntro = escapeHtmlText(intro);
+  const safeActionText = escapeHtmlText(actionText);
+  const safeFooterNote = footerNote ? escapeHtmlText(footerNote) : '';
+  const safeHref = sanitizeActionUrl(actionUrl);
+
   const rows = fields
     .map(
       (f) => `
       <tr style="border-bottom: 1px solid #f1f5f9;">
-        <td style="padding: 10px 0; font-weight: 600; color: #475569; width: 35%; font-size: 13px;">${f.label}:</td>
-        <td style="padding: 10px 0; color: #0f172a; font-size: 13px;">${f.value}</td>
+        <td style="padding: 10px 0; font-weight: 600; color: #475569; width: 35%; font-size: 13px;">${escapeHtmlText(f.label)}:</td>
+        <td style="padding: 10px 0; color: #0f172a; font-size: 13px;">${escapeHtmlText(f.value)}</td>
       </tr>
     `
     )
     .join('');
 
   // Hindari URL localhost langsung di dalam email karena filter spam mendeteksinya sebagai phishing/bot test
-  const isLocalUrl = actionUrl && (actionUrl.includes('localhost') || actionUrl.includes('127.0.0.1'));
-  const safeButtonHtml =
-    actionUrl && !isLocalUrl
-      ? `
+  const safeButtonHtml = safeHref
+    ? `
       <div style="text-align: center; margin: 28px 0 16px 0;">
-        <a href="${actionUrl}" style="background-color: #1E3A8A; color: #ffffff; padding: 12px 26px; font-size: 13px; font-weight: 700; text-decoration: none; border-radius: 10px; display: inline-block;">
-          ${actionText} &rarr;
+        <a href="${safeHref}" style="background-color: #1E3A8A; color: #ffffff; padding: 12px 26px; font-size: 13px; font-weight: 700; text-decoration: none; border-radius: 10px; display: inline-block;">
+          ${safeActionText} &rarr;
         </a>
       </div>
     `
-      : `
+    : `
       <div style="text-align: center; margin: 24px 0 16px 0;">
         <span style="font-size: 12px; color: #64748b;">
           Silakan akses portal in-Time untuk meninjau informasi ini.
@@ -105,7 +127,7 @@ export function generateEmailHtmlTemplate(params: {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${title}</title>
+        <title>${safeTitle}</title>
       </head>
       <body style="margin: 0; padding: 24px; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
         <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
@@ -113,16 +135,16 @@ export function generateEmailHtmlTemplate(params: {
           <!-- Header Biru in-Time -->
           <div style="background-color: #1E3A8A; padding: 20px 28px; text-align: left;">
             <div style="color: #bfdbfe; font-size: 12px; font-weight: 700; margin-bottom: 4px;">in-Time</div>
-            <h1 style="margin: 0; color: #ffffff; font-size: 18px; font-weight: 700; line-height: 1.3;">${title}</h1>
+            <h1 style="margin: 0; color: #ffffff; font-size: 18px; font-weight: 700; line-height: 1.3;">${safeTitle}</h1>
           </div>
 
           <!-- Body Konten -->
           <div style="padding: 28px;">
             <p style="margin-top: 0; font-size: 14px; line-height: 1.6; color: #334155;">
-              Halo <strong>${recipientName}</strong>,
+              Halo <strong>${safeRecipientName}</strong>,
             </p>
             <p style="font-size: 13px; line-height: 1.6; color: #475569; margin-bottom: 20px;">
-              ${intro}
+              ${safeIntro}
             </p>
 
             <!-- Tabel Rincian Data -->
@@ -134,8 +156,8 @@ export function generateEmailHtmlTemplate(params: {
             ${safeButtonHtml}
 
             ${
-              footerNote
-                ? `<p style="font-size: 12px; color: #64748b; line-height: 1.5; margin-top: 20px; padding: 10px 14px; background-color: #f1f5f9; border-radius: 8px;">${footerNote}</p>`
+              safeFooterNote
+                ? `<p style="font-size: 12px; color: #64748b; line-height: 1.5; margin-top: 20px; padding: 10px 14px; background-color: #f1f5f9; border-radius: 8px;">${safeFooterNote}</p>`
                 : ''
             }
           </div>

@@ -3016,7 +3016,7 @@ export const AppStorage = {
           t.comments = t.comments.map((c) => {
             if (c.userName === 'Bobby Romadhoni' || c.userId === 'usr_super_admin') {
               changed = true;
-              return { ...c, userName: 'Hendra Pratama', notes: c.notes.replace('Fikar Alibaba', 'Sarah Amelia & @Nasywa Davina Alissa Wijaya') };
+              return { ...c, userName: 'Hendra Pratama', notes: c.notes.replace('Fikar Alibaba', 'Sarah Amelia & @Tim Operasional') };
             }
             return c;
           });

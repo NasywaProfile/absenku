@@ -9,6 +9,17 @@
 
 import { AttendanceRecord, LeaveRequest } from '../types/index.ts';
 
+function escapeHtmlCell(value: unknown): string {
+  const raw = String(value ?? '');
+  const formulaSafe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  return formulaSafe
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Helper to format minutes to clean string (e.g. 8 Jam 30 Mnt)
 export function formatMinutesFriendly(minutes: number = 0): string {
   if (!minutes || minutes <= 0) return '-';
@@ -137,7 +148,7 @@ export function generateStyledSpreadsheetHTML(
           </tr>
           <tr>
             <td colspan="10" style="background-color: #ffffff; color: #475569; font-family: 'Poppins', Calibri, sans-serif; font-size: 9pt; padding: 7px 14px; border: 1px solid #cbd5e1;">
-              Periode: <b style="color: #0F172A;">${periodeLabel}</b> &nbsp;|&nbsp; Tanggal Cetak: <b style="color: #0F172A;">${dateFormatted}</b> &nbsp;|&nbsp; Total: <b style="color: #0F172A;">${totalRecords} Data</b>
+              Periode: <b style="color: #0F172A;">${escapeHtmlCell(periodeLabel)}</b> &nbsp;|&nbsp; Tanggal Cetak: <b style="color: #0F172A;">${escapeHtmlCell(dateFormatted)}</b> &nbsp;|&nbsp; Total: <b style="color: #0F172A;">${totalRecords} Data</b>
             </td>
           </tr>
         </table>
@@ -162,17 +173,17 @@ export function generateStyledSpreadsheetHTML(
                 return `
                 <tr style="background-color: #ffffff;">
                   <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">${i + 1}</td>
-                  <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; font-weight: 600; color: #0f172a; border: 1px solid #cbd5e1;">${r.userName}</td>
-                  <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1;">${r.department || 'IT Development'}</td>
-                  <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">${r.date}</td>
-                  <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">${r.clockInTime ? `${r.clockInTime} WIB` : '-'}</td>
+                  <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; font-weight: 600; color: #0f172a; border: 1px solid #cbd5e1;">${escapeHtmlCell(r.userName)}</td>
+                  <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1;">${escapeHtmlCell(r.department || 'IT Development')}</td>
+                  <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">${escapeHtmlCell(r.date)}</td>
+                  <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">${r.clockInTime ? `${escapeHtmlCell(r.clockInTime)} WIB` : '-'}</td>
                   <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">
-                    ${translateAttendanceStatus(r.clockInStatus)}
+                    ${escapeHtmlCell(translateAttendanceStatus(r.clockInStatus))}
                   </td>
                   <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; text-align: center; border: 1px solid #cbd5e1;">
-                    ${r.clockInLateMinutes > 0 ? formatMinutesFriendly(r.clockInLateMinutes) : '-'}
+                    ${r.clockInLateMinutes > 0 ? escapeHtmlCell(formatMinutesFriendly(r.clockInLateMinutes)) : '-'}
                   </td>
-                  <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1;">${r.notes || '-'}</td>
+                  <td style="background-color: #ffffff; font-family: 'Poppins', Calibri, sans-serif; border: 1px solid #cbd5e1;">${escapeHtmlCell(r.notes || '-')}</td>
                 </tr>`;
               })
               .join('')}
@@ -311,10 +322,10 @@ export function generatePersonalSpreadsheetHTML(
           </tr>
           <tr>
             <td colspan="8" style="background-color: #ffffff; color: #475569; font-size: 9pt; padding: 7px 14px; border: 1px solid #cbd5e1;">
-              Nama Karyawan: <b style="color: #0F172A;">${employeeName}</b> &nbsp;|&nbsp;
-              Divisi: <b style="color: #0F172A;">${department}</b> &nbsp;|&nbsp;
-              Kategori: <b style="color: #0F172A;">${filterCategoryLabel}</b> &nbsp;|&nbsp;
-              Tanggal Cetak: <b style="color: #0F172A;">${dateFormatted}</b> &nbsp;|&nbsp;
+              Nama Karyawan: <b style="color: #0F172A;">${escapeHtmlCell(employeeName)}</b> &nbsp;|&nbsp;
+              Divisi: <b style="color: #0F172A;">${escapeHtmlCell(department)}</b> &nbsp;|&nbsp;
+              Kategori: <b style="color: #0F172A;">${escapeHtmlCell(filterCategoryLabel)}</b> &nbsp;|&nbsp;
+              Tanggal Cetak: <b style="color: #0F172A;">${escapeHtmlCell(dateFormatted)}</b> &nbsp;|&nbsp;
               Total Data: <b style="color: #0F172A;">${totalRows} Hari</b>
             </td>
           </tr>
@@ -339,12 +350,12 @@ export function generatePersonalSpreadsheetHTML(
                 return `
                 <tr>
                   <td style="text-align: center;">${i + 1}</td>
-                  <td style="text-align: center; font-weight: 500;">${r.dateStr}</td>
+                  <td style="text-align: center; font-weight: 500;">${escapeHtmlCell(r.dateStr)}</td>
                   <td style="text-align: center;">${r.hasCheckmark ? 'Hadir' : '-'}</td>
-                  <td style="text-align: center;">${r.clockIn}</td>
-                  <td style="text-align: center; font-weight: 600;">${r.statusText}</td>
-                  <td style="text-align: center;">${r.locationMode}</td>
-                  <td>${r.taskSummary}</td>
+                  <td style="text-align: center;">${escapeHtmlCell(r.clockIn)}</td>
+                  <td style="text-align: center; font-weight: 600;">${escapeHtmlCell(r.statusText)}</td>
+                  <td style="text-align: center;">${escapeHtmlCell(r.locationMode)}</td>
+                  <td>${escapeHtmlCell(r.taskSummary)}</td>
                 </tr>`;
               })
               .join('')}
@@ -445,7 +456,7 @@ export function downloadLeaveSpreadsheet(
           </tr>
           <tr>
             <td colspan="9" style="background-color: #ffffff; color: #475569; font-size: 9pt; padding: 7px 14px; border: 1px solid #cbd5e1;">
-              Kategori: <b style="color: #0F172A;">${filterCategoryLabel}</b> &nbsp;|&nbsp; Tanggal Cetak: <b style="color: #0F172A;">${dateFormatted}</b> &nbsp;|&nbsp; Total: <b style="color: #0F172A;">${leaves.length} Pengajuan</b>
+              Kategori: <b style="color: #0F172A;">${escapeHtmlCell(filterCategoryLabel)}</b> &nbsp;|&nbsp; Tanggal Cetak: <b style="color: #0F172A;">${escapeHtmlCell(dateFormatted)}</b> &nbsp;|&nbsp; Total: <b style="color: #0F172A;">${leaves.length} Pengajuan</b>
             </td>
           </tr>
         </table>
@@ -469,14 +480,14 @@ export function downloadLeaveSpreadsheet(
                 (l, i) => `
                 <tr>
                   <td style="text-align: center;">${i + 1}</td>
-                  <td style="font-weight: 600;">${l.userName}</td>
-                  <td>${l.department || '-'}</td>
-                  <td style="text-align: center;">${categoryMap[l.category] || l.category}</td>
-                  <td style="text-align: center;">${l.startDate} s/d ${l.endDate}</td>
+                  <td style="font-weight: 600;">${escapeHtmlCell(l.userName)}</td>
+                  <td>${escapeHtmlCell(l.department || '-')}</td>
+                  <td style="text-align: center;">${escapeHtmlCell(categoryMap[l.category] || l.category)}</td>
+                  <td style="text-align: center;">${escapeHtmlCell(l.startDate)} s/d ${escapeHtmlCell(l.endDate)}</td>
                   <td style="text-align: center;">${l.totalDays} Hari</td>
-                  <td>${l.reason}</td>
-                  <td style="text-align: center; font-weight: 600;">${statusMap[l.status] || l.status}</td>
-                  <td style="text-align: center;">${l.appliedAt || '-'}</td>
+                  <td>${escapeHtmlCell(l.reason)}</td>
+                  <td style="text-align: center; font-weight: 600;">${escapeHtmlCell(statusMap[l.status] || l.status)}</td>
+                  <td style="text-align: center;">${escapeHtmlCell(l.appliedAt || '-')}</td>
                 </tr>
               `
               )

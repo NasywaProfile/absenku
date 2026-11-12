@@ -7,11 +7,45 @@ import { getAttachmentFromIDB } from './attachment-storage.ts';
 export const SAMPLE_FALLBACK_PDF =
   'data:application/pdf;base64,JVBERi0xLjMKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCAzMDAgMTQ0XS9QYXJlbnQgMiAwIFIvUmVzb3VyY2VzPDwvRm9udDw8L0YxIDQgMCBSPj4+Pi9Db250ZW50cyA1IDAgUj4+ZW5kb2JqCjQgMCBvYmo8PC9UeXBlL0ZvbnQvU3VidHlwZS9UeXBlMS9CYXNlRm9udC9IZWx2ZXRpY2E+PmVuZG9iago1IDAgb2JqPDwvTGVuZ3RoIDU1Pj5zdHJlYW0KQlQKL0YxIDE4IFRmCjUwIDEwMCBUZAooTG1waXJhbiBQREZJemluIC0gQWJzZW5rdSkgVGoKRVQKZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyMjEgMDAwMDAgbiAKMDAwMDAwMDI4NyAwMDAwMCBuIAp0cmFpbGVyPDwvU2l6ZSA2L1Jvb3QgMSAwIFI+PgpzdGFydHhyZWYKNDAyCiUlRU9G';
 
+const SAFE_DATA_MIME_RE =
+  /^data:(image\/(?:png|jpe?g|webp|gif|bmp|avif)|application\/pdf|video\/(?:mp4|webm|quicktime|x-matroska)|application\/(?:msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.ms-excel|vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|vnd\.ms-powerpoint|vnd\.openxmlformats-officedocument\.presentationml\.presentation|zip|x-zip-compressed|octet-stream)|text\/(?:plain|csv))(?:;[a-zA-Z0-9=._+-]+)*;base64,/i;
+
+function stripControlChars(value: string): string {
+  return (value || '').replace(/[\u0000-\u001f\u007f]/g, '').trim();
+}
+
+export function isSafeDataUrl(dataUrl: string): boolean {
+  const clean = stripControlChars(dataUrl);
+  if (!/^data:/i.test(clean)) return false;
+  if (/data:\s*(?:text\/html|image\/svg\+xml|application\/xhtml\+xml|(?:text|application)\/(?:javascript|x-javascript|ecmascript|xml))/i.test(clean)) {
+    return false;
+  }
+  return SAFE_DATA_MIME_RE.test(clean);
+}
+
+export function isSafeMediaUrl(url: string): boolean {
+  const clean = stripControlChars(url);
+  if (!clean || clean === '#') return false;
+  if (/^https?:\/\//i.test(clean)) return true;
+  if (/^\/(?!\/)/.test(clean)) return true;
+  if (/^idb:/i.test(clean)) return true;
+  if (/^blob:/i.test(clean)) {
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      return clean.startsWith(`blob:${window.location.origin}/`);
+    }
+    return false;
+  }
+  if (/^data:/i.test(clean)) {
+    return isSafeDataUrl(clean);
+  }
+  return false;
+}
+
 /**
  * Normalisasi URL relatif (/storage/...) atau domain lama agar selalu mengarah ke origin aktif
  */
 export function normalizeMediaUrl(url: string): string {
-  const clean = (url || '').trim();
+  const clean = stripControlChars(url);
   if (!clean || clean === '#') return '';
 
   const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
@@ -21,7 +55,7 @@ export function normalizeMediaUrl(url: string): string {
     return origin ? `${origin}${pathPart.startsWith('/') ? '' : '/'}${pathPart}` : pathPart;
   }
 
-  if (clean.startsWith('/')) {
+  if (/^\/(?!\/)/.test(clean)) {
     return origin ? `${origin}${clean}` : clean;
   }
 
@@ -53,15 +87,27 @@ function openUrlInTab(targetUrl: string, preOpenedTab?: Window | null): void {
   }
 }
 
-export function openExternalLink(url: string): void {
-  if (!url) return;
-  let targetUrl = normalizeMediaUrl(url);
-  if (!targetUrl || targetUrl === '#') return;
+export function sanitizeExternalLinkUrl(url: string): string {
+  const raw = stripControlChars(url);
+  if (!raw || raw === '#') return '';
+  let targetUrl = normalizeMediaUrl(raw);
+  if (!targetUrl || targetUrl === '#') return '';
 
-  if (!/^(https?:\/\/|blob:|data:|\/)/i.test(targetUrl)) {
-    targetUrl = 'https://' + targetUrl;
+  // Tolak eksplisit protokol berbahaya (javascript:, vbscript:, data:, file:, blob:, //host)
+  if (/^\/\//.test(targetUrl)) return '';
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(targetUrl)) {
+    return /^https?:\/\//i.test(targetUrl) ? targetUrl : '';
   }
 
+  if (!targetUrl.startsWith('/')) {
+    targetUrl = 'https://' + targetUrl;
+  }
+  return targetUrl;
+}
+
+export function openExternalLink(url: string): void {
+  const targetUrl = sanitizeExternalLinkUrl(url);
+  if (!targetUrl) return;
   openUrlInTab(targetUrl);
 }
 
@@ -98,40 +144,47 @@ export async function resolveMediaUrl(url?: string, fallback = SAMPLE_FALLBACK_P
 
 export function dataUrlToBlob(dataUrl: string, defaultMime = 'application/octet-stream'): Blob {
   try {
-    if (!dataUrl || !dataUrl.includes(',')) {
-      return new Blob([], { type: defaultMime });
+    if (!dataUrl || !dataUrl.includes(',') || !isSafeDataUrl(dataUrl)) {
+      return new Blob([], { type: 'application/octet-stream' });
     }
     const parts = dataUrl.split(',');
     const mimeMatch = parts[0].match(/:(.*?);/);
     const mime = mimeMatch ? mimeMatch[1] : defaultMime;
+    const safeMime = /(?:html|svg|xml|script|ecmascript)/i.test(mime) ? 'application/octet-stream' : mime;
     const bstr = atob(parts[1]);
     let n = bstr.length;
     const u8arr = new Uint8Array(n);
     while (n--) {
       u8arr[n] = bstr.charCodeAt(n);
     }
-    return new Blob([u8arr], { type: mime });
+    return new Blob([u8arr], { type: safeMime });
   } catch (err) {
     console.warn('Konversi dataUrlToBlob gagal:', err);
-    return new Blob([], { type: defaultMime });
+    return new Blob([], { type: 'application/octet-stream' });
   }
 }
 
 export async function downloadMediaFile(url: string, fileName = 'berkas_lampiran'): Promise<void> {
+  const safeFileName = (fileName || 'berkas_lampiran').replace(/[\\/:*?"<>|]/g, '_');
   let targetUrl = url;
   if (targetUrl && targetUrl.startsWith('idb:')) {
     targetUrl = await resolveMediaUrl(targetUrl);
   }
   targetUrl = normalizeMediaUrl(targetUrl) || SAMPLE_FALLBACK_PDF;
 
-  if (targetUrl.startsWith('data:')) {
+  if (!isSafeMediaUrl(targetUrl)) {
+    console.warn('[downloadMediaFile] URL berkas tidak aman ditolak:', targetUrl);
+    return;
+  }
+
+  if (/^data:/i.test(targetUrl)) {
     try {
-      const isPdf = isPdfFile(fileName) || targetUrl.startsWith('data:application/pdf');
+      const isPdf = isPdfFile(safeFileName) || targetUrl.toLowerCase().startsWith('data:application/pdf');
       const blob = dataUrlToBlob(targetUrl, isPdf ? 'application/pdf' : 'application/octet-stream');
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = fileName;
+      link.download = safeFileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -142,7 +195,8 @@ export async function downloadMediaFile(url: string, fileName = 'berkas_lampiran
 
   const link = document.createElement('a');
   link.href = targetUrl;
-  link.download = fileName;
+  link.download = safeFileName;
+  link.rel = 'noopener noreferrer';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -151,14 +205,17 @@ export async function downloadMediaFile(url: string, fileName = 'berkas_lampiran
 function buildOpenableUrl(rawUrl: string, fileName = 'berkas_lampiran'): string {
   const normalized = normalizeMediaUrl(rawUrl) || SAMPLE_FALLBACK_PDF;
 
-  if (normalized.startsWith('data:')) {
-    const isPdf = isPdfFile(fileName) || normalized.startsWith('data:application/pdf');
-    const isImg = isImageFile(fileName) || normalized.startsWith('data:image/');
+  if (/^data:/i.test(normalized)) {
+    if (!isSafeDataUrl(normalized)) {
+      return '';
+    }
+    const isPdf = isPdfFile(fileName) || normalized.toLowerCase().startsWith('data:application/pdf');
+    const isImg = isImageFile(fileName) || normalized.toLowerCase().startsWith('data:image/');
     let defaultMime = 'application/octet-stream';
     if (isPdf) {
       defaultMime = 'application/pdf';
     } else if (isImg) {
-      const mimeMatch = normalized.substring(0, 40).match(/^data:(image\/[a-zA-Z0-9.+-]+);/);
+      const mimeMatch = normalized.substring(0, 60).match(/^data:(image\/(?:png|jpe?g|webp|gif|bmp|avif));/i);
       defaultMime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
     }
     const blob = dataUrlToBlob(normalized, defaultMime);
@@ -173,33 +230,63 @@ export function openDataUrlInNewTab(
   fileName = 'berkas_lampiran',
   preOpenedTab?: Window | null
 ): void {
-  if (!dataUrl) {
+  const closePreOpened = () => {
     if (preOpenedTab && !preOpenedTab.closed) preOpenedTab.close();
+  };
+
+  if (!dataUrl) {
+    closePreOpened();
     return;
   }
 
   const raw = dataUrl === '#' ? SAMPLE_FALLBACK_PDF : dataUrl;
   const normalized = normalizeMediaUrl(raw) || SAMPLE_FALLBACK_PDF;
 
-  // Link HTTP / HTTPS / Path Relatif / Blob langsung dibuka di tab baru
-  if (/^(https?:\/\/|blob:|\/)/i.test(normalized)) {
+  // Link HTTP / HTTPS / Path Relatif tunggal langsung dibuka di tab baru
+  if (/^https?:\/\//i.test(normalized) || /^\/(?!\/)/.test(normalized)) {
     openUrlInTab(normalized, preOpenedTab);
     return;
   }
 
-  // Base64 Data URL -> konversi ke Blob URL lalu buka langsung di tab baru
-  if (normalized.startsWith('data:')) {
+  if (/^blob:/i.test(normalized)) {
+    const isSameOriginBlob =
+      typeof window !== 'undefined' &&
+      Boolean(window.location?.origin) &&
+      normalized.startsWith(`blob:${window.location.origin}/`);
+    if (isSameOriginBlob) {
+      openUrlInTab(normalized, preOpenedTab);
+    } else {
+      console.warn('[openDataUrlInNewTab] Blob URL lintas-origin ditolak');
+      closePreOpened();
+    }
+    return;
+  }
+
+  // Base64 Data URL -> wajib lolos validasi MIME aman (anti data:text/html / SVG XSS)
+  if (/^data:/i.test(normalized)) {
+    if (!isSafeDataUrl(normalized)) {
+      console.warn('[openDataUrlInNewTab] Data URL tidak aman ditolak');
+      closePreOpened();
+      return;
+    }
     try {
       const blobUrl = buildOpenableUrl(normalized, fileName);
-      openUrlInTab(blobUrl, preOpenedTab);
+      if (blobUrl) {
+        openUrlInTab(blobUrl, preOpenedTab);
+      } else {
+        closePreOpened();
+      }
       return;
     } catch (e) {
       console.warn('Gagal mengonversi Data URL ke Blob URL:', e);
+      closePreOpened();
+      return;
     }
   }
 
-  // Fallback buka langsung via tab baru
-  openUrlInTab(normalized, preOpenedTab);
+  // Tolak skema berbahaya lainnya (javascript:, vbscript:, file:, //host)
+  console.warn('[openDataUrlInNewTab] Skema URL tidak diizinkan ditolak:', normalized);
+  closePreOpened();
 }
 
 export async function openAttachmentDirectly(item: {
@@ -208,7 +295,7 @@ export async function openAttachmentDirectly(item: {
   type?: string;
   fileType?: string;
 }): Promise<void> {
-  const rawUrl = (item.url || '').trim();
+  const rawUrl = stripControlChars(item.url || '');
 
   // Jika link web eksternal atau tidak punya url berkas
   if (!rawUrl || rawUrl === '#') {
@@ -231,6 +318,7 @@ export async function openAttachmentDirectly(item: {
     const preOpenedTab = typeof window !== 'undefined' ? window.open('about:blank', '_blank') : null;
     try {
       if (preOpenedTab && !preOpenedTab.closed) {
+        preOpenedTab.opener = null;
         preOpenedTab.document.title = item.name ? `Membuka ${item.name}...` : 'Memuat lampiran...';
       }
     } catch {

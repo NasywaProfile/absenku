@@ -1,5 +1,73 @@
-import type { IncomingMessage, ServerResponse } from 'http';
+import crypto from 'crypto';
 import nodemailer from 'nodemailer';
+
+function getAllowedOrigins(): string[] {
+  const raw = process.env.ALLOWED_ORIGINS || process.env.CORS_ALLOWED_ORIGINS || '';
+  return raw
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+}
+
+function constantTimeEquals(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+async function isAuthorizedRequest(req: any): Promise<boolean> {
+  const internalSecret = process.env.INTERNAL_EMAIL_SECRET;
+  const providedSecret = String(req.headers?.['x-internal-email-secret'] || '');
+  if (internalSecret && providedSecret && constantTimeEquals(providedSecret, internalSecret)) {
+    return true;
+  }
+
+  const authHeader = String(req.headers?.authorization || '');
+  if (!authHeader.startsWith('Bearer ')) {
+    return false;
+  }
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    return false;
+  }
+
+  const rawBackendUrl =
+    process.env.BACKEND_API_URL ||
+    (process.env.VITE_API_URL && /^https?:\/\//i.test(process.env.VITE_API_URL) ? process.env.VITE_API_URL : '');
+
+  if (!rawBackendUrl) {
+    return false;
+  }
+
+  const verifyEndpoint = rawBackendUrl.endsWith('/api')
+    ? `${rawBackendUrl}/me`
+    : rawBackendUrl.endsWith('/')
+      ? `${rawBackendUrl}me`
+      : `${rawBackendUrl}/api/me`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const verifyRes = await fetch(verifyEndpoint, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!verifyRes.ok) {
+      return false;
+    }
+    const me = (await verifyRes.json().catch(() => null)) as any;
+    const status = String(me?.data?.status || me?.status || '').toUpperCase();
+    return !status || status === 'ACTIVE';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Serverless Email Dispatcher (Ready for Vercel / Netlify / Production)
@@ -9,17 +77,21 @@ import nodemailer from 'nodemailer';
  * 3. Nodemailer SMTP (Fallback Gmail App Password)
  */
 export default async function handler(req: any, res: any) {
-  // Setup CORS headers agar aman dipanggil dari frontend saat dipublish
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  const origin = String(req.headers?.origin || '');
+  const allowedOrigins = getAllowedOrigins();
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
+    'Accept, Content-Type, Authorization, X-Requested-With, X-Internal-Email-Secret'
   );
 
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
+    res.status(204).end();
     return;
   }
 
@@ -28,12 +100,22 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
+  const authorized = await isAuthorizedRequest(req);
+  if (!authorized) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
-    const { to, subject, html, text } = body;
+    const to = typeof body.to === 'string' ? body.to.trim() : '';
+    const rawSubject = typeof body.subject === 'string' ? body.subject : '';
+    const subject = rawSubject.replace(/[\r\n]+/g, ' ').trim();
+    const html = typeof body.html === 'string' ? body.html : '';
+    const text = typeof body.text === 'string' ? body.text : '';
 
-    if (!to || !subject) {
-      res.status(400).json({ error: 'to and subject are required' });
+    if (!to || !subject || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      res.status(400).json({ error: 'Valid to and subject are required' });
       return;
     }
 
@@ -46,11 +128,10 @@ export default async function handler(req: any, res: any) {
 
     // 1. OPSI UTAMA: RESEND REST API (Sangat Direkomendasikan untuk Production dengan Custom Domain)
     const isSandbox = !process.env.RESEND_FROM_EMAIL || process.env.RESEND_FROM_EMAIL === 'onboarding@resend.dev';
-    const isAllowedByResend = !isSandbox || to.toLowerCase() === 'naswa.wijaya31@gmail.com';
 
-    if (resendApiKey && !isSandbox && isAllowedByResend) {
+    if (resendApiKey && !isSandbox) {
       try {
-        const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+        const fromEmail = process.env.RESEND_FROM_EMAIL as string;
         const response = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
@@ -61,8 +142,8 @@ export default async function handler(req: any, res: any) {
             from: `"${fromName}" <${fromEmail}>`,
             to: [to],
             subject,
-            html: html || '',
-            text: text || '',
+            html,
+            text,
           }),
         });
 
@@ -92,15 +173,15 @@ export default async function handler(req: any, res: any) {
           sender: { name: fromName, email: fromEmail },
           to: [{ email: to }],
           subject,
-          htmlContent: html || '',
-          textContent: text || '',
+          htmlContent: html,
+          textContent: text,
         }),
       });
 
       const data = (await response.json().catch(() => null)) as any;
       if (!response.ok) {
         console.error('[Brevo Error]', data);
-        throw new Error(data?.message || 'Gagal mengirim email via Brevo');
+        throw new Error('Gagal mengirim email via Brevo');
       }
 
       console.log(`[Email Sent via Brevo] To: ${to} | ID: ${data?.messageId}`);
@@ -123,8 +204,8 @@ export default async function handler(req: any, res: any) {
       replyTo: smtpUser,
       to,
       subject,
-      text: text || '',
-      html: html || '',
+      text,
+      html,
       headers: {
         'X-Entity-Ref-ID': `intime-${Date.now()}`,
         'X-Auto-Response-Suppress': 'OOF, AutoReply',
@@ -133,8 +214,8 @@ export default async function handler(req: any, res: any) {
 
     console.log(`[Email Sent via SMTP] To: ${to} | Subject: ${subject} | ID: ${info.messageId}`);
     res.status(200).json({ success: true, provider: 'smtp', messageId: info.messageId });
-  } catch (error: any) {
+  } catch (error) {
     console.error('[SendEmail Serverless Error]', error);
-    res.status(500).json({ error: error.message || 'Failed to send email' });
+    res.status(500).json({ error: 'Failed to send email' });
   }
 }

@@ -313,7 +313,12 @@ export function GeolocationWidget({
             <div class="absolute -bottom-1 w-3 h-1 bg-black/30 rounded-full blur-[1px]"></div>
           </div>
           <div class="mt-1 px-2.5 py-0.5 bg-[#1E3A8A] text-white text-[10px] font-extrabold rounded-md shadow-md whitespace-nowrap max-w-[180px] truncate border border-white/20 text-center">
-            ${officeConfig.name || 'IndigoSpace Malang (Kantor Pusat)'}
+            ${String(officeConfig.name || 'IndigoSpace Malang (Kantor Pusat)')
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#39;')}
           </div>
         `;
 

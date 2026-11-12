@@ -18,6 +18,14 @@ const emailApiPlugin = (): Plugin => ({
         return;
       }
 
+      const authHeader = String(req.headers?.authorization || '');
+      if (!authHeader.startsWith('Bearer ') || authHeader.slice(7).trim().length === 0) {
+        res.statusCode = 401;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+
       let body = '';
       req.on('data', (chunk) => {
         body += chunk;
