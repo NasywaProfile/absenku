@@ -42,6 +42,11 @@ import {
 import { AppStorage } from '../../lib/storage.ts';
 import { ApiClient } from '../../lib/api-client.ts';
 import {
+  hasOtherChatParticipants,
+  isChatTopicVisibleToUser,
+  mergeServerChatTopics,
+} from '../../lib/chat-visibility.ts';
+import {
   Bubble,
   BubbleContent,
   BubbleGroup,
@@ -79,58 +84,19 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
     const handleChatSync = async () => {
       try {
         const serverTopics = await ApiClient.getChatTopics().catch(() => null);
-        if (Array.isArray(serverTopics) && serverTopics.length > 0) {
+        if (Array.isArray(serverTopics)) {
           const localTopics = AppStorage.getChatTopics();
-          const merged = [...localTopics];
-          for (const st of serverTopics) {
-            const idx = merged.findIndex((t) => t.id === st.id);
-            const rawComments = Array.isArray(st.comments) && st.comments.length > 0
-              ? st.comments
-              : (Array.isArray(st.messages) ? st.messages : (st.comments || []));
-
-            const mappedComments: ChatComment[] = Array.isArray(rawComments) && rawComments.length > 0
-              ? rawComments.map((c: any) => ({
-                  id: c.id,
-                  topicId: c.topicId || c.topik_id || st.id,
-                  userId: c.userId || c.pengguna_id || '',
-                  userName: c.userName || c.nama_pengirim || '',
-                  userAvatar: c.userAvatar || c.foto_pengirim || '',
-                  userRole: c.userRole || c.peran_pengirim || 'EMPLOYEE',
-                  timestamp: c.timestamp || c.waktu_kirim || '',
-                  notes: c.notes || c.isi_pesan || c.content || '',
-                  attachments: Array.isArray(c.attachments) ? c.attachments : (Array.isArray(c.lampiran) ? c.lampiran : []),
-                  type: 'COMMENT' as const,
-                }))
-              : (idx >= 0 ? merged[idx].comments : []);
-
-            const mappedTopic: ChatTopic = {
-              id: st.id,
-              title: st.title || st.judul_topik || '',
-              status: (st.status || st.status_topik || 'NEED_COMMENTS') as any,
-              taggedTeammateIds: safeParseJsonArray(st.taggedTeammateIds ?? st.id_anggota_ditandai ?? st.tagged_teammate_ids),
-              files: Array.isArray(st.files) ? st.files : (Array.isArray(st.berkas) ? st.berkas : []),
-              links: Array.isArray(st.links) ? st.links : (Array.isArray(st.tautan) ? st.tautan : []),
-              images: Array.isArray(st.images) ? st.images : (Array.isArray(st.gambar) ? st.gambar : []),
-              shortNotes: st.shortNotes || st.short_notes || st.catatan_singkat || '',
-              longNotes: st.longNotes || st.long_notes || st.catatan_lengkap || '',
-              createdBy: st.createdBy || st.created_by || st.dibuat_oleh_id || '',
-              createdByName: st.createdByName || st.created_by_name || st.dibuat_oleh_nama || '',
-              createdByAvatar: st.createdByAvatar || st.created_by_avatar || st.dibuat_oleh_foto || '',
-              comments: mappedComments,
-              createdAt: st.createdAt || st.created_at || '',
-              updatedAt: st.updatedAt || st.updated_at || '',
-            };
-            if (idx >= 0) {
-              merged[idx] = { ...merged[idx], ...mappedTopic };
-            } else {
-              merged.push(mappedTopic);
-            }
-          }
+          const hiddenIds = AppStorage.getHiddenChatTopicIds(currentUser.id);
+          const merged = mergeServerChatTopics(localTopics, serverTopics, currentUser.id, hiddenIds);
           AppStorage.saveChatTopics(merged);
           setTopics(merged);
           setActiveTopic((prev) => {
             if (!prev) return null;
-            return merged.find((t) => t.id === prev.id) || prev;
+            const updated = merged.find((t) => t.id === prev.id);
+            if (!updated || !isChatTopicVisibleToUser(updated, currentUser, users, hiddenIds)) {
+              return null;
+            }
+            return updated;
           });
           return;
         }
@@ -443,66 +409,17 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
 
   // Filtered Topics list: topik hanya tampil jika akun terdaftar di Assignees (taggedTeammateIds) atau pembuat
   const filteredTopics = useMemo(() => {
-    const currentNameLower = currentUser?.name ? currentUser.name.toLowerCase().trim() : '';
-    const currentEmailLower = currentUser?.email ? currentUser.email.toLowerCase().trim() : '';
-    const currentId = currentUser?.id;
-
     if (!Array.isArray(topics)) return [];
-
-    // Kumpulkan seluruh identitas milik currentUser (ID, Email, Nama) dari session & list users
-    const myIdentifiers = new Set<string>();
-    if (currentId) myIdentifiers.add(currentId.toLowerCase());
-    if (currentEmailLower) myIdentifiers.add(currentEmailLower);
-    if (currentNameLower) myIdentifiers.add(currentNameLower);
-
-    (users || []).forEach((u) => {
-      const match =
-        (currentId && u.id === currentId) ||
-        (currentEmailLower && u.email && u.email.toLowerCase().trim() === currentEmailLower) ||
-        (currentNameLower && u.name && u.name.toLowerCase().trim() === currentNameLower);
-      if (match) {
-        if (u.id) myIdentifiers.add(u.id.toLowerCase());
-        if (u.email) myIdentifiers.add(u.email.toLowerCase().trim());
-        if (u.name) myIdentifiers.add(u.name.toLowerCase().trim());
-      }
-    });
+    const localHiddenIds = AppStorage.getHiddenChatTopicIds(currentUser?.id);
 
     return topics.filter((t) => {
+      if (!isChatTopicVisibleToUser(t, currentUser, users, localHiddenIds)) {
+        return false;
+      }
+
       const tagged = safeParseJsonArray(
         t.taggedTeammateIds ?? (t as any).id_anggota_ditandai ?? (t as any).tagged_teammate_ids
       );
-
-      // Cek apakah akun ini pembuat topik
-      const isCreator =
-        (t.createdBy && myIdentifiers.has(t.createdBy.toLowerCase().trim())) ||
-        (t.createdByName && myIdentifiers.has(t.createdByName.toLowerCase().trim()));
-
-      // Cek apakah akun ini termasuk yang ditag
-      const isTagged = tagged.some((tagItem) => {
-        if (!tagItem) return false;
-        const cleanTag = tagItem.toLowerCase().trim();
-        if (myIdentifiers.has(cleanTag)) return true;
-        // Cek juga jika tagItem merujuk pada user yang memiliki email/nama/ID sama dengan currentUser
-        const matchedUser = (users || []).find((u) => 
-          (u.id && u.id.toLowerCase().trim() === cleanTag) ||
-          (u.email && u.email.toLowerCase().trim() === cleanTag) ||
-          (u.name && u.name.toLowerCase().trim() === cleanTag)
-        );
-        if (matchedUser) {
-          if (matchedUser.id && myIdentifiers.has(matchedUser.id.toLowerCase().trim())) return true;
-          if (matchedUser.email && myIdentifiers.has(matchedUser.email.toLowerCase().trim())) return true;
-          if (matchedUser.name && myIdentifiers.has(matchedUser.name.toLowerCase().trim())) return true;
-        }
-        return false;
-      });
-
-      // Access Control: Admin/Superadmin memiliki akses pemantauan penuh,
-      // topik umum tanpa tag terbuka untuk semua, atau khusus akun yang ditandai / pembuat
-      const isAssignee = Boolean(isTagged || isCreator);
-
-      if (!isAssignee) {
-        return false;
-      }
 
       const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
       const matchesTeammate =
@@ -728,16 +645,23 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
   // Handle Delete Topic
   const handleDeleteTopic = (topicId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    const targetTopic = topics.find((t) => t.id === topicId);
+    const sharedWithOthers = targetTopic
+      ? hasOtherChatParticipants(targetTopic, currentUser, users)
+      : false;
+
     setConfirmModal({
       isOpen: true,
       title: 'Hapus Topik Obrolan',
-      message: 'Apakah Anda yakin ingin menghapus topik obrolan ini beserta seluruh riwayat pesannya?',
+      message: sharedWithOthers
+        ? 'Topik obrolan ini akan dihapus dari daftar Anda. Anggota lain yang ditandai tetap dapat melihat topik dan riwayat pesannya.'
+        : 'Apakah Anda yakin ingin menghapus topik obrolan ini beserta seluruh riwayat pesannya?',
       variant: 'danger',
       confirmText: 'Ya, Hapus',
       cancelText: 'Batal',
       hideCancel: false,
       onConfirm: () => {
-        AppStorage.deleteChatTopic(topicId);
+        AppStorage.deleteChatTopic(topicId, currentUser.id);
         if (activeTopic?.id === topicId) {
           setActiveTopic(null);
         }

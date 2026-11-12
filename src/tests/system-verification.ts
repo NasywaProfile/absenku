@@ -923,6 +923,110 @@ assert(
 );
 
 // -----------------------------------------------------------------------------
+// SUITE 14: PENGHAPUSAN RUANG OBROLAN PER-AKUN (ANTI HILANG UNTUK AKUN LAIN)
+// -----------------------------------------------------------------------------
+console.log('\n💬 SUITE 14: Penghapusan Ruang Obrolan Per-Akun');
+import {
+  hasOtherChatParticipants,
+  isChatTopicVisibleToUser,
+  mergeServerChatTopics,
+} from '../lib/chat-visibility.ts';
+import type { ChatTopic } from '../types/index.ts';
+
+const baseUserTemplate = AppStorage.getUsers()[0];
+const chatUserA: User = {
+  ...baseUserTemplate,
+  id: 'usr_chat_ver_a',
+  name: 'Akun A',
+  email: 'akuna@absenku.test',
+  role: 'ADMIN',
+};
+const chatUserB: User = {
+  ...baseUserTemplate,
+  id: 'usr_chat_ver_b',
+  name: 'Akun B',
+  email: 'akunb@absenku.test',
+  role: 'EMPLOYEE',
+};
+const chatUsersList = [...AppStorage.getUsers(), chatUserA, chatUserB];
+AppStorage.saveUsers(chatUsersList, true);
+
+const sharedChatTopic: ChatTopic = {
+  id: 'topic_shared_ver_1',
+  title: 'Koordinasi A dan B',
+  status: 'NEED_COMMENTS',
+  taggedTeammateIds: ['usr_chat_ver_a', 'akuna@absenku.test', 'Akun A', 'usr_chat_ver_b', 'akunb@absenku.test', 'Akun B'],
+  createdBy: 'usr_chat_ver_a',
+  createdByName: 'Akun A',
+  createdAt: '2026-11-12T10:00:00Z',
+  updatedAt: '2026-11-12T10:00:00Z',
+  comments: [],
+};
+AppStorage.saveChatTopics([sharedChatTopic]);
+
+assert(
+  isChatTopicVisibleToUser(sharedChatTopic, chatUserA, chatUsersList) &&
+    isChatTopicVisibleToUser(sharedChatTopic, chatUserB, chatUsersList),
+  'Topik obrolan yang menandai Akun A dan Akun B terlihat oleh kedua akun'
+);
+assert(
+  hasOtherChatParticipants(sharedChatTopic, chatUserA, chatUsersList) === true,
+  'Sistem mendeteksi masih ada peserta lain (Akun B) sebelum penghapusan'
+);
+
+// Akun A menghapus ruang obrolan tersebut
+AppStorage.deleteChatTopic(sharedChatTopic.id, chatUserA.id);
+const afterDeleteByA = AppStorage.getChatTopics();
+const remainingTopicForB = afterDeleteByA.find((t) => t.id === sharedChatTopic.id);
+assert(
+  remainingTopicForB !== undefined,
+  'Topik tetap dipertahankan di penyimpanan ketika Akun B masih menjadi peserta'
+);
+assert(
+  !isChatTopicVisibleToUser(
+    remainingTopicForB!,
+    chatUserA,
+    chatUsersList,
+    AppStorage.getHiddenChatTopicIds(chatUserA.id)
+  ),
+  'Topik obrolan langsung hilang dari daftar Akun A setelah dihapus Akun A'
+);
+assert(
+  isChatTopicVisibleToUser(
+    remainingTopicForB!,
+    chatUserB,
+    chatUsersList,
+    AppStorage.getHiddenChatTopicIds(chatUserB.id)
+  ),
+  'Topik obrolan TIDAK hilang dan tetap terlihat di daftar Akun B'
+);
+
+// Simulasikan sinkronisasi server pada Akun B dengan payload hiddenByIds berisi Akun A
+const mergedForB = mergeServerChatTopics(
+  [],
+  [{ ...sharedChatTopic, hidden_by_ids: [chatUserA.id] }],
+  chatUserB.id,
+  AppStorage.getHiddenChatTopicIds(chatUserB.id)
+);
+assert(
+  mergedForB.length === 1 &&
+    isChatTopicVisibleToUser(mergedForB[0], chatUserB, chatUsersList) &&
+    !isChatTopicVisibleToUser(mergedForB[0], chatUserA, chatUsersList),
+  'Sinkronisasi payload hidden_by_ids menyembunyikan untuk Akun A namun tetap menampilkan untuk Akun B'
+);
+
+// Jika Akun B juga menghapus topik tersebut, tidak ada peserta tersisa -> dihapus permanen
+assert(
+  hasOtherChatParticipants(remainingTopicForB!, chatUserB, chatUsersList) === false,
+  'Setelah Akun A menghapus, penghapusan oleh Akun B tidak menyisakan peserta lain'
+);
+AppStorage.deleteChatTopic(sharedChatTopic.id, chatUserB.id);
+assert(
+  AppStorage.getChatTopics().every((t) => t.id !== sharedChatTopic.id),
+  'Topik dihapus permanen setelah semua peserta menghapusnya'
+);
+
+// -----------------------------------------------------------------------------
 // REKAP HASIL AKHIR
 // -----------------------------------------------------------------------------
 console.log('\n====================================================');

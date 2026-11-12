@@ -356,6 +356,7 @@ export interface ChatTopic {
   title: string;
   status: ChatTopicStatus;
   taggedTeammateIds: string[];
+  hiddenByIds?: string[];
   files?: TaskAttachment[];
   links?: { title: string; url: string }[];
   images?: string[];

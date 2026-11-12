@@ -46,9 +46,11 @@ import { hashPassword, verifyPassword, isPasswordEncrypted } from './crypto-util
 import { ApiClient } from './api-client.ts';
 import { sendRealEmail, generateEmailHtmlTemplate } from './real-email.ts';
 import { formatIndonesianDateShort } from './time-utils.ts';
+import { hasOtherChatParticipants } from './chat-visibility.ts';
 
 const PENDING_TASK_SYNC_KEY = 'absenku_pending_task_sync_v10';
 const PENDING_LEAVE_SYNC_KEY = 'absenku_pending_leave_sync_v10';
+const HIDDEN_CHAT_TOPICS_KEY = 'absenku_hidden_chat_topics_v10';
 
 function readPendingSyncIds(storageKey: string): string[] {
   try {
@@ -3234,8 +3236,60 @@ export const AppStorage = {
     }
   },
 
-  deleteChatTopic(topicId: string): void {
+  getHiddenChatTopicIds(userId?: string | null): string[] {
+    const normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId) return [];
+    try {
+      const raw = localStorage.getItem(HIDDEN_CHAT_TOPICS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      const list = parsed && typeof parsed === 'object' ? parsed[normalizedUserId] : null;
+      return Array.isArray(list) ? list.map((id: unknown) => String(id).trim()).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  recordHiddenChatTopicId(userId: string, topicId: string): void {
+    const normalizedUserId = String(userId || '').trim();
+    const normalizedTopicId = String(topicId || '').trim();
+    if (!normalizedUserId || !normalizedTopicId) return;
+    try {
+      const raw = localStorage.getItem(HIDDEN_CHAT_TOPICS_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      const store: Record<string, string[]> =
+        parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      const existing = Array.isArray(store[normalizedUserId]) ? store[normalizedUserId] : [];
+      if (!existing.includes(normalizedTopicId)) {
+        store[normalizedUserId] = [...existing, normalizedTopicId];
+        localStorage.setItem(HIDDEN_CHAT_TOPICS_KEY, JSON.stringify(store));
+      }
+    } catch {
+      // Ignore storage quota / parse failures
+    }
+  },
+
+  deleteChatTopic(topicId: string, currentUserId?: string): void {
     const topics = this.getChatTopics();
+    const normalizedUserId = String(currentUserId || '').trim();
+
+    if (normalizedUserId) {
+      this.recordHiddenChatTopicId(normalizedUserId, topicId);
+      const targetTopic = topics.find((t) => t.id === topicId);
+      if (targetTopic && hasOtherChatParticipants(targetTopic, normalizedUserId, this.getUsers())) {
+        const nextTopics = topics.map((t) => {
+          if (t.id !== topicId) return t;
+          const hiddenByIds = Array.from(
+            new Set([...(t.hiddenByIds || []).map((id) => String(id).trim()), normalizedUserId].filter(Boolean))
+          );
+          return { ...t, hiddenByIds };
+        });
+        this.saveChatTopics(nextTopics);
+        ApiClient.deleteChatTopic(topicId).catch(() => {});
+        return;
+      }
+    }
+
     const filtered = topics.filter((t) => t.id !== topicId);
     this.saveChatTopics(filtered);
     ApiClient.deleteChatTopic(topicId).catch(() => {});
