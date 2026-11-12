@@ -26,6 +26,7 @@ import { getApprovedLeaveForDate, isOffCategory } from './lib/attendance-status.
 import { getCurrentDateString, getCurrentTimeString, calculateClockInPunctuality, calculateWorkDurationMinutes } from './lib/time-utils.ts';
 import { calculateHaversineDistance } from './lib/geo-utils.ts';
 import { saveAttendanceWithOfflineSupport } from './lib/offline-sync.ts';
+import { shouldKeepLocalTaskMissingFromServer } from './lib/task-sync.ts';
 import { User, OfficeConfig, AttendanceRecord, LeaveRequest, TaskItem, DailyTaskLog, UserRole, ChatTopic, ChatComment, safeParseJsonArray } from './types/index.ts';
 
 export default function App() {
@@ -40,6 +41,7 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [showResetAppModal, setShowResetAppModal] = useState<boolean>(false);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState<string | null>(null);
+  const [taskSyncErrorMessage, setTaskSyncErrorMessage] = useState<string | null>(null);
   const [isClockInModalOpen, setIsClockInModalOpen] = useState<boolean>(false);
   const [isOnboardingRegistration, setIsOnboardingRegistration] = useState<boolean>(false);
 
@@ -289,17 +291,19 @@ export default function App() {
         const localTasks = AppStorage.getTasks();
         const serverTaskIds = new Set(serverTasks.map((st) => String(st.id)));
         const deletedIds = new Set(AppStorage.getDeletedTaskIds());
+        const pendingSyncIds = new Set(AppStorage.getPendingTaskSyncIds());
 
-        // Prune tugas yang telah dihapus oleh PIC di server:
-        // Tugas lokal yang tidak ada lagi di serverTasks otomatis dibersihkan dari layar pelaksana
+        // Prune tugas yang telah dihapus oleh PIC di server, namun pertahankan tugas lokal
+        // yang masih dalam proses unggah ke server atau baru saja dibuat di perangkat ini
         const validLocalTasks = localTasks.filter((t) => {
           const tId = String(t.id);
           if (deletedIds.has(tId)) return false;
           if (!serverTaskIds.has(tId)) {
-            const isVeryRecent =
-              t.id.startsWith('task_') &&
-              Date.now() - parseInt(t.id.split('_')[1] || '0', 10) < 10000;
-            if (!isVeryRecent) return false;
+            return shouldKeepLocalTaskMissingFromServer({
+              taskId: tId,
+              pendingSyncIds,
+              deletedIds,
+            });
           }
           return true;
         });
@@ -309,6 +313,9 @@ export default function App() {
           if (deletedIds.has(String(st.id))) continue;
           const idx = mergedTasks.findIndex((t) => String(t.id) === String(st.id));
           const existingTask = idx >= 0 ? mergedTasks[idx] : null;
+          if (pendingSyncIds.has(String(st.id)) && existingTask) {
+            continue;
+          }
           const serverAttachments = Array.isArray(st.attachments) && st.attachments.length > 0
             ? st.attachments
             : (Array.isArray(st.lampiran) && st.lampiran.length > 0 ? st.lampiran : []);
@@ -474,9 +481,16 @@ export default function App() {
     const handleSync = () => {
       loadData();
     };
+    const handleTaskSyncError = (evt: Event) => {
+      const detail = (evt as CustomEvent<{ message?: string }>).detail;
+      if (detail?.message) {
+        setTaskSyncErrorMessage(detail.message);
+      }
+    };
 
     window.addEventListener('absenku:leaves_updated', handleSync);
     window.addEventListener('absenku:tasks_updated', handleSync);
+    window.addEventListener('absenku:task_sync_error', handleTaskSyncError);
     window.addEventListener('absenku:users_updated', handleSync);
     window.addEventListener('absenku:attendance_updated', handleSync);
     window.addEventListener('storage', handleSync);
@@ -489,6 +503,7 @@ export default function App() {
     return () => {
       window.removeEventListener('absenku:leaves_updated', handleSync);
       window.removeEventListener('absenku:tasks_updated', handleSync);
+      window.removeEventListener('absenku:task_sync_error', handleTaskSyncError);
       window.removeEventListener('absenku:users_updated', handleSync);
       window.removeEventListener('absenku:attendance_updated', handleSync);
       window.removeEventListener('storage', handleSync);
@@ -1281,6 +1296,18 @@ export default function App() {
         hideCancel={true}
         onConfirm={() => setAccessDeniedMessage(null)}
         onCancel={() => setAccessDeniedMessage(null)}
+      />
+
+      {/* Dialog Error Sinkronisasi Penugasan */}
+      <ModernConfirmDialog
+        isOpen={!!taskSyncErrorMessage}
+        variant="warning"
+        title="Gagal Menyimpan Tugas"
+        message={taskSyncErrorMessage || ''}
+        confirmText="Mengerti"
+        hideCancel={true}
+        onConfirm={() => setTaskSyncErrorMessage(null)}
+        onCancel={() => setTaskSyncErrorMessage(null)}
       />
 
       {/* Modern Confirm Dialog Reset Data Aplikasi */}

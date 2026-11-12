@@ -47,6 +47,15 @@ import { ApiClient } from './api-client.ts';
 import { sendRealEmail, generateEmailHtmlTemplate } from './real-email.ts';
 import { formatIndonesianDateShort } from './time-utils.ts';
 
+const PENDING_TASK_SYNC_KEY = 'absenku_pending_task_sync_v10';
+
+function dispatchSafeWindowEvent(eventName: string, detail?: any): void {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent(eventName, detail !== undefined ? { detail } : undefined));
+}
+
 const STORAGE_KEYS = {
   USERS: 'absenku_users_v10',
   CURRENT_USER_ID: 'absenku_current_user_id_v10',
@@ -1285,8 +1294,10 @@ export const AppStorage = {
       createdAt: taskData.createdAt || new Date().toISOString().substring(0, 10),
       updatedAt: taskData.updatedAt || new Date().toISOString().substring(0, 10),
     };
+    this.markTaskPendingSync(newTask.id);
     tasks.unshift(newTask);
     this.saveTasks(tasks);
+    dispatchSafeWindowEvent('absenku:tasks_updated');
 
     // Kirim tugas baru ke API backend MySQL
     ApiClient.createKanbanTask({
@@ -1303,7 +1314,24 @@ export const AppStorage = {
       attachments: newTask.attachments || [],
       lampiran: newTask.attachments || [],
       created_by: newTask.createdBy,
-    }).catch(() => {});
+    })
+      .then(() => {
+        this.clearTaskPendingSync(newTask.id);
+      })
+      .catch((err: any) => {
+        const status = Number(err?.status || 0);
+        if (status >= 400) {
+          this.clearTaskPendingSync(newTask.id);
+          const remaining = this.getTasks().filter((t) => String(t.id) !== String(newTask.id));
+          this.saveTasks(remaining);
+          dispatchSafeWindowEvent('absenku:tasks_updated');
+          dispatchSafeWindowEvent('absenku:task_sync_error', {
+            taskId: newTask.id,
+            title: newTask.title,
+            message: err?.message || 'Gagal menyimpan penugasan ke server.',
+          });
+        }
+      });
 
     // Otomatis kirim notifikasi email penugasan ke karyawan & admin/PIC
     try {
@@ -1345,12 +1373,26 @@ export const AppStorage = {
     });
 
     if (updatedTask) {
+      this.markTaskPendingSync(taskId);
       this.saveTasks(updated);
       ApiClient.updateKanbanTask(taskId, {
         ...updates,
         attachments: (updatedTask as TaskItem).attachments || [],
         lampiran: (updatedTask as TaskItem).attachments || [],
-      }).catch(() => {});
+      })
+        .then(() => {
+          this.clearTaskPendingSync(taskId);
+        })
+        .catch((err: any) => {
+          const status = Number(err?.status || 0);
+          if (status >= 400) {
+            this.clearTaskPendingSync(taskId);
+            dispatchSafeWindowEvent('absenku:task_sync_error', {
+              taskId,
+              message: err?.message || 'Gagal memperbarui tugas ke server.',
+            });
+          }
+        });
 
       // Jika ada perubahan penugasan (assignee), kirim email penugasan baru
       if (oldTask && updates.assignedTo && updates.assignedTo !== oldTask.assignedTo) {
@@ -1821,6 +1863,7 @@ export const AppStorage = {
       return t;
     });
 
+    this.markTaskPendingSync(taskId);
     this.saveTasks(updated);
 
     ApiClient.updateKanbanTask(taskId, {
@@ -1829,7 +1872,20 @@ export const AppStorage = {
       submission_notes: details?.submissionNotes,
       attachments: (updatedTargetTask as TaskItem | null)?.attachments || [],
       lampiran: (updatedTargetTask as TaskItem | null)?.attachments || [],
-    }).catch(() => {});
+    })
+      .then(() => {
+        this.clearTaskPendingSync(taskId);
+      })
+      .catch((err: any) => {
+        const code = Number(err?.status || 0);
+        if (code >= 400) {
+          this.clearTaskPendingSync(taskId);
+          dispatchSafeWindowEvent('absenku:task_sync_error', {
+            taskId,
+            message: err?.message || 'Gagal memperbarui status tugas ke server.',
+          });
+        }
+      });
 
     // Memicu notifikasi email otomatis untuk setiap proses penugasan (pengerjaan, submit, revisi, ACC)
     if (updatedTargetTask) {
@@ -1895,6 +1951,46 @@ export const AppStorage = {
       return t;
     });
     this.saveTasks(updated);
+  },
+
+  getPendingTaskSyncIds(): string[] {
+    try {
+      const raw = localStorage.getItem(PENDING_TASK_SYNC_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const now = Date.now();
+        return Object.entries(parsed)
+          .filter(([, ts]) => typeof ts === 'number' && now - ts < 10 * 60 * 1000)
+          .map(([id]) => String(id));
+      }
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  markTaskPendingSync(taskId: string): void {
+    try {
+      const raw = localStorage.getItem(PENDING_TASK_SYNC_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      const map: Record<string, number> =
+        parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      map[String(taskId)] = Date.now();
+      localStorage.setItem(PENDING_TASK_SYNC_KEY, JSON.stringify(map));
+    } catch {}
+  },
+
+  clearTaskPendingSync(taskId: string): void {
+    try {
+      const raw = localStorage.getItem(PENDING_TASK_SYNC_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        delete parsed[String(taskId)];
+        localStorage.setItem(PENDING_TASK_SYNC_KEY, JSON.stringify(parsed));
+      }
+    } catch {}
   },
 
   getDeletedTaskIds(): string[] {

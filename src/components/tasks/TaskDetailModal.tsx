@@ -39,6 +39,7 @@ import { formatIndonesianDateShort } from '../../lib/time-utils.ts';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
 import { uploadHybridFile } from '../../lib/file-uploader.ts';
 import { openExternalLink, openAttachmentDirectly, isImageFile } from '../../lib/open-media.ts';
+import { isTaskCreatedByUser } from '../../lib/task-sync.ts';
 
 interface TaskDetailModalProps {
   task: TaskItem | null;
@@ -514,11 +515,14 @@ export function TaskDetailModal({
   };
 
   const activeTaskPicUser = users.find(
-    (u) => u.id === activeTask.createdBy || u.role === 'ADMIN'
+    (u) =>
+      u.id === activeTask.createdBy ||
+      (u.name && activeTask.createdBy && u.name.trim().toLowerCase() === activeTask.createdBy.trim().toLowerCase()) ||
+      u.role === 'ADMIN'
   );
   const activeTaskPicName = activeTaskPicUser?.name || 'Administrator';
   const shortDueDate = formatIndonesianDateFull(activeTask.dueDate) || activeTask.dueDate;
-  const isPICActive = isAdmin || activeTask.createdBy === currentUser.id;
+  const isPICActive = isAdmin || isTaskCreatedByUser(activeTask, currentUser);
   const isMyTaskActive =
     activeTask.assignedTo === currentUser.id ||
     (Boolean(currentUser.email) && activeTask.assignedTo === currentUser.email) ||

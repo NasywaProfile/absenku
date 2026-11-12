@@ -59,6 +59,7 @@ import { MediaPreviewModal, MediaPreviewData } from '../common/MediaPreviewModal
 import { openAttachmentDirectly, openExternalLink, isImageFile } from '../../lib/open-media.ts';
 import { ChatTopicModal } from '../chat/ChatTopicModal.tsx';
 import { DropdownMenu } from '../ui/dropdown-menu.tsx';
+import { isTaskCreatedByUser } from '../../lib/task-sync.ts';
 
 interface AdminDashboardProps {
   currentUser: User;
@@ -367,16 +368,16 @@ export function AdminDashboard({
     Array.isArray(propTasks) && propTasks.length > 0 ? propTasks : AppStorage.getTasks()
   );
 
+  useEffect(() => {
+    if (Array.isArray(propTasks)) {
+      setTasksState(propTasks);
+    }
+  }, [propTasks]);
+
   // Hanya menampilkan tugas yang mana admin/super admin ini bertindak sebagai PIC (createdBy)
   const myCreatedTasks = useMemo(() => {
     if (!Array.isArray(tasksState)) return [];
-    return tasksState.filter((t) => {
-      return (
-        t.createdBy === currentUser?.id ||
-        (currentUser?.name && t.createdBy === currentUser.name) ||
-        (!t.createdBy && currentUser?.role === 'SUPER_ADMIN')
-      );
-    });
+    return tasksState.filter((t) => isTaskCreatedByUser(t, currentUser));
   }, [tasksState, currentUser]);
 
   const handleToggleTodays = (taskId: string) => {

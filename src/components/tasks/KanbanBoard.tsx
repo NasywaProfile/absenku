@@ -50,6 +50,7 @@ import { uploadHybridFile } from '../../lib/file-uploader.ts';
 import { Bubble, BubbleContent, BubbleGroup, BubbleReactions } from '../ui/bubble.tsx';
 import { MediaPreviewModal, MediaPreviewData } from '../common/MediaPreviewModal.tsx';
 import { openExternalLink, openAttachmentDirectly, isImageFile } from '../../lib/open-media.ts';
+import { isTaskCreatedByUser } from '../../lib/task-sync.ts';
 
 interface KanbanBoardProps {
   tasks: TaskItem[];
@@ -432,6 +433,17 @@ export function KanbanBoard({
     setShowCreateAddLink(false);
   };
 
+  const openCreateTaskModal = () => {
+    setCreateAttachments([]);
+    if (!newAssigneeId) {
+      const defaultUser = assignableUsers[0]?.id || users[0]?.id || '';
+      if (defaultUser) {
+        setNewAssigneeId(defaultUser);
+      }
+    }
+    setShowCreateModal(true);
+  };
+
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim() || !newDueDate) return;
@@ -441,6 +453,10 @@ export function KanbanBoard({
     }
 
     const assignedUser = users.find((u) => u.id === newAssigneeId) || assignableUsers[0] || users[0];
+    if (!assignedUser) {
+      alert('Pilih anggota tim yang ditugaskan.');
+      return;
+    }
 
     const assigneesList: TaskAssignee[] = [
       {
@@ -452,7 +468,7 @@ export function KanbanBoard({
     ];
 
     AppStorage.addTask({
-      id: `task-${Date.now()}`,
+      id: `task_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       status: 'TODO',
       createdAt: new Date().toISOString().substring(0, 10),
       updatedAt: new Date().toISOString().substring(0, 10),
@@ -777,10 +793,7 @@ export function KanbanBoard({
           {isAdmin && (
             <button
               type="button"
-              onClick={() => {
-                setCreateAttachments([]);
-                setShowCreateModal(true);
-              }}
+              onClick={openCreateTaskModal}
               className="w-full h-11 inline-flex items-center justify-center gap-2 px-4 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white rounded-2xl text-xs font-bold shadow-xs transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4 text-white stroke-[2.5]" />
@@ -889,10 +902,7 @@ export function KanbanBoard({
               <Tooltip content="Buat dan delegasikan tugas baru untuk anggota tim atau diri sendiri" position="bottom">
                 <button
                   type="button"
-                  onClick={() => {
-                    setCreateAttachments([]);
-                    setShowCreateModal(true);
-                  }}
+                  onClick={openCreateTaskModal}
                   className="h-10 inline-flex items-center justify-center gap-2 px-5 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer shrink-0"
                 >
                   <Plus className="w-4 h-4 text-white" />
@@ -1081,10 +1091,15 @@ export function KanbanBoard({
                           (Boolean(currentUser.name) &&
                             task.assignedName?.toLowerCase().trim() ===
                               currentUser.name.toLowerCase().trim());
-                        const isPIC = isAdmin || task.createdBy === currentUser.id;
+                        const isPIC = isAdmin || isTaskCreatedByUser(task, currentUser);
                         const isDone = task.status === 'DONE' || task.status === 'REVIEWED';
                         const canDelete = isPIC || (isMyTask && isDone);
-                        const picUser = users.find((u) => u.id === task.createdBy || u.role === 'ADMIN');
+                        const picUser = users.find(
+                          (u) =>
+                            u.id === task.createdBy ||
+                            (u.name && task.createdBy && u.name.trim().toLowerCase() === task.createdBy.trim().toLowerCase()) ||
+                            u.role === 'ADMIN'
+                        );
                         const isTodays = task.isTodays ?? true;
                         const stageLabel =
                           task.status === 'TODO'

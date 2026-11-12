@@ -50,6 +50,11 @@ import {
 } from '../lib/open-media.ts';
 import { generateEmailHtmlTemplate } from '../lib/real-email.ts';
 import { generateStyledSpreadsheetHTML } from '../lib/csv-export.ts';
+import {
+  isTaskCreatedByUser,
+  parseTaskTimestampMs,
+  shouldKeepLocalTaskMissingFromServer,
+} from '../lib/task-sync.ts';
 
 let passedTests = 0;
 let failedTests = 0;
@@ -805,6 +810,95 @@ assert(
     xssSheetHtml.includes('&#39;=CMD|') &&
     xssSheetHtml.includes('&#39;+1+1'),
   'Ekspor spreadsheet mencegah injeksi HTML dan formula Excel (=, +)'
+);
+
+// -----------------------------------------------------------------------------
+// SUITE 12: SINKRONISASI PENUGASAN PIC & KETAHANAN KARTU KANBAN BARU
+// -----------------------------------------------------------------------------
+console.log('\n📋 SUITE 12: Sinkronisasi & Perlindungan Kartu Tugas Baru PIC');
+
+const baseNowMs = 1794457200000;
+assert(
+  parseTaskTimestampMs(`task-${baseNowMs - 2000}`) === baseNowMs - 2000 &&
+    parseTaskTimestampMs(`task_${baseNowMs - 3000}_xy12`) === baseNowMs - 3000,
+  'parseTaskTimestampMs membaca format ID task- maupun task_'
+);
+
+assert(
+  shouldKeepLocalTaskMissingFromServer({
+    taskId: `task-${baseNowMs - 4000}`,
+    pendingSyncIds: new Set(),
+    deletedIds: new Set(),
+    nowMs: baseNowMs,
+  }) === true,
+  'Tugas baru dengan prefix task- tetap dipertahankan selama jendela sinkronisasi'
+);
+
+assert(
+  shouldKeepLocalTaskMissingFromServer({
+    taskId: `task_${baseNowMs - 120000}_late`,
+    pendingSyncIds: new Set([`task_${baseNowMs - 120000}_late`]),
+    deletedIds: new Set(),
+    nowMs: baseNowMs,
+  }) === true,
+  'Tugas yang masih menunggu/mengantre upload (pendingSyncIds) tidak terhapus saat polling server'
+);
+
+assert(
+  shouldKeepLocalTaskMissingFromServer({
+    taskId: `task-${baseNowMs - 4000}`,
+    pendingSyncIds: new Set([`task-${baseNowMs - 4000}`]),
+    deletedIds: new Set([`task-${baseNowMs - 4000}`]),
+    nowMs: baseNowMs,
+  }) === false,
+  'Tugas yang sengaja dihapus lokal (deletedIds) tetap dibersihkan'
+);
+
+assert(
+  shouldKeepLocalTaskMissingFromServer({
+    taskId: `task-${baseNowMs - 60000}`,
+    pendingSyncIds: new Set(),
+    deletedIds: new Set(),
+    nowMs: baseNowMs,
+  }) === false,
+  'Tugas lama yang sudah dihapus di server dan tidak pending lagi otomatis diprune'
+);
+
+assert(
+  isTaskCreatedByUser({ createdBy: 'usr_pic_01' }, { id: 'usr_pic_01', name: 'Budi Admin', role: 'ADMIN' }) &&
+    isTaskCreatedByUser({ createdBy: '  budi admin  ' }, { id: 'usr_pic_01', name: 'Budi Admin', role: 'ADMIN' }) &&
+    !isTaskCreatedByUser({ createdBy: 'usr_lain' }, { id: 'usr_pic_01', name: 'Budi Admin', role: 'ADMIN' }),
+  'isTaskCreatedByUser mencocokkan ID PIC maupun fallback nama secara case-insensitive'
+);
+
+const createdHyphenId = `task-${Date.now()}`;
+const createdByPic = AppStorage.addTask({
+  id: createdHyphenId,
+  title: 'Uji Penugasan PIC Anti Hilang',
+  description: 'Memastikan kartu tugas tetap tersimpan dan berstatus pending sync saat offline.',
+  status: 'TODO',
+  priority: 'HIGH',
+  assignedTo: 'usr_emp_test',
+  assignedName: 'Staf Uji',
+  assignedAvatar: '',
+  createdBy: 'usr_super_admin',
+  dueDate: '2026-11-30',
+  tags: ['Tugas Tim'],
+  attachments: [
+    {
+      id: 'att-pic-1',
+      name: 'Brief.pdf',
+      type: 'FILE',
+      url: '/storage/uploads/brief.pdf',
+      stage: 'TODO',
+    },
+  ],
+});
+
+assert(
+  AppStorage.getTasks().some((t) => t.id === createdByPic.id) &&
+    AppStorage.getPendingTaskSyncIds().includes(createdByPic.id),
+  'AppStorage.addTask menyimpan kartu baru serta menandainya dalam antrean sinkronisasi'
 );
 
 // -----------------------------------------------------------------------------

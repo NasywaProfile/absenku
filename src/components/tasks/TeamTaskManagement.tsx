@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { KanbanBoard } from './KanbanBoard.tsx';
 import { TaskItem, User as UserType, UserRole } from '../../types/index.ts';
+import { isTaskCreatedByUser } from '../../lib/task-sync.ts';
 
 interface TeamTaskManagementProps {
   tasks: TaskItem[];
@@ -20,13 +21,7 @@ export function TeamTaskManagement({
   // Hanya menampilkan tugas yang dibuat/diberikan oleh akun admin/super admin yang sedang login sebagai PIC
   const myAssignedTasks = useMemo(() => {
     const list = Array.isArray(tasks) ? tasks : [];
-    return list.filter((t) => {
-      return (
-        t.createdBy === currentUser?.id ||
-        (currentUser?.name && t.createdBy === currentUser.name) ||
-        (!t.createdBy && currentUser?.role === 'SUPER_ADMIN')
-      );
-    });
+    return list.filter((t) => isTaskCreatedByUser(t, currentUser));
   }, [tasks, currentUser]);
 
   return (
