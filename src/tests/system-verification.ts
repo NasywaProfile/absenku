@@ -927,9 +927,12 @@ assert(
 // -----------------------------------------------------------------------------
 console.log('\n💬 SUITE 14: Penghapusan Ruang Obrolan Per-Akun');
 import {
+  applyUserTagToggleToTopic,
   hasOtherChatParticipants,
   isChatTopicVisibleToUser,
+  isUserActivelyTaggedInTopic,
   mergeServerChatTopics,
+  resolveActiveTaggedUsers,
 } from '../lib/chat-visibility.ts';
 import type { ChatTopic } from '../types/index.ts';
 
@@ -1001,12 +1004,23 @@ assert(
   'Topik obrolan TIDAK hilang dan tetap terlihat di daftar Akun B'
 );
 
+// Daftar peserta aktif versi B sekarang hanya menyisakan Akun B; Akun A siap diundang kembali
+const activeUsersAfterDeleteA = resolveActiveTaggedUsers(remainingTopicForB!, chatUsersList);
+assert(
+  activeUsersAfterDeleteA.length === 1 && activeUsersAfterDeleteA[0].id === chatUserB.id,
+  'Daftar peserta aktif di Akun B otomatis hanya menampilkan Akun B setelah Akun A keluar'
+);
+assert(
+  !isUserActivelyTaggedInTopic(remainingTopicForB!, chatUserA, chatUsersList),
+  'Di modal Kelola Tag milik B, Akun A berstatus belum ditag (+ Tag) sehingga bisa ditambahkan kembali'
+);
+
 // Simulasikan sinkronisasi server pada Akun B dengan payload hiddenByIds berisi Akun A
 const mergedForB = mergeServerChatTopics(
   [],
   [{ ...sharedChatTopic, hidden_by_ids: [chatUserA.id] }],
   chatUserB.id,
-  AppStorage.getHiddenChatTopicIds(chatUserB.id)
+  AppStorage.getHiddenChatTopicMap(chatUserB.id)
 );
 assert(
   mergedForB.length === 1 &&
@@ -1015,9 +1029,51 @@ assert(
   'Sinkronisasi payload hidden_by_ids menyembunyikan untuk Akun A namun tetap menampilkan untuk Akun B'
 );
 
-// Jika Akun B juga menghapus topik tersebut, tidak ada peserta tersisa -> dihapus permanen
+// Akun B menambahkan ulang Akun A via "+ Tag" (Leave & Re-invite flow)
+const { nextTopic: reinvitedTopic, added: reinviteAdded } = applyUserTagToggleToTopic(
+  remainingTopicForB!,
+  chatUserA,
+  chatUsersList
+);
+assert(reinviteAdded === true, 'applyUserTagToggleToTopic menambahkan kembali Akun A');
+AppStorage.updateChatTopic(reinvitedTopic);
+const afterReinviteTopic = AppStorage.getChatTopics().find((t) => t.id === sharedChatTopic.id)!;
 assert(
-  hasOtherChatParticipants(remainingTopicForB!, chatUserB, chatUsersList) === false,
+  isUserActivelyTaggedInTopic(afterReinviteTopic, chatUserA, chatUsersList) &&
+    isChatTopicVisibleToUser(
+      afterReinviteTopic,
+      chatUserA,
+      chatUsersList,
+      AppStorage.getHiddenChatTopicIds(chatUserA.id)
+    ) &&
+    !AppStorage.getHiddenChatTopicIds(chatUserA.id).includes(sharedChatTopic.id),
+  'Setelah Akun B menandai kembali Akun A, topik obrolan muncul lagi di Akun A'
+);
+
+// Cek mergeServerChatTopics menghapus blokir lokal seketika jika server mengirim updatedAt setelah delete
+const staleDeleteMs = Date.now() - 2000;
+const mergedReinvitedForA = mergeServerChatTopics(
+  [],
+  [{
+    ...sharedChatTopic,
+    hidden_by_ids: [],
+    updatedAt: new Date(staleDeleteMs + 5000).toISOString(),
+  }],
+  chatUserA.id,
+  { [sharedChatTopic.id]: staleDeleteMs },
+  Date.now()
+);
+assert(
+  mergedReinvitedForA.length === 1 &&
+    isChatTopicVisibleToUser(mergedReinvitedForA[0], chatUserA, chatUsersList),
+  'Sinkronisasi server setelah re-invite langsung membuka blokir lokal milik Akun A'
+);
+
+// Akun A hapus lagi lalu Akun B juga menghapus topik -> tidak ada peserta tersisa -> dihapus permanen
+AppStorage.deleteChatTopic(sharedChatTopic.id, chatUserA.id);
+const afterSecondDeleteA = AppStorage.getChatTopics().find((t) => t.id === sharedChatTopic.id)!;
+assert(
+  hasOtherChatParticipants(afterSecondDeleteA, chatUserB, chatUsersList) === false,
   'Setelah Akun A menghapus, penghapusan oleh Akun B tidak menyisakan peserta lain'
 );
 AppStorage.deleteChatTopic(sharedChatTopic.id, chatUserB.id);

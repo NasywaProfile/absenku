@@ -38,7 +38,11 @@ import {
   safeParseJsonArray,
 } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
-import { ApiClient } from '../../lib/api-client.ts';
+import {
+  applyUserTagToggleToTopic,
+  isUserActivelyTaggedInTopic,
+  resolveActiveTaggedUsers,
+} from '../../lib/chat-visibility.ts';
 import {
   Bubble,
   BubbleContent,
@@ -336,9 +340,11 @@ export function ChatTopicModal({
 
     let updatedTopic: ChatTopic = activeTopic;
     if (newlyTaggedIds.length > 0) {
+      const reinvitedSet = new Set(newlyTaggedIds.map((id) => String(id).trim()));
       updatedTopic = {
         ...activeTopic,
         taggedTeammateIds: [...existingTagged, ...newlyTaggedIds],
+        hiddenByIds: (activeTopic.hiddenByIds || []).filter((id) => !reinvitedSet.has(String(id).trim())),
       };
       AppStorage.updateChatTopic(updatedTopic);
     }
@@ -388,40 +394,18 @@ export function ChatTopicModal({
     }
   };
 
-  // Open Tagged Members Modal (Hapus dummy "Rekan Tim" agar hanya user asli yang ditampilkan)
+  // Open Tagged Members Modal (Hapus dummy "Rekan Tim" & peserta yang sudah keluar/hapus room)
   const handleOpenTaggedMembersModal = (topicItem: ChatTopic, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const rawTagged = safeParseJsonArray(
-      topicItem.taggedTeammateIds ?? (topicItem as any).id_anggota_ditandai ?? (topicItem as any).tagged_teammate_ids
-    );
-    const members: TeamMemberItem[] = [];
-    const seen = new Set<string>();
-
-    rawTagged.forEach((uid) => {
-      if (!uid) return;
-      const cleanUid = String(uid).trim().toLowerCase();
-      const u = (users || []).find((user) => 
-        (user.id && user.id.toLowerCase() === cleanUid) ||
-        (user.name && user.name.toLowerCase().trim() === cleanUid) ||
-        (user.email && user.email.toLowerCase().trim() === cleanUid)
-      );
-      // Hapus data dummy: Jangan tampilkan jika user tidak ada di sistem atau bernama "Rekan Tim"
-      if (!u || !u.name || u.name.toLowerCase().includes('rekan tim')) return;
-
-      const dedupeKey = u.email ? u.email.toLowerCase().trim() : u.id;
-      if (seen.has(dedupeKey)) return;
-      seen.add(dedupeKey);
-
-      members.push({
-        id: u.id,
-        name: u.name,
-        avatar: u.avatar,
-        role: u.role === 'ADMIN' ? 'Administrator' : u.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Karyawan',
-        department: u.department || (u.role === 'ADMIN' ? 'Administrator' : 'Karyawan'),
-        statusBadge: 'Ditag',
-        statusColor: 'blue',
-      });
-    });
+    const members: TeamMemberItem[] = resolveActiveTaggedUsers(topicItem, users || []).map((u) => ({
+      id: u.id,
+      name: u.name,
+      avatar: u.avatar,
+      role: u.role === 'ADMIN' ? 'Administrator' : u.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Karyawan',
+      department: u.department || (u.role === 'ADMIN' ? 'Administrator' : 'Karyawan'),
+      statusBadge: 'Ditag',
+      statusColor: 'blue',
+    }));
 
     setTaggedMembersModalData({
       isOpen: true,
@@ -433,7 +417,7 @@ export function ChatTopicModal({
 
   // Filter rekan tim untuk penambahan tag ke topik obrolan
   const tagFilteredUsers = (users || []).filter((u) => {
-    if (!u || !u.name || u.name.toLowerCase().includes('rekan tim') || u.name === 'User') return false;
+    if (!u || (u.status && u.status !== 'ACTIVE') || !u.name || u.name.toLowerCase().includes('rekan tim') || u.name === 'User') return false;
     if (!tagSearchQuery.trim()) return true;
     const q = tagSearchQuery.toLowerCase().trim();
     return (
@@ -443,59 +427,21 @@ export function ChatTopicModal({
     );
   });
 
-  // Tambah / Cabut tag rekan tim pada topik yang sudah dibuat
+  // Tambah / Cabut / Undang kembali rekan tim pada topik yang sudah dibuat
   const handleToggleTagUser = (userId: string) => {
     if (!activeTopic) return;
-    const rawTagged = safeParseJsonArray(
-      activeTopic.taggedTeammateIds ?? (activeTopic as any).id_anggota_ditandai ?? (activeTopic as any).tagged_teammate_ids
-    );
-    const targetUser = (users || []).find((u) => u.id === userId);
-    const isCurrentlyTagged = rawTagged.some(
-      (id) =>
-        String(id).toLowerCase() === userId.toLowerCase() ||
-        (targetUser?.email && String(id).toLowerCase() === targetUser.email.toLowerCase()) ||
-        (targetUser?.name && String(id).toLowerCase() === targetUser.name.toLowerCase().trim())
-    );
+    const targetUser = (users || []).find((u) => u.id === userId) || { id: userId };
+    const { nextTopic } = applyUserTagToggleToTopic(activeTopic, targetUser, users || []);
 
-    let nextTagged: string[];
-    if (isCurrentlyTagged) {
-      nextTagged = rawTagged.filter(
-        (id) =>
-          String(id).toLowerCase() !== userId.toLowerCase() &&
-          (!targetUser?.email || String(id).toLowerCase() !== targetUser.email.toLowerCase()) &&
-          (!targetUser?.name || String(id).toLowerCase() !== targetUser.name.toLowerCase().trim())
-      );
-    } else {
-      nextTagged = [...rawTagged, userId];
-    }
-
-    const updatedTopic: ChatTopic = {
-      ...activeTopic,
-      taggedTeammateIds: nextTagged,
-      updatedAt: new Date().toISOString(),
-    };
-
-    setActiveTopic(updatedTopic);
-    AppStorage.updateChatTopic(updatedTopic);
-    ApiClient.updateChatTopic(updatedTopic.id, {
-      taggedTeammateIds: nextTagged,
-      id_anggota_ditandai: nextTagged,
-    }).catch(console.error);
+    setActiveTopic(nextTopic);
+    AppStorage.updateChatTopic(nextTopic);
     window.dispatchEvent(new CustomEvent('absenku:chat_updated'));
-    if (onTopicUpdated) onTopicUpdated(updatedTopic);
+    if (onTopicUpdated) onTopicUpdated(nextTopic);
   };
 
-  // Render User Avatars Stack (Hapus dummy agar tidak render avatar kosong)
-  const renderTeammateAvatars = (taggedIds: string[]) => {
-    const rawTagged = safeParseJsonArray(taggedIds);
-    const cleanLower = rawTagged.map((id) => String(id).toLowerCase().trim());
-    const taggedUsers = (users || []).filter((u) => 
-      u.name && !u.name.toLowerCase().includes('rekan tim') && (
-        (u.id && cleanLower.includes(u.id.toLowerCase())) ||
-        (u.name && cleanLower.includes(u.name.toLowerCase().trim())) ||
-        (u.email && cleanLower.includes(u.email.toLowerCase().trim()))
-      )
-    );
+  // Render User Avatars Stack (Hapus dummy & keluarkan akun yang sudah menghapus/keluar room)
+  const renderTeammateAvatars = (topicItem: ChatTopic) => {
+    const taggedUsers = resolveActiveTaggedUsers(topicItem, users || []);
     if (taggedUsers.length === 0) {
       return <span className="text-xs text-slate-400 font-medium">-</span>;
     }
@@ -619,7 +565,7 @@ export function ChatTopicModal({
             title="Klik untuk kelola anggota tim yang ditag"
           >
             <div className="flex -space-x-1.5 overflow-hidden items-center py-0.5">
-              {renderTeammateAvatars(activeTopic.taggedTeammateIds)}
+              {renderTeammateAvatars(activeTopic)}
             </div>
           </div>
           <button
@@ -1358,15 +1304,7 @@ export function ChatTopicModal({
                 </div>
               ) : (
                 tagFilteredUsers.map((u) => {
-                  const rawTagged = safeParseJsonArray(
-                    activeTopic.taggedTeammateIds ?? (activeTopic as any).id_anggota_ditandai ?? (activeTopic as any).tagged_teammate_ids
-                  );
-                  const isTagged = rawTagged.some(
-                    (id) =>
-                      String(id).toLowerCase() === u.id.toLowerCase() ||
-                      (u.email && String(id).toLowerCase() === u.email.toLowerCase()) ||
-                      (u.name && String(id).toLowerCase() === u.name.toLowerCase().trim())
-                  );
+                  const isTagged = isUserActivelyTaggedInTopic(activeTopic, u, users || []);
 
                   return (
                     <div

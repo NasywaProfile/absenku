@@ -42,9 +42,11 @@ import {
 import { AppStorage } from '../../lib/storage.ts';
 import { ApiClient } from '../../lib/api-client.ts';
 import {
+  getActiveTaggedTeammateIds,
   hasOtherChatParticipants,
   isChatTopicVisibleToUser,
   mergeServerChatTopics,
+  resolveActiveTaggedUsers,
 } from '../../lib/chat-visibility.ts';
 import {
   Bubble,
@@ -86,8 +88,9 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
         const serverTopics = await ApiClient.getChatTopics().catch(() => null);
         if (Array.isArray(serverTopics)) {
           const localTopics = AppStorage.getChatTopics();
-          const hiddenIds = AppStorage.getHiddenChatTopicIds(currentUser.id);
-          const merged = mergeServerChatTopics(localTopics, serverTopics, currentUser.id, hiddenIds);
+          const hiddenMap = AppStorage.getHiddenChatTopicMap(currentUser.id);
+          const hiddenIds = Object.keys(hiddenMap);
+          const merged = mergeServerChatTopics(localTopics, serverTopics, currentUser.id, hiddenMap);
           AppStorage.saveChatTopics(merged);
           setTopics(merged);
           setActiveTopic((prev) => {
@@ -417,9 +420,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
         return false;
       }
 
-      const tagged = safeParseJsonArray(
-        t.taggedTeammateIds ?? (t as any).id_anggota_ditandai ?? (t as any).tagged_teammate_ids
-      );
+      const tagged = getActiveTaggedTeammateIds(t, users);
 
       const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
       const matchesTeammate =
@@ -711,37 +712,15 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
 
   const handleOpenTaggedMembersModal = (topic: ChatTopic, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const rawTagged = safeParseJsonArray(
-      topic.taggedTeammateIds ?? (topic as any).id_anggota_ditandai ?? (topic as any).tagged_teammate_ids
-    );
-    const members: TeamMemberItem[] = [];
-    const seen = new Set<string>();
-
-    rawTagged.forEach((uid) => {
-      if (!uid) return;
-      const cleanUid = String(uid).trim().toLowerCase();
-      const u = (users || []).find((user) => 
-        (user.id && user.id.toLowerCase() === cleanUid) ||
-        (user.name && user.name.toLowerCase().trim() === cleanUid) ||
-        (user.email && user.email.toLowerCase().trim() === cleanUid)
-      );
-      // Hapus data dummy: Jangan tampilkan jika user tidak ada di sistem atau bernama "Rekan Tim"
-      if (!u || !u.name || u.name.toLowerCase().includes('rekan tim')) return;
-
-      const dedupeKey = u.email ? u.email.toLowerCase().trim() : u.id;
-      if (seen.has(dedupeKey)) return;
-      seen.add(dedupeKey);
-
-      members.push({
-        id: u.id,
-        name: u.name,
-        avatar: u.avatar,
-        role: u.role === 'ADMIN' ? 'Administrator' : u.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Karyawan',
-        department: u.department || (u.role === 'ADMIN' ? 'Administrator' : 'Karyawan'),
-        statusBadge: 'Ditag',
-        statusColor: 'blue',
-      });
-    });
+    const members: TeamMemberItem[] = resolveActiveTaggedUsers(topic, users || []).map((u) => ({
+      id: u.id,
+      name: u.name,
+      avatar: u.avatar,
+      role: u.role === 'ADMIN' ? 'Administrator' : u.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Karyawan',
+      department: u.department || (u.role === 'ADMIN' ? 'Administrator' : 'Karyawan'),
+      statusBadge: 'Ditag',
+      statusColor: 'blue',
+    }));
 
     setTaggedMembersModalData({
       isOpen: true,
@@ -751,17 +730,9 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
     });
   };
 
-  // Render User Avatars Stack (Hapus dummy agar tidak render avatar kosong)
-  const renderTeammateAvatars = (taggedIds: string[]) => {
-    const rawTagged = safeParseJsonArray(taggedIds);
-    const cleanLower = rawTagged.map((id) => String(id).toLowerCase().trim());
-    const taggedUsers = (users || []).filter((u) => 
-      u.name && !u.name.toLowerCase().includes('rekan tim') && (
-        (u.id && cleanLower.includes(u.id.toLowerCase())) ||
-        (u.name && cleanLower.includes(u.name.toLowerCase().trim())) ||
-        (u.email && cleanLower.includes(u.email.toLowerCase().trim()))
-      )
-    );
+  // Render User Avatars Stack (Hapus dummy agar tidak render avatar kosong & keluarkan akun yang sudah hapus topik)
+  const renderTeammateAvatars = (topic: ChatTopic) => {
+    const taggedUsers = resolveActiveTaggedUsers(topic, users || []);
     if (taggedUsers.length === 0) {
       return <span className="text-xs text-slate-400 font-medium">-</span>;
     }
@@ -1069,7 +1040,7 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
                         title="Klik untuk melihat semua foto & nama rekan tim yang ditag"
                       >
                         <div className="inline-flex items-center gap-1.5 p-1 rounded-xl group-hover/teammates:ring-1 group-hover/teammates:ring-blue-300 transition-all">
-                          {renderTeammateAvatars(topic.taggedTeammateIds)}
+                          {renderTeammateAvatars(topic)}
                         </div>
                       </td>
 

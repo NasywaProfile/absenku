@@ -401,8 +401,8 @@ export default function App() {
       if (Array.isArray(serverTopics)) {
         const localTopics = AppStorage.getChatTopics();
         const activeUserId = (AppStorage.getSessionUser() || AppStorage.getCurrentUser())?.id;
-        const hiddenIds = AppStorage.getHiddenChatTopicIds(activeUserId);
-        const mergedTopics = mergeServerChatTopics(localTopics, serverTopics, activeUserId, hiddenIds);
+        const hiddenMap = AppStorage.getHiddenChatTopicMap(activeUserId);
+        const mergedTopics = mergeServerChatTopics(localTopics, serverTopics, activeUserId, hiddenMap);
         AppStorage.saveChatTopics(mergedTopics);
         window.dispatchEvent(new CustomEvent('absenku:chat_updated'));
       }

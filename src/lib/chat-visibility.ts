@@ -193,24 +193,165 @@ export function mapServerChatTopic(st: any, existingLocal?: ChatTopic): ChatTopi
   };
 }
 
+export type LocalHiddenChatMap = Record<string, number> | string[];
+
+const LOCAL_HIDE_GRACE_MS = 15_000;
+
+export function getActiveTaggedTeammateIds(
+  topic: Pick<ChatTopic, 'taggedTeammateIds' | 'hiddenByIds'>,
+  allUsers: UserIdentityLike[]
+): string[] {
+  const rawTagged = safeParseJsonArray(
+    topic.taggedTeammateIds ??
+      (topic as unknown as Record<string, unknown>).id_anggota_ditandai ??
+      (topic as unknown as Record<string, unknown>).tagged_teammate_ids
+  );
+  const hiddenSet = new Set(
+    safeParseJsonArray(
+      topic.hiddenByIds ??
+        (topic as unknown as Record<string, unknown>).hidden_by_ids ??
+        (topic as unknown as Record<string, unknown>).dihapus_oleh_ids
+    ).map((id) => String(id).trim())
+  );
+
+  if (hiddenSet.size === 0) return rawTagged;
+
+  const hiddenIdentifiers = new Set<string>(Array.from(hiddenSet).map((id) => id.toLowerCase()));
+  (allUsers || []).forEach((u) => {
+    if (u?.id && hiddenSet.has(String(u.id).trim())) {
+      getUserMatchIdentifiers(u).forEach((identifier) => hiddenIdentifiers.add(identifier));
+    }
+  });
+
+  return rawTagged.filter((tag) => !hiddenIdentifiers.has(String(tag || '').trim().toLowerCase()));
+}
+
+export function resolveActiveTaggedUsers<T extends UserIdentityLike>(
+  topic: Pick<ChatTopic, 'taggedTeammateIds' | 'hiddenByIds'>,
+  allUsers: T[]
+): T[] {
+  const activeTags = getActiveTaggedTeammateIds(topic, allUsers);
+  const hiddenSet = new Set(
+    safeParseJsonArray(
+      topic.hiddenByIds ??
+        (topic as unknown as Record<string, unknown>).hidden_by_ids ??
+        (topic as unknown as Record<string, unknown>).dihapus_oleh_ids
+    ).map((id) => String(id).trim())
+  );
+
+  const result: T[] = [];
+  const seen = new Set<string>();
+
+  activeTags.forEach((uid) => {
+    if (!uid) return;
+    const cleanUid = String(uid).trim().toLowerCase();
+    const matched = (allUsers || []).find(
+      (user) =>
+        (user.id && user.id.toLowerCase() === cleanUid) ||
+        (user.name && user.name.toLowerCase().trim() === cleanUid) ||
+        (user.email && user.email.toLowerCase().trim() === cleanUid)
+    );
+    if (!matched || !matched.name || matched.name.toLowerCase().includes('rekan tim')) return;
+    if (hiddenSet.has(String(matched.id).trim())) return;
+
+    const dedupeKey = matched.email ? matched.email.toLowerCase().trim() : matched.id;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    result.push(matched);
+  });
+
+  return result;
+}
+
+export function isUserActivelyTaggedInTopic(
+  topic: Pick<ChatTopic, 'taggedTeammateIds' | 'hiddenByIds'>,
+  targetUser: UserIdentityLike | null | undefined,
+  allUsers: UserIdentityLike[]
+): boolean {
+  if (!targetUser?.id) return false;
+  return resolveActiveTaggedUsers(topic, allUsers).some((u) => u.id === targetUser.id);
+}
+
+export function applyUserTagToggleToTopic(
+  topic: ChatTopic,
+  targetUser: UserIdentityLike,
+  allUsers: UserIdentityLike[]
+): { nextTopic: ChatTopic; added: boolean } {
+  const rawTagged = safeParseJsonArray(
+    topic.taggedTeammateIds ??
+      (topic as unknown as Record<string, unknown>).id_anggota_ditandai ??
+      (topic as unknown as Record<string, unknown>).tagged_teammate_ids
+  );
+  const currentHidden = safeParseJsonArray(
+    topic.hiddenByIds ??
+      (topic as unknown as Record<string, unknown>).hidden_by_ids ??
+      (topic as unknown as Record<string, unknown>).dihapus_oleh_ids
+  ).map((id) => String(id).trim());
+
+  const targetIdSet = new Set(getUserMatchIdentifiers(targetUser));
+  const currentlyActive = isUserActivelyTaggedInTopic(topic, targetUser, allUsers);
+
+  let nextTagged: string[];
+  let nextHidden: string[];
+
+  if (currentlyActive) {
+    nextTagged = rawTagged.filter(
+      (tag) => !targetIdSet.has(String(tag || '').trim().toLowerCase())
+    );
+    nextHidden = currentHidden;
+  } else {
+    const cleanedExisting = rawTagged.filter(
+      (tag) => !targetIdSet.has(String(tag || '').trim().toLowerCase())
+    );
+    const additions = [
+      targetUser.id,
+      ...(targetUser.email ? [targetUser.email] : []),
+      ...(targetUser.name ? [targetUser.name] : []),
+    ].filter(Boolean) as string[];
+    nextTagged = Array.from(new Set([...cleanedExisting, ...additions]));
+    nextHidden = currentHidden.filter((id) => id !== String(targetUser.id).trim());
+  }
+
+  return {
+    added: !currentlyActive,
+    nextTopic: {
+      ...topic,
+      taggedTeammateIds: nextTagged,
+      hiddenByIds: nextHidden,
+      updatedAt: new Date().toISOString(),
+    },
+  };
+}
+
 export function mergeServerChatTopics(
   localTopics: ChatTopic[],
   serverTopics: any[],
   currentUserId?: string | null,
-  localHiddenIds: string[] = [],
+  localHidden: LocalHiddenChatMap = {},
   nowMs: number = Date.now()
 ): ChatTopic[] {
   const localById = new Map(localTopics.map((t) => [t.id, t]));
   const serverIds = new Set(serverTopics.map((st: any) => String(st.id)));
-  const hiddenSet = new Set(localHiddenIds.map(String));
+  const hiddenTimestampMap: Record<string, number> = Array.isArray(localHidden)
+    ? Object.fromEntries(localHidden.map((id) => [String(id), nowMs]))
+    : localHidden || {};
 
   const merged: ChatTopic[] = serverTopics.map((st) => {
     const mapped = mapServerChatTopic(st, localById.get(st.id));
-    if (currentUserId && hiddenSet.has(mapped.id)) {
-      const nextHidden = Array.from(
-        new Set([...(mapped.hiddenByIds || []), currentUserId])
-      );
-      return { ...mapped, hiddenByIds: nextHidden };
+    if (currentUserId && Object.prototype.hasOwnProperty.call(hiddenTimestampMap, mapped.id)) {
+      const deletedAtMs = hiddenTimestampMap[mapped.id];
+      const serverUpdatedMs = Date.parse(mapped.updatedAt || mapped.createdAt || '');
+      const reinvitedAfterDelete =
+        !Number.isNaN(serverUpdatedMs) &&
+        serverUpdatedMs > deletedAtMs + 1000 &&
+        !(mapped.hiddenByIds || []).includes(currentUserId);
+
+      if (!reinvitedAfterDelete && nowMs - deletedAtMs < LOCAL_HIDE_GRACE_MS) {
+        const nextHidden = Array.from(
+          new Set([...(mapped.hiddenByIds || []), currentUserId])
+        );
+        return { ...mapped, hiddenByIds: nextHidden };
+      }
     }
     return mapped;
   });

@@ -46,7 +46,7 @@ import { hashPassword, verifyPassword, isPasswordEncrypted } from './crypto-util
 import { ApiClient } from './api-client.ts';
 import { sendRealEmail, generateEmailHtmlTemplate } from './real-email.ts';
 import { formatIndonesianDateShort } from './time-utils.ts';
-import { hasOtherChatParticipants } from './chat-visibility.ts';
+import { getUserMatchIdentifiers, hasOtherChatParticipants } from './chat-visibility.ts';
 
 const PENDING_TASK_SYNC_KEY = 'absenku_pending_task_sync_v10';
 const PENDING_LEAVE_SYNC_KEY = 'absenku_pending_leave_sync_v10';
@@ -3220,34 +3220,79 @@ export const AppStorage = {
     if (index !== -1) {
       const now = new Date();
       topic.updatedAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      topics[index] = topic;
+
+      // Any user explicitly present in taggedTeammateIds is active again -> clear hidden flags for them.
+      const normalizedTags = new Set(
+        (topic.taggedTeammateIds || []).map((tag) => String(tag || '').trim().toLowerCase()).filter(Boolean)
+      );
+      const reinvitedUserIds = new Set<string>();
+      this.getUsers().forEach((u) => {
+        if (getUserMatchIdentifiers(u).some((id) => normalizedTags.has(id))) {
+          reinvitedUserIds.add(String(u.id).trim());
+          this.clearHiddenChatTopicId(u.id, topic.id);
+        }
+      });
+
+      const sanitizedTopic: ChatTopic = {
+        ...topic,
+        hiddenByIds: (topic.hiddenByIds || [])
+          .map((id) => String(id).trim())
+          .filter((id) => id && !reinvitedUserIds.has(id)),
+      };
+
+      topics[index] = sanitizedTopic;
       this.saveChatTopics(topics);
 
-      ApiClient.updateChatTopic(topic.id, {
-        title: topic.title,
-        status: topic.status,
-        shortNotes: topic.shortNotes,
-        longNotes: topic.longNotes,
-        taggedTeammateIds: topic.taggedTeammateIds,
-        files: topic.files,
-        links: topic.links,
-        images: topic.images,
+      ApiClient.updateChatTopic(sanitizedTopic.id, {
+        title: sanitizedTopic.title,
+        status: sanitizedTopic.status,
+        shortNotes: sanitizedTopic.shortNotes,
+        longNotes: sanitizedTopic.longNotes,
+        taggedTeammateIds: sanitizedTopic.taggedTeammateIds,
+        id_anggota_ditandai: sanitizedTopic.taggedTeammateIds,
+        files: sanitizedTopic.files,
+        links: sanitizedTopic.links,
+        images: sanitizedTopic.images,
       }).catch(() => {});
     }
   },
 
-  getHiddenChatTopicIds(userId?: string | null): string[] {
+  getHiddenChatTopicMap(userId?: string | null): Record<string, number> {
     const normalizedUserId = String(userId || '').trim();
-    if (!normalizedUserId) return [];
+    if (!normalizedUserId) return {};
     try {
       const raw = localStorage.getItem(HIDDEN_CHAT_TOPICS_KEY);
-      if (!raw) return [];
+      if (!raw) return {};
       const parsed = JSON.parse(raw);
-      const list = parsed && typeof parsed === 'object' ? parsed[normalizedUserId] : null;
-      return Array.isArray(list) ? list.map((id: unknown) => String(id).trim()).filter(Boolean) : [];
+      const entry = parsed && typeof parsed === 'object' ? parsed[normalizedUserId] : null;
+      const now = Date.now();
+      if (Array.isArray(entry)) {
+        const result: Record<string, number> = {};
+        entry.forEach((id: unknown) => {
+          const clean = String(id).trim();
+          if (clean) result[clean] = now;
+        });
+        return result;
+      }
+      if (entry && typeof entry === 'object') {
+        const result: Record<string, number> = {};
+        Object.entries(entry).forEach(([tid, ts]) => {
+          const cleanTid = String(tid).trim();
+          const numTs = Number(ts);
+          if (cleanTid && !Number.isNaN(numTs) && now - numTs < 60_000) {
+            result[cleanTid] = numTs;
+          }
+        });
+        return result;
+      }
+      return {};
     } catch {
-      return [];
+      return {};
     }
+  },
+
+  getHiddenChatTopicIds(userId?: string | null): string[] {
+    return Object.keys(this.getHiddenChatTopicMap(userId));
   },
 
   recordHiddenChatTopicId(userId: string, topicId: string): void {
@@ -3257,12 +3302,31 @@ export const AppStorage = {
     try {
       const raw = localStorage.getItem(HIDDEN_CHAT_TOPICS_KEY);
       const parsed = raw ? JSON.parse(raw) : {};
-      const store: Record<string, string[]> =
+      const store: Record<string, Record<string, number> | string[]> =
         parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-      const existing = Array.isArray(store[normalizedUserId]) ? store[normalizedUserId] : [];
-      if (!existing.includes(normalizedTopicId)) {
-        store[normalizedUserId] = [...existing, normalizedTopicId];
-        localStorage.setItem(HIDDEN_CHAT_TOPICS_KEY, JSON.stringify(store));
+      const currentMap = this.getHiddenChatTopicMap(normalizedUserId);
+      currentMap[normalizedTopicId] = Date.now();
+      store[normalizedUserId] = currentMap;
+      localStorage.setItem(HIDDEN_CHAT_TOPICS_KEY, JSON.stringify(store));
+    } catch {
+      // Ignore storage quota / parse failures
+    }
+  },
+
+  clearHiddenChatTopicId(userId: string, topicId: string): void {
+    const normalizedUserId = String(userId || '').trim();
+    const normalizedTopicId = String(topicId || '').trim();
+    if (!normalizedUserId || !normalizedTopicId) return;
+    try {
+      const raw = localStorage.getItem(HIDDEN_CHAT_TOPICS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+      const currentMap = this.getHiddenChatTopicMap(normalizedUserId);
+      if (Object.prototype.hasOwnProperty.call(currentMap, normalizedTopicId)) {
+        delete currentMap[normalizedTopicId];
+        parsed[normalizedUserId] = currentMap;
+        localStorage.setItem(HIDDEN_CHAT_TOPICS_KEY, JSON.stringify(parsed));
       }
     } catch {
       // Ignore storage quota / parse failures
@@ -3276,13 +3340,20 @@ export const AppStorage = {
     if (normalizedUserId) {
       this.recordHiddenChatTopicId(normalizedUserId, topicId);
       const targetTopic = topics.find((t) => t.id === topicId);
-      if (targetTopic && hasOtherChatParticipants(targetTopic, normalizedUserId, this.getUsers())) {
+      const allUsers = this.getUsers();
+      if (targetTopic && hasOtherChatParticipants(targetTopic, normalizedUserId, allUsers)) {
+        const actingUser = allUsers.find((u) => u.id === normalizedUserId) || { id: normalizedUserId };
+        const actingIdentifiers = new Set(getUserMatchIdentifiers(actingUser));
+
         const nextTopics = topics.map((t) => {
           if (t.id !== topicId) return t;
           const hiddenByIds = Array.from(
             new Set([...(t.hiddenByIds || []).map((id) => String(id).trim()), normalizedUserId].filter(Boolean))
           );
-          return { ...t, hiddenByIds };
+          const taggedTeammateIds = (t.taggedTeammateIds || []).filter(
+            (tag) => !actingIdentifiers.has(String(tag || '').trim().toLowerCase())
+          );
+          return { ...t, taggedTeammateIds, hiddenByIds };
         });
         this.saveChatTopics(nextTopics);
         ApiClient.deleteChatTopic(topicId).catch(() => {});
