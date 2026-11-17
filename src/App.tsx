@@ -887,13 +887,14 @@ export default function App() {
 
   const isAdmin = currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN';
 
-  // Karyawan diarahkan ke form onboarding biodata HANYA setelah mendaftar akun baru
+  // Karyawan wajib melengkapi biodata diri jika profil belum lengkap (isProfileComplete !== true)
+  // Tetap tampil baik saat baru selesai registrasi maupun saat login kembali sebelum menekan "Simpan dan Selesaikan"
   const isEmployeeProfileIncomplete =
     !isAdmin &&
-    isOnboardingRegistration &&
-    currentUser.isProfileComplete !== true;
+    currentUser.isProfileComplete !== true &&
+    (currentUser.status === 'PENDING_APPROVAL' || isOnboardingRegistration);
 
-  // 1. JIKA KARYAWAN BARU SELESAI DAFTAR AKUN: TAMPILKAN HALAMAN ISI DETAIL BIODATA DIRI
+  // 1. JIKA BIODATA DIRI BELUM LENGKAP: TAMPILKAN HALAMAN ISI DETAIL BIODATA DIRI
   if (isEmployeeProfileIncomplete) {
     return (
       <CompleteProfileModal

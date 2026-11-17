@@ -324,6 +324,12 @@ const registerRes = AppStorage.registerEmployee({
 });
 assert(registerRes.success, 'Registrasi karyawan baru berhasil');
 assert(registerRes.user?.status === 'PENDING_APPROVAL', 'Status awal adalah PENDING_APPROVAL');
+assert(registerRes.user?.isProfileComplete === false, 'isProfileComplete awal pendaftar baru adalah false');
+
+// Simulasi tab tertutup lalu login ulang: jika isProfileComplete !== true, wajib tetap diarahkan ke halaman biodata diri
+const isProfileIncompleteCheck = (u: User) =>
+  u.role !== 'ADMIN' && u.role !== 'SUPER_ADMIN' && u.isProfileComplete !== true && u.status === 'PENDING_APPROVAL';
+assert(isProfileIncompleteCheck(registerRes.user!) === true, 'Pendaftar yang belum simpan biodata tetap diarahkan ke form biodata 4 langkah saat login ulang');
 
 // 4.2. Persetujuan Akun oleh Super Admin
 AppStorage.approveRegistration(registerRes.user!.id, 'Super Admin', 'EMPLOYEE');

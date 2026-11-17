@@ -105,21 +105,36 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
         // Cek jika akun berstatus PENDING_APPROVAL dari respon login terverifikasi atau lokal
         const pendingServerUser = apiErr.data?.status === 'PENDING_APPROVAL' ? apiErr.data?.user : null;
         if (pendingServerUser) {
+          const cleanEmail = loginIdentifier.trim().toLowerCase();
+          const localMatched = AppStorage.getUsers().find((u) => u.email?.toLowerCase() === cleanEmail) || (pendingServerUser.id ? AppStorage.getUserById(pendingServerUser.id) : null);
           const pendingUser: UserType = {
-            id: pendingServerUser.id || `usr_${Date.now()}`,
-            name: pendingServerUser.name || pendingServerUser.nama || loginIdentifier.split('@')[0],
-            email: pendingServerUser.email || loginIdentifier.trim().toLowerCase(),
-            role: (pendingServerUser.role || pendingServerUser.peran || 'EMPLOYEE') as any,
+            id: pendingServerUser.id || localMatched?.id || `usr_${Date.now()}`,
+            name: pendingServerUser.name || pendingServerUser.nama || localMatched?.name || loginIdentifier.split('@')[0],
+            email: pendingServerUser.email || localMatched?.email || loginIdentifier.trim().toLowerCase(),
+            role: (pendingServerUser.role || pendingServerUser.peran || localMatched?.role || 'EMPLOYEE') as any,
             status: 'PENDING_APPROVAL',
-            employmentType: pendingServerUser.employment_type || pendingServerUser.tipe_kepegawaian || 'CONTRACT',
-            department: pendingServerUser.department || 'Operasional',
-            position: pendingServerUser.position || 'Staf',
-            avatar: pendingServerUser.avatar || '',
-            phone: '',
-            joinDate: new Date().toISOString().substring(0, 10),
-            leaveBalance: 12,
-            registeredAt: '',
-            isProfileComplete: Boolean(pendingServerUser.profil_lengkap ?? pendingServerUser.is_profile_complete ?? true),
+            employmentType: pendingServerUser.employment_type || pendingServerUser.tipe_kepegawaian || localMatched?.employmentType || 'CONTRACT',
+            department: pendingServerUser.department || pendingServerUser.divisi || localMatched?.department || 'Operasional',
+            position: pendingServerUser.position || pendingServerUser.jabatan || localMatched?.position || 'Staf',
+            avatar: pendingServerUser.avatar || pendingServerUser.foto_profil || localMatched?.avatar || '',
+            phone: pendingServerUser.phone || pendingServerUser.nomor_telepon || localMatched?.phone || '',
+            gender: pendingServerUser.gender || pendingServerUser.jenis_kelamin || localMatched?.gender || 'L',
+            birthDate: pendingServerUser.birthDate || pendingServerUser.birth_date || pendingServerUser.tanggal_lahir || localMatched?.birthDate || '2000-01-01',
+            joinDate: pendingServerUser.join_date || pendingServerUser.tanggal_bergabung || localMatched?.joinDate || new Date().toISOString().substring(0, 10),
+            leaveBalance: pendingServerUser.leave_balance ?? pendingServerUser.sisa_cuti ?? localMatched?.leaveBalance ?? 12,
+            bankName: pendingServerUser.bank_name || pendingServerUser.nama_bank || localMatched?.bankName || 'BCA',
+            bankAccountNumber: pendingServerUser.bank_account_number || pendingServerUser.nomor_rekening || localMatched?.bankAccountNumber || '',
+            bankAccountHolder: pendingServerUser.bank_account_holder || pendingServerUser.nama_pemilik_rekening || localMatched?.bankAccountHolder || '',
+            emergencyContactName: pendingServerUser.emergency_contact_name || pendingServerUser.nama_kontak_darurat || localMatched?.emergencyContactName || '',
+            emergencyContactPhone: pendingServerUser.emergency_contact_phone || pendingServerUser.nomor_kontak_darurat || localMatched?.emergencyContactPhone || '',
+            address: pendingServerUser.address || pendingServerUser.alamat || localMatched?.address || '',
+            registeredAt: pendingServerUser.registered_at || pendingServerUser.waktu_daftar || localMatched?.registeredAt || '',
+            isProfileComplete: Boolean(
+              pendingServerUser.profil_lengkap ??
+              pendingServerUser.is_profile_complete ??
+              localMatched?.isProfileComplete ??
+              false
+            ),
           };
           AppStorage.updateUser(pendingUser);
           AppStorage.setSessionUser(pendingUser.id);
