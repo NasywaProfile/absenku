@@ -31,6 +31,14 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [regDepartment, setRegDepartment] = useState('');
 
+  // Forgot password form state
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotFullName, setForgotFullName] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [showForgotNewPassword, setShowForgotNewPassword] = useState(false);
+  const [showForgotConfirmPassword, setShowForgotConfirmPassword] = useState(false);
+
   // Feedback states
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -294,6 +302,66 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
     onLoginSuccess(res.user, true);
   };
 
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    const email = forgotEmail.trim();
+    const fullName = forgotFullName.trim();
+    const newPassword = forgotNewPassword;
+    const confirmPassword = forgotConfirmPassword;
+
+    if (!email || !fullName || !newPassword || !confirmPassword) {
+      setErrorMsg('Harap lengkapi seluruh kolom formulir.');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setErrorMsg('Kata sandi baru minimal terdiri dari 6 karakter.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setErrorMsg('Konfirmasi kata sandi tidak cocok dengan kata sandi baru.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // 1. Coba verifikasi & reset kata sandi ke backend server VPS
+      try {
+        await ApiClient.forgotPassword({
+          email,
+          name: fullName,
+          password: newPassword,
+        });
+      } catch (apiErr: any) {
+        const errorText = apiErr?.message || 'Email atau nama lengkap tidak cocok dengan data akun terdaftar.';
+        setErrorMsg(errorText);
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Perbarui juga di AppStorage lokal
+      AppStorage.resetPasswordSelfService(email, fullName, newPassword);
+
+      // 3. Reset form, isi email di form login, dan beralih ke login
+      setForgotEmail('');
+      setForgotFullName('');
+      setForgotNewPassword('');
+      setForgotConfirmPassword('');
+      setLoginIdentifier(email);
+      setLoginPassword('');
+      setSuccessMsg('Kata sandi berhasil diperbarui! Silakan masuk menggunakan kata sandi baru Anda.');
+      setAuthMode('LOGIN');
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Gagal mengatur ulang kata sandi.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen lg:h-screen w-full bg-[#F3F6FA] lg:bg-white flex flex-col lg:flex-row font-sans text-slate-900 antialiased selection:bg-[#0D1C42] selection:text-white overflow-x-hidden">
       
@@ -528,22 +596,107 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
               </form>
             )}
 
-            {/* 3. INFO LUPA PASSWORD (TERVERIFIKASI ADMIN) */}
+            {/* 3. FORM LUPA PASSWORD (MANDIRI DENGAN VERIFIKASI EMAIL & NAMA PANJANG) */}
             {authMode === 'FORGOT_PASSWORD' && (
-              <div className="space-y-4">
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm text-slate-700 leading-relaxed space-y-2 text-left">
-                  <p className="font-bold text-slate-900">
-                    Reset Kata Sandi Memerlukan Verifikasi Admin
-                  </p>
-                  <p>
-                    Demi keamanan akun dan data perusahaan, pengaturan ulang kata sandi tidak dilakukan secara bebas dari halaman login.
-                  </p>
-                  <p className="text-slate-600 text-xs">
-                    Silakan hubungi <strong>Super Admin</strong> atau <strong>Admin HR</strong> perusahaan untuk menetapkan kata sandi sementara bagi akun Anda.
+              <form onSubmit={handleForgotPasswordSubmit} className="space-y-3.5 sm:space-y-4">
+                {/* Email Terdaftar */}
+                <div className="space-y-1 text-left">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                    Email Terdaftar
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    placeholder="nama@email.com"
+                    autoComplete="email"
+                    className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
+                  />
+                </div>
+
+                {/* Nama Panjang / Lengkap Sesuai Akun */}
+                <div className="space-y-1 text-left">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                    Nama Panjang / Nama Lengkap
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={forgotFullName}
+                    onChange={(e) => setForgotFullName(e.target.value)}
+                    placeholder="Contoh: Alissa Anastasia"
+                    autoComplete="name"
+                    className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors"
+                  />
+                  <p className="text-[11px] text-slate-400">
+                    Wajib sama dengan nama yang terdaftar di akun Anda
                   </p>
                 </div>
 
-                <div className="flex justify-center items-center pt-1">
+                {/* Kata Sandi Baru */}
+                <div className="space-y-1 text-left">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                    Kata Sandi Baru
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showForgotNewPassword ? 'text' : 'password'}
+                      required
+                      value={forgotNewPassword}
+                      onChange={(e) => setForgotNewPassword(e.target.value)}
+                      placeholder="Minimal 6 karakter"
+                      autoComplete="new-password"
+                      className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors pr-8"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotNewPassword(!showForgotNewPassword)}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#1E3A8A] p-1 cursor-pointer transition-colors"
+                      title={showForgotNewPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+                    >
+                      {showForgotNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Konfirmasi Kata Sandi Baru */}
+                <div className="space-y-1 text-left">
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700">
+                    Konfirmasi Kata Sandi Baru
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showForgotConfirmPassword ? 'text' : 'password'}
+                      required
+                      value={forgotConfirmPassword}
+                      onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                      placeholder="Ulangi kata sandi baru"
+                      autoComplete="new-password"
+                      className="w-full bg-transparent border-0 border-b-2 border-slate-300 focus:border-[#1E3A8A] focus:outline-hidden rounded-none px-0.5 py-2 text-sm text-slate-900 font-medium placeholder:text-slate-400 transition-colors pr-8"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotConfirmPassword(!showForgotConfirmPassword)}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#1E3A8A] p-1 cursor-pointer transition-colors"
+                      title={showForgotConfirmPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+                    >
+                      {showForgotConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tombol Simpan Kata Sandi */}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-3.5 px-4 bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white font-bold rounded-2xl shadow-lg transition-all duration-300 hover:shadow-xl active:scale-[0.99] disabled:opacity-50 text-sm tracking-wide cursor-pointer mt-2"
+                >
+                  {isLoading ? 'Memverifikasi Data...' : 'Simpan Kata Sandi Baru'}
+                </button>
+
+                {/* Tombol Kembali ke Login */}
+                <div className="flex justify-center pt-2 pb-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -551,13 +704,13 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
                       setErrorMsg(null);
                       setSuccessMsg(null);
                     }}
-                    className="inline-flex items-center gap-1.5 text-xs sm:text-sm text-slate-500 hover:text-[#1E3A8A] font-semibold transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 text-xs sm:text-[13px] text-slate-500 font-normal hover:text-[#1E3A8A] transition-colors cursor-pointer"
                   >
-                    <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Kembali ke Halaman Masuk</span>
                   </button>
                 </div>
-              </div>
+              </form>
             )}
 
           </div>

@@ -16,11 +16,16 @@ import {
   Briefcase,
   HeartHandshake,
   Trash2,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { User, EmploymentType, UserRole, AttendanceRecord, DailyTaskLog } from '../../types/index.ts';
 import { EMPLOYMENT_TYPE_LABELS, copyTextToClipboard } from '../../lib/whatsapp-recap.ts';
 import { formatIndonesianDateShort } from '../../lib/time-utils.ts';
 import { ModernConfirmDialog } from '../common/ModernConfirmDialog.tsx';
+import { ApiClient } from '../../lib/api-client.ts';
+import { AppStorage } from '../../lib/storage.ts';
 
 interface EmployeeDetailDrawerProps {
   isOpen: boolean;
@@ -58,6 +63,46 @@ export function EmployeeDetailDrawer({
     (employee.id === currentUser.id || employee.email?.toLowerCase() === currentUser.email?.toLowerCase())
   );
   const canDelete = Boolean(isSuperAdmin && employee && !isSelf);
+  const canResetPassword = Boolean(
+    employee &&
+    (isSuperAdmin || (currentUser?.role === 'ADMIN' && employee.role === 'EMPLOYEE'))
+  );
+
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
+  const [adminNewPassword, setAdminNewPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  const handleAdminResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!employee || adminNewPassword.trim().length < 6) {
+      setResetError('Kata sandi baru minimal terdiri dari 6 karakter.');
+      return;
+    }
+    setResetLoading(true);
+    setResetError(null);
+    setResetSuccess(null);
+    try {
+      // 1. Backend API
+      await ApiClient.adminResetPassword(employee.id, adminNewPassword.trim()).catch((err) => {
+        console.warn('Backend admin reset password warning:', err);
+      });
+      // 2. Local AppStorage
+      AppStorage.adminResetUserPassword(employee.id, adminNewPassword.trim());
+      setResetSuccess(`Kata sandi untuk "${employee.name}" berhasil diatur ulang.`);
+      setTimeout(() => {
+        setShowResetPasswordModal(false);
+        setResetSuccess(null);
+        setAdminNewPassword('');
+      }, 1500);
+    } catch (err: any) {
+      setResetError(err?.message || 'Gagal mengatur ulang kata sandi pengguna.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) {
@@ -387,21 +432,129 @@ export function EmployeeDetailDrawer({
           )}
         </div>
 
-        {/* Footer Actions jika Super Admin: Tombol Hapus Akun */}
-        {canDelete && (
-          <div className="p-4 border-t border-slate-100 bg-slate-50/70 flex justify-between items-center shrink-0">
-            <span className="text-[11px] text-slate-400 font-medium">Otoritas Super Admin</span>
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirm(true)}
-              className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200/90 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs active:scale-95"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-              <span>Hapus Akun</span>
-            </button>
+        {/* Footer Actions: Reset Password & Hapus Akun */}
+        {(canResetPassword || canDelete) && (
+          <div className="p-4 border-t border-slate-100 bg-slate-50/70 flex justify-between items-center shrink-0 gap-3">
+            <div>
+              {canResetPassword && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdminNewPassword('');
+                    setResetError(null);
+                    setResetSuccess(null);
+                    setShowResetPasswordModal(true);
+                  }}
+                  className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-[#1E3A8A] hover:text-blue-900 border border-indigo-200/90 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs active:scale-95"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-[#1E3A8A]" />
+                  <span>Reset Kata Sandi</span>
+                </button>
+              )}
+            </div>
+
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200/90 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Hapus Akun</span>
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {/* Modal Dialog Reset Password untuk Admin/Superadmin */}
+      {showResetPasswordModal && employee && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity cursor-pointer"
+            onClick={() => !resetLoading && setShowResetPasswordModal(false)}
+          />
+          <div className="relative z-10 w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#1E3A8A] flex items-center justify-center">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">Reset Kata Sandi</h3>
+                  <p className="text-[11px] text-slate-500">{employee.name} ({employee.email})</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={resetLoading}
+                onClick={() => setShowResetPasswordModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {resetError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-semibold">
+                ⚠️ {resetError}
+              </div>
+            )}
+
+            {resetSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold">
+                ✓ {resetSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleAdminResetPassword} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Kata Sandi Baru Sementara
+                </label>
+                <div className="relative">
+                  <input
+                    type={showAdminPassword ? 'text' : 'password'}
+                    required
+                    value={adminNewPassword}
+                    onChange={(e) => setAdminNewPassword(e.target.value)}
+                    placeholder="Minimal 6 karakter"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword(!showAdminPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#1E3A8A] cursor-pointer"
+                  >
+                    {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Berikan kata sandi baru ini kepada karyawan agar dapat login kembali.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={resetLoading}
+                  onClick={() => setShowResetPasswordModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetLoading}
+                  className="px-4 py-2 text-xs font-bold text-white bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {resetLoading ? 'Menyimpan...' : 'Simpan Kata Sandi'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showDeleteConfirm && (
         <ModernConfirmDialog

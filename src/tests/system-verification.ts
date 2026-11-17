@@ -549,6 +549,13 @@ assert(
   'Reset password karyawan (email + nama persis) berhasil dan password lama tidak berlaku'
 );
 
+const targetEmp = AppStorage.getUsers().find((u) => u.email === 'alissa@gmail.com');
+assert(
+  Boolean(targetEmp && AppStorage.adminResetUserPassword(targetEmp.id, 'AdminResetPass999').success === true &&
+    AppStorage.authenticate('alissa@gmail.com', 'AdminResetPass999') !== null),
+  'Admin / Super Admin berhasil mereset kata sandi akun karyawan'
+);
+
 // -----------------------------------------------------------------------------
 // SUITE 9: ALUR LINTAS PERAN (KARYAWAN → ADMIN → SUPER ADMIN)
 // -----------------------------------------------------------------------------

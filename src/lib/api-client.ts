@@ -137,6 +137,25 @@ export const ApiClient = {
     }
   },
 
+  async forgotPassword(data: { email: string; name: string; password: string }) {
+    return this.request<{ message: string }>('/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: data.email,
+        nama: data.name,
+        name: data.name,
+        password: data.password,
+      }),
+    });
+  },
+
+  async adminResetPassword(userId: string, newPassword: string) {
+    return this.request<{ message: string }>(`/users/${userId}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ password: newPassword }),
+    });
+  },
+
   // ================= Users =================
   async getUsers() {
     return this.request<any[]>('/users');

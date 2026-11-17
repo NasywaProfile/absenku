@@ -516,6 +516,23 @@ export const AppStorage = {
     return { success: true };
   },
 
+  adminResetUserPassword(
+    userId: string,
+    newPassword: string
+  ): { success: boolean; message?: string } {
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, message: 'Password baru minimal terdiri dari 6 karakter.' };
+    }
+    const users = this.getUsers();
+    const matched = users.find((u) => u.id === userId);
+    if (!matched) {
+      return { success: false, message: 'Pengguna tidak ditemukan.' };
+    }
+    matched.password = hashPassword(newPassword.trim());
+    this.updateUser(matched);
+    return { success: true };
+  },
+
   registerEmployee(data: {
     name: string;
     email: string;
