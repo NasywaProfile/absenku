@@ -171,6 +171,13 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
         }
       }
 
+      // Tangani rate limit (HTTP 429 Too Many Attempts)
+      if (apiErr?.status === 429) {
+        setIsLoading(false);
+        setErrorMsg('Terlalu banyak percobaan masuk dalam 1 menit terakhir. Harap tunggu sekitar 1 menit sebelum mencoba login kembali.');
+        return;
+      }
+
       // Deteksi jika password cocok di lokal namun server MySQL VPS belum terupdate
       if (apiErr?.status === 401) {
         const localUser = AppStorage.authenticate(loginIdentifier, loginPassword);
