@@ -413,15 +413,15 @@ export default function App() {
         const mappedCfg: OfficeConfig = {
           name: serverConfig.name || serverConfig.nama_kantor,
           address: serverConfig.address || serverConfig.alamat_kantor,
-          latitude: serverConfig.latitude,
-          longitude: serverConfig.longitude,
-          geofenceRadiusMeter: serverConfig.geofence_radius_meter || serverConfig.radius_geofence_meter,
-          workStartHour: serverConfig.work_start_hour || serverConfig.jam_masuk,
-          workEndHour: serverConfig.work_end_hour || serverConfig.jam_pulang,
-          gracePeriodMinutes: serverConfig.grace_period_minutes || serverConfig.toleransi_keterlambatan_menit,
-          isGeofenceActive: serverConfig.is_geofence_active ?? serverConfig.status_geofence_aktif ?? true,
+          latitude: Number(serverConfig.latitude),
+          longitude: Number(serverConfig.longitude),
+          geofenceRadiusMeter: Number(serverConfig.geofence_radius_meter || serverConfig.radius_geofence_meter || 100),
+          workStartHour: serverConfig.work_start_hour || serverConfig.jam_masuk || '08:00',
+          workEndHour: serverConfig.work_end_hour || serverConfig.jam_pulang || '17:00',
+          gracePeriodMinutes: Number(serverConfig.grace_period_minutes || serverConfig.toleransi_keterlambatan_menit || 0),
+          isGeofenceActive: Boolean(serverConfig.is_geofence_active ?? serverConfig.status_geofence_aktif ?? true),
         };
-        AppStorage.updateOfficeConfig(mappedCfg);
+        AppStorage.saveOfficeConfigLocally(mappedCfg);
         setOfficeConfig(mappedCfg);
       }
 
@@ -460,6 +460,7 @@ export default function App() {
     window.addEventListener('absenku:leave_sync_error', handleLeaveSyncError);
     window.addEventListener('absenku:users_updated', handleSync);
     window.addEventListener('absenku:attendance_updated', handleSync);
+    window.addEventListener('absenku:office_config_updated', handleSync);
     window.addEventListener('storage', handleSync);
 
     // Auto-sync berkala setiap 5 detik agar multi-device (Laptop & HP) selalu up-to-date realtime
@@ -474,6 +475,7 @@ export default function App() {
       window.removeEventListener('absenku:leave_sync_error', handleLeaveSyncError);
       window.removeEventListener('absenku:users_updated', handleSync);
       window.removeEventListener('absenku:attendance_updated', handleSync);
+      window.removeEventListener('absenku:office_config_updated', handleSync);
       window.removeEventListener('storage', handleSync);
       clearInterval(timer);
     };
@@ -565,10 +567,43 @@ export default function App() {
     window.dispatchEvent(new CustomEvent('absenku:users_updated'));
   };
 
-  const handleSaveOfficeConfig = (newCfg: OfficeConfig) => {
-    AppStorage.updateOfficeConfig(newCfg);
+  const handleSaveOfficeConfig = async (newCfg: OfficeConfig) => {
+    AppStorage.saveOfficeConfigLocally(newCfg);
+    setOfficeConfig(newCfg);
     setShowSettingsModal(false);
     loadData();
+
+    try {
+      const serverRes = await ApiClient.updateOfficeConfig({
+        name: newCfg.name,
+        address: newCfg.address,
+        latitude: newCfg.latitude,
+        longitude: newCfg.longitude,
+        geofence_radius_meter: newCfg.geofenceRadiusMeter,
+        work_start_hour: newCfg.workStartHour,
+        work_end_hour: newCfg.workEndHour,
+        grace_period_minutes: newCfg.gracePeriodMinutes,
+        is_geofence_active: newCfg.isGeofenceActive,
+      });
+      if (serverRes?.config) {
+        const mappedCfg: OfficeConfig = {
+          name: serverRes.config.name || serverRes.config.nama_kantor || newCfg.name,
+          address: serverRes.config.address || serverRes.config.alamat_kantor || newCfg.address,
+          latitude: Number(serverRes.config.latitude ?? newCfg.latitude),
+          longitude: Number(serverRes.config.longitude ?? newCfg.longitude),
+          geofenceRadiusMeter: Number(serverRes.config.geofence_radius_meter || serverRes.config.radius_geofence_meter || newCfg.geofenceRadiusMeter),
+          workStartHour: serverRes.config.work_start_hour || serverRes.config.jam_masuk || newCfg.workStartHour,
+          workEndHour: serverRes.config.work_end_hour || serverRes.config.jam_pulang || newCfg.workEndHour,
+          gracePeriodMinutes: Number(serverRes.config.grace_period_minutes || serverRes.config.toleransi_keterlambatan_menit || newCfg.gracePeriodMinutes),
+          isGeofenceActive: Boolean(serverRes.config.is_geofence_active ?? serverRes.config.status_geofence_aktif ?? newCfg.isGeofenceActive ?? true),
+        };
+        AppStorage.saveOfficeConfigLocally(mappedCfg);
+        setOfficeConfig(mappedCfg);
+      }
+      window.dispatchEvent(new CustomEvent('absenku:office_config_updated', { detail: newCfg }));
+    } catch (err) {
+      console.warn('Gagal menyimpan office config ke server backend:', err);
+    }
   };
 
   // Handler CRUD Karyawan (Admin Only)
@@ -845,11 +880,11 @@ export default function App() {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => executeSave(pos.coords.latitude, pos.coords.longitude),
-        () => executeSave(officeConfig.latitude || -7.978645, officeConfig.longitude || 112.630541),
+        () => executeSave(officeConfig.latitude ?? -7.9439, officeConfig.longitude ?? 112.6322),
         { timeout: 3000, enableHighAccuracy: true }
       );
     } else {
-      executeSave(officeConfig.latitude || -7.978645, officeConfig.longitude || 112.630541);
+      executeSave(officeConfig.latitude ?? -7.9439, officeConfig.longitude ?? 112.6322);
     }
   };
 

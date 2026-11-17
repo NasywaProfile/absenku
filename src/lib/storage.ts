@@ -3102,25 +3102,29 @@ export const AppStorage = {
     }
     try {
       const parsed = JSON.parse(raw);
-      if (
-        !parsed.name ||
-        parsed.name === 'Kantor Pusat Sudirman Cyber Tower' ||
-        parsed.latitude === -6.225588 ||
-        parsed.latitude === -7.940654 ||
-        parsed.address?.includes('Simpang Semanggi Barat')
-      ) {
-        const upgraded = { ...parsed, ...INITIAL_OFFICE_CONFIG };
-        localStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(upgraded));
-        return upgraded;
+      if (!parsed || typeof parsed !== 'object' || !parsed.name) {
+        localStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(INITIAL_OFFICE_CONFIG));
+        return INITIAL_OFFICE_CONFIG;
       }
-      return parsed;
+      return {
+        ...INITIAL_OFFICE_CONFIG,
+        ...parsed,
+        latitude: Number(parsed.latitude ?? INITIAL_OFFICE_CONFIG.latitude),
+        longitude: Number(parsed.longitude ?? INITIAL_OFFICE_CONFIG.longitude),
+        geofenceRadiusMeter: Number(parsed.geofenceRadiusMeter ?? INITIAL_OFFICE_CONFIG.geofenceRadiusMeter),
+        isGeofenceActive: Boolean(parsed.isGeofenceActive ?? INITIAL_OFFICE_CONFIG.isGeofenceActive),
+      };
     } catch {
       return INITIAL_OFFICE_CONFIG;
     }
   },
 
-  updateOfficeConfig(newCfg: OfficeConfig): void {
+  saveOfficeConfigLocally(newCfg: OfficeConfig): void {
     localStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(newCfg));
+  },
+
+  updateOfficeConfig(newCfg: OfficeConfig): void {
+    this.saveOfficeConfigLocally(newCfg);
     ApiClient.updateOfficeConfig({
       name: newCfg.name,
       address: newCfg.address,
@@ -3131,7 +3135,9 @@ export const AppStorage = {
       work_end_hour: newCfg.workEndHour,
       grace_period_minutes: newCfg.gracePeriodMinutes,
       is_geofence_active: newCfg.isGeofenceActive,
-    }).catch(() => {});
+    }).catch((err) => {
+      console.warn('Gagal menyinkronkan office config ke server:', err);
+    });
   },
 
   // ==========================================

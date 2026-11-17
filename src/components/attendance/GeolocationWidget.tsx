@@ -347,10 +347,15 @@ export function GeolocationWidget({
     }
   }, [officeCoords.latitude, officeCoords.longitude, radiusMeters, officeConfig.name]);
 
-  // Update Lingkaran Geofence & Marker saat isWithinRadius / radius berubah
+  // Update Lingkaran Geofence & Marker saat isWithinRadius / radius / koordinat berubah
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
+
+    // Update posisi marker kantor saat koordinat diperbarui
+    if (officeMarkerRef.current) {
+      officeMarkerRef.current.setLngLat([officeCoords.longitude, officeCoords.latitude]);
+    }
 
     if (map.isStyleLoaded() && map.getSource('geofence-circle')) {
       const circleData = createGeoJSONCircle(

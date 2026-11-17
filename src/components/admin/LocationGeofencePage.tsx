@@ -56,6 +56,15 @@ export function LocationGeofencePage({
     isGeofenceActive: officeConfig.isGeofenceActive ?? true,
   });
 
+  useEffect(() => {
+    if (officeConfig) {
+      setConfig({
+        ...officeConfig,
+        isGeofenceActive: officeConfig.isGeofenceActive ?? true,
+      });
+    }
+  }, [officeConfig]);
+
   const [savedSuccessToast, setSavedSuccessToast] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [geoAlert, setGeoAlert] = useState<string | null>(null);
@@ -233,13 +242,17 @@ export function LocationGeofencePage({
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveConfig(config);
-    setSavedSuccessToast(true);
-    setTimeout(() => {
-      setSavedSuccessToast(false);
-    }, 3500);
+    try {
+      await onSaveConfig(config);
+      setSavedSuccessToast(true);
+      setTimeout(() => {
+        setSavedSuccessToast(false);
+      }, 3500);
+    } catch (err: any) {
+      setGeoAlert(err?.message || 'Gagal menyimpan pengaturan lokasi kantor ke server.');
+    }
   };
 
   const isGeofenceActive = config.isGeofenceActive ?? true;
