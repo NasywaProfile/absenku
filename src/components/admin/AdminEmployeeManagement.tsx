@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   XCircle,
   MoreVertical,
+  ChevronLeft,
   ChevronRight,
   ChevronDown,
   Clock,
@@ -243,6 +244,21 @@ export function AdminEmployeeManagement({
   );
   // State per-user role selection sebelum di-ACC (Karyawan, Admin, Superadmin)
   const [selectedApprovalRoles, setSelectedApprovalRoles] = useState<Record<string, UserRole>>({});
+
+  // Pagination Persetujuan Akun Baru (10 data per halaman)
+  const [approvalPage, setApprovalPage] = useState<number>(1);
+  const APPROVAL_ITEMS_PER_PAGE = 10;
+  const totalApprovalPages = Math.ceil(pendingUsers.length / APPROVAL_ITEMS_PER_PAGE) || 1;
+  const paginatedPendingUsers = React.useMemo(() => {
+    const start = (approvalPage - 1) * APPROVAL_ITEMS_PER_PAGE;
+    return pendingUsers.slice(start, start + APPROVAL_ITEMS_PER_PAGE);
+  }, [pendingUsers, approvalPage]);
+
+  React.useEffect(() => {
+    if (approvalPage > totalApprovalPages) {
+      setApprovalPage(Math.max(1, totalApprovalPages));
+    }
+  }, [totalApprovalPages, approvalPage]);
 
   const handleApprovalRoleChange = (userId: string, role: UserRole) => {
     setSelectedApprovalRoles((prev) => ({ ...prev, [userId]: role }));
@@ -583,7 +599,7 @@ export function AdminEmployeeManagement({
                     </td>
                   </tr>
                 ) : (
-                  pendingUsers.map((user) => {
+                  paginatedPendingUsers.map((user) => {
                     const currentChosenRole = selectedApprovalRoles[user.id] || user.role || 'EMPLOYEE';
 
                     return (
@@ -668,6 +684,45 @@ export function AdminEmployeeManagement({
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination Footer Persetujuan Akun Baru (Desain Sesuai Riwayat Presensi) */}
+          <div className="px-5 py-3 border-t border-slate-100 bg-white flex items-center justify-end gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setApprovalPage((p) => Math.max(p - 1, 1))}
+                disabled={approvalPage <= 1}
+                aria-label="Halaman Sebelumnya"
+                title="Halaman Sebelumnya"
+                className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
+                  approvalPage <= 1
+                    ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-2xs hover:shadow-xs cursor-pointer active:scale-95'
+                }`}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <div className="px-3 py-1 bg-slate-100 rounded-lg font-bold text-slate-700 text-xs">
+                {approvalPage} / {totalApprovalPages}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setApprovalPage((p) => Math.min(p + 1, totalApprovalPages))}
+                disabled={approvalPage >= totalApprovalPages}
+                aria-label="Halaman Selanjutnya"
+                title="Halaman Selanjutnya"
+                className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
+                  approvalPage >= totalApprovalPages
+                    ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'
+                    : 'bg-[#1E3A8A] hover:bg-[#172554] text-white border-[#1E3A8A] shadow-2xs hover:shadow-xs cursor-pointer active:scale-95'
+                }`}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}

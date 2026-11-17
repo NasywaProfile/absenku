@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   CheckCircle2,
   Clock,
@@ -18,6 +18,8 @@ import {
   ShieldCheck,
   User as UserIcon,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { LeaveRequest, LeaveCategory, User } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
@@ -189,6 +191,20 @@ export function TeamLeaveApprovals({
       return true;
     }).sort((a, b) => (b.appliedAt || b.startDate).localeCompare(a.appliedAt || a.startDate));
   }, [leaves, searchTerm, filterCategory, filterStatus, specificDateFilter]);
+
+  // Pagination Persetujuan Izin Tim (10 data per halaman)
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const ITEMS_PER_PAGE = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterCategory, filterStatus, specificDateFilter]);
+
+  const totalPages = Math.ceil(filteredLeaves.length / ITEMS_PER_PAGE) || 1;
+  const paginatedLeaves = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredLeaves.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredLeaves, currentPage]);
 
   const handleExportSpreadsheet = () => {
     downloadLeaveSpreadsheet(filteredLeaves, 'Persetujuan Izin Tim');
@@ -389,7 +405,7 @@ export function TeamLeaveApprovals({
                   </td>
                 </tr>
               ) : (
-                filteredLeaves.map((req) => {
+                paginatedLeaves.map((req) => {
                   const isApproved = req.status === 'APPROVED';
                   const isRejected = req.status === 'REJECTED';
 
@@ -508,6 +524,45 @@ export function TeamLeaveApprovals({
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Footer Persetujuan Izin Tim (Desain Sesuai Riwayat Presensi) */}
+        <div className="px-5 py-3 border-t border-slate-100 bg-white flex items-center justify-end gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+              disabled={currentPage <= 1}
+              aria-label="Halaman Sebelumnya"
+              title="Halaman Sebelumnya"
+              className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
+                currentPage <= 1
+                  ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-2xs hover:shadow-xs cursor-pointer active:scale-95'
+              }`}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div className="px-3 py-1 bg-slate-100 rounded-lg font-bold text-slate-700 text-xs">
+              {currentPage} / {totalPages}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+              disabled={currentPage >= totalPages}
+              aria-label="Halaman Selanjutnya"
+              title="Halaman Selanjutnya"
+              className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
+                currentPage >= totalPages
+                  ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'
+                  : 'bg-[#1E3A8A] hover:bg-[#172554] text-white border-[#1E3A8A] shadow-2xs hover:shadow-xs cursor-pointer active:scale-95'
+              }`}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
