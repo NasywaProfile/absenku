@@ -3161,17 +3161,33 @@ export const AppStorage = {
     this.saveOfficeConfigLocally(newCfg);
     ApiClient.updateOfficeConfig({
       name: newCfg.name,
+      nama_kantor: newCfg.name,
       address: newCfg.address,
+      alamat_kantor: newCfg.address,
       latitude: newCfg.latitude,
       longitude: newCfg.longitude,
       geofence_radius_meter: newCfg.geofenceRadiusMeter,
+      radius_geofence_meter: newCfg.geofenceRadiusMeter,
+      geofenceRadiusMeter: newCfg.geofenceRadiusMeter,
       work_start_hour: newCfg.workStartHour,
+      jam_masuk: newCfg.workStartHour,
+      workStartHour: newCfg.workStartHour,
       work_end_hour: newCfg.workEndHour,
+      jam_pulang: newCfg.workEndHour,
+      workEndHour: newCfg.workEndHour,
       grace_period_minutes: newCfg.gracePeriodMinutes,
+      toleransi_keterlambatan_menit: newCfg.gracePeriodMinutes,
+      gracePeriodMinutes: newCfg.gracePeriodMinutes,
       is_geofence_active: newCfg.isGeofenceActive,
-    }).catch((err) => {
-      console.warn('Gagal menyinkronkan office config ke server:', err);
-    });
+      status_geofence_aktif: newCfg.isGeofenceActive,
+      isGeofenceActive: newCfg.isGeofenceActive,
+    })
+      .then((res: any) => {
+        window.dispatchEvent(new CustomEvent('absenku:office_config_updated', { detail: res?.config || newCfg }));
+      })
+      .catch((err) => {
+        console.warn('Gagal menyinkronkan office config ke server:', err);
+      });
   },
 
   // ==========================================

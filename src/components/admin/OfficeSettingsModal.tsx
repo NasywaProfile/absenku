@@ -4,17 +4,28 @@ import { OfficeConfig } from '../../types/index.ts';
 
 interface OfficeSettingsModalProps {
   currentConfig: OfficeConfig;
-  onSave: (newConfig: OfficeConfig) => void;
+  onSave: (newConfig: OfficeConfig) => Promise<void> | void;
   onClose: () => void;
 }
 
 export function OfficeSettingsModal({ currentConfig, onSave, onClose }: OfficeSettingsModalProps) {
   const [config, setConfig] = useState<OfficeConfig>({ ...currentConfig });
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(config);
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      await onSave(config);
+      onClose();
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Gagal menyimpan konfigurasi kantor ke server backend.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -81,6 +92,12 @@ export function OfficeSettingsModal({ currentConfig, onSave, onClose }: OfficeSe
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
+            {errorMessage && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-semibold flex items-center gap-2">
+                <span>⚠️ {errorMessage}</span>
+              </div>
+            )}
+
             {/* Nama Kantor / Lokasi */}
             <div>
               <label className="block font-semibold text-slate-700 mb-1.5">
@@ -190,10 +207,11 @@ export function OfficeSettingsModal({ currentConfig, onSave, onClose }: OfficeSe
           <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end shrink-0 bg-white">
             <button
               type="submit"
-              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-xs transition-all duration-300 hover:-translate-y-0.5 flex items-center gap-1.5 cursor-pointer"
+              disabled={isSubmitting}
+              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-xs transition-all duration-300 hover:-translate-y-0.5 flex items-center gap-1.5 cursor-pointer"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>Simpan Perubahan</span>
+              <span>{isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
             </button>
           </div>
         </form>
