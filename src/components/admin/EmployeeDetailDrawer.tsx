@@ -85,20 +85,32 @@ export function EmployeeDetailDrawer({
     setResetError(null);
     setResetSuccess(null);
     try {
-      // 1. Backend API
-      await ApiClient.adminResetPassword(employee.id, adminNewPassword.trim()).catch((err) => {
-        console.warn('Backend admin reset password warning:', err);
-      });
-      // 2. Local AppStorage
-      AppStorage.adminResetUserPassword(employee.id, adminNewPassword.trim());
-      setResetSuccess(`Kata sandi untuk "${employee.name}" berhasil diatur ulang.`);
+      const cleanNewPassword = adminNewPassword.trim();
+      // 1. Eksekusi reset kata sandi ke backend server MySQL VPS
+      await ApiClient.adminResetPassword(employee.id, cleanNewPassword);
+
+      // 2. Jika backend sukses, perbarui juga state lokal agar konsisten
+      AppStorage.adminResetUserPassword(employee.id, cleanNewPassword);
+      setResetSuccess(`Kata sandi untuk "${employee.name}" berhasil diatur ulang di server.`);
       setTimeout(() => {
         setShowResetPasswordModal(false);
         setResetSuccess(null);
         setAdminNewPassword('');
       }, 1500);
     } catch (err: any) {
-      setResetError(err?.message || 'Gagal mengatur ulang kata sandi pengguna.');
+      if (err?.isNetworkError || err?.status === 0) {
+        // Fallback hanya saat offline (gangguan jaringan)
+        AppStorage.adminResetUserPassword(employee.id, adminNewPassword.trim());
+        setResetSuccess(`Mode offline: Kata sandi untuk "${employee.name}" berhasil diatur ulang secara lokal.`);
+        setTimeout(() => {
+          setShowResetPasswordModal(false);
+          setResetSuccess(null);
+          setAdminNewPassword('');
+        }, 1500);
+      } else {
+        // Tampilkan error asli server (404, 401, 403, 422, 500) ke Super Admin agar tidak terjadi false-success
+        setResetError(err?.message || 'Gagal mengatur ulang kata sandi di server. Pastikan rute backend VPS aktif.');
+      }
     } finally {
       setResetLoading(false);
     }

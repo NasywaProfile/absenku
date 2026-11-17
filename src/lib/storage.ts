@@ -507,9 +507,13 @@ export const AppStorage = {
     if (!matched) {
       return { success: false, message: 'Data yang dimasukkan tidak cocok dengan akun terdaftar.' };
     }
-    // Jika nama lengkap diberikan, pastikan sesuai dengan data akun
-    if (cleanName && cleanName.length > 0 && matched.name.trim().toLowerCase() !== cleanName) {
-      return { success: false, message: 'Data yang dimasukkan tidak cocok dengan akun terdaftar.' };
+    // Jika nama lengkap diberikan, pastikan sesuai dengan data akun (toleran spasi ganda)
+    if (cleanName && cleanName.length > 0) {
+      const dbClean = (matched.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const inClean = cleanName.replace(/\s+/g, ' ');
+      if (dbClean !== inClean) {
+        return { success: false, message: 'Data yang dimasukkan tidak cocok dengan akun terdaftar.' };
+      }
     }
     matched.password = hashPassword(newPassword.trim());
     this.updateUser(matched);
@@ -524,7 +528,7 @@ export const AppStorage = {
       return { success: false, message: 'Password baru minimal terdiri dari 6 karakter.' };
     }
     const users = this.getUsers();
-    const matched = users.find((u) => u.id === userId);
+    const matched = users.find((u) => u.id === userId || u.email?.toLowerCase() === userId.toLowerCase());
     if (!matched) {
       return { success: false, message: 'Pengguna tidak ditemukan.' };
     }

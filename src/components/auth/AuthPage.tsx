@@ -56,16 +56,6 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
 
     setIsLoading(true);
 
-    // 0. Cek terlebih dahulu jika akun lokal berstatus PENDING_APPROVAL dan password valid
-    // Pengguna yang belum diverifikasi tetap diarahkan ke halaman menunggu verifikasi (bukan ke isi biodata)
-    const localPending = AppStorage.authenticate(loginIdentifier, loginPassword);
-    if (localPending && localPending.status === 'PENDING_APPROVAL') {
-      AppStorage.setSessionUser(localPending.id);
-      setIsLoading(false);
-      onLoginSuccess(localPending, false);
-      return;
-    }
-
     try {
       // 1. Coba login melalui API Laravel Backend & MySQL
       const res = await ApiClient.login(loginIdentifier.trim(), loginPassword);
@@ -96,6 +86,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
           address: res.user.address || res.user.alamat || localMatched?.address || '',
           registeredAt: res.user.registered_at || res.user.waktu_daftar || localMatched?.registeredAt || '',
           isProfileComplete: Boolean(res.user.is_profile_complete ?? res.user.profil_lengkap ?? localMatched?.isProfileComplete),
+          password: hashPassword(loginPassword.trim()),
         };
 
         AppStorage.updateUser(apiUser);
@@ -143,6 +134,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
               localMatched?.isProfileComplete ??
               false
             ),
+            password: hashPassword(loginPassword.trim()),
           };
           AppStorage.updateUser(pendingUser);
           AppStorage.setSessionUser(pendingUser.id);
@@ -167,6 +159,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
         setErrorMsg(msg);
         return;
       }
+
       // HANYA gunakan fallback autentikasi lokal jika server offline / gangguan koneksi (network error)
       if (apiErr?.isNetworkError || apiErr?.status === 0) {
         const localUser = AppStorage.authenticate(loginIdentifier, loginPassword);
@@ -174,6 +167,16 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
           AppStorage.setSessionUser(localUser.id);
           setIsLoading(false);
           onLoginSuccess(localUser, false);
+          return;
+        }
+      }
+
+      // Deteksi jika password cocok di lokal namun server MySQL VPS belum terupdate
+      if (apiErr?.status === 401) {
+        const localUser = AppStorage.authenticate(loginIdentifier, loginPassword);
+        if (localUser) {
+          setErrorMsg('Kata sandi cocok secara lokal, namun server database VPS belum sinkron. Harap jalankan "git pull" & "php artisan route:clear" pada backend VPS.');
+          setIsLoading(false);
           return;
         }
       }
@@ -329,56 +332,51 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
 
     setIsLoading(true);
     try {
-      let backendSuccess = false;
-      // 1. Coba verifikasi & reset kata sandi ke backend server VPS
-      try {
-        await ApiClient.forgotPassword({
-          email,
-          name: fullName,
-          password: newPassword,
-        });
-        backendSuccess = true;
-      } catch (apiErr: any) {
-        // Jika server backend secara eksplisit mengembalikan pesan error verifikasi akun
-        if (apiErr?.status === 404 && (apiErr?.data?.message?.includes('tidak cocok') || apiErr?.message?.includes('tidak cocok'))) {
-          setErrorMsg(apiErr?.data?.message || apiErr?.message);
-          setIsLoading(false);
-          return;
-        }
+      // 1. Eksekusi reset kata sandi langsung ke backend API & database MySQL VPS
+      await ApiClient.forgotPassword({
+        email,
+        name: fullName,
+        password: newPassword,
+      });
 
-        // Jika server backend mengembalikan route 404 karena backend VPS belum di-git pull
-        if (apiErr?.message?.toLowerCase().includes('could not be found') || apiErr?.status === 404) {
-          const localCheck = AppStorage.resetPasswordSelfService(email, fullName, newPassword);
-          if (localCheck.success) {
-            backendSuccess = true;
-          } else {
-            setErrorMsg(localCheck.message || 'Email atau nama lengkap tidak cocok dengan data akun terdaftar.');
-            setIsLoading(false);
-            return;
-          }
+      // 2. Jika sukses di server database, sinkronkan juga ke AppStorage lokal
+      AppStorage.resetPasswordSelfService(email, fullName, newPassword);
+
+      // 3. Reset form, isi email di form login, dan beralih ke login
+      setForgotEmail('');
+      setForgotFullName('');
+      setForgotNewPassword('');
+      setForgotConfirmPassword('');
+      setLoginIdentifier(email);
+      setLoginPassword('');
+      setSuccessMsg('Kata sandi berhasil diperbarui di server database! Silakan masuk menggunakan kata sandi baru Anda.');
+      setAuthMode('LOGIN');
+    } catch (apiErr: any) {
+      if (apiErr?.isNetworkError || apiErr?.status === 0) {
+        // Fallback hanya jika jaringan benar-benar offline tanpa respon server
+        const localCheck = AppStorage.resetPasswordSelfService(email, fullName, newPassword);
+        if (localCheck.success) {
+          setForgotEmail('');
+          setForgotFullName('');
+          setForgotNewPassword('');
+          setForgotConfirmPassword('');
+          setLoginIdentifier(email);
+          setLoginPassword('');
+          setSuccessMsg('Mode offline: Kata sandi berhasil diperbarui secara lokal! Silakan masuk.');
+          setAuthMode('LOGIN');
+          return;
         } else {
-          setErrorMsg(apiErr?.message || 'Email atau nama lengkap tidak cocok dengan data akun terdaftar.');
-          setIsLoading(false);
+          setErrorMsg(localCheck.message || 'Email atau nama lengkap tidak cocok.');
           return;
         }
       }
 
-      if (backendSuccess) {
-        // 2. Perbarui juga di AppStorage lokal
-        AppStorage.resetPasswordSelfService(email, fullName, newPassword);
-
-        // 3. Reset form, isi email di form login, dan beralih ke login
-        setForgotEmail('');
-        setForgotFullName('');
-        setForgotNewPassword('');
-        setForgotConfirmPassword('');
-        setLoginIdentifier(email);
-        setLoginPassword('');
-        setSuccessMsg('Kata sandi berhasil diperbarui! Silakan masuk menggunakan kata sandi baru Anda.');
-        setAuthMode('LOGIN');
+      // Tampilkan error asli server (404, 422, atau route belum di pull)
+      if (apiErr?.message?.toLowerCase().includes('could not be found') || (apiErr?.status === 404 && !apiErr?.message?.includes('tidak cocok') && !apiErr?.data?.message?.includes('tidak cocok'))) {
+        setErrorMsg('Rute /api/forgot-password belum aktif di server VPS. Harap jalankan "git pull" & "php artisan route:clear" pada backend VPS.');
+      } else {
+        setErrorMsg(apiErr?.data?.message || apiErr?.message || 'Email atau nama lengkap tidak cocok dengan data akun terdaftar.');
       }
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Gagal mengatur ulang kata sandi.');
     } finally {
       setIsLoading(false);
     }
