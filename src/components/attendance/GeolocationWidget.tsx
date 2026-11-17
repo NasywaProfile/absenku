@@ -73,10 +73,10 @@ export function GeolocationWidget({
   const isDinas = Boolean(isBusinessTripApproved || workMode === 'DINAS');
   const isRemote = isWfh || isDinas;
 
-  // Koordinat Kantor Asli (IndigoSpace Malang: Simpang Borobudur)
+  // Koordinat Kantor (Dari database konfigurasi kantor backend)
   const officeCoords: Coordinates = {
-    latitude: officeConfig.latitude || -7.9439,
-    longitude: officeConfig.longitude || 112.6322,
+    latitude: officeConfig.latitude ?? -7.9439,
+    longitude: officeConfig.longitude ?? 112.6322,
   };
 
   const isGeofenceActive = officeConfig.isGeofenceActive ?? true;

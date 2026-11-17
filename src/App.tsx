@@ -865,8 +865,8 @@ export default function App() {
 
     const executeSave = (lat: number, lng: number) => {
       const officeCoords = {
-        latitude: officeConfig.latitude || -7.9439,
-        longitude: officeConfig.longitude || 112.6322,
+        latitude: officeConfig.latitude ?? -7.9439,
+        longitude: officeConfig.longitude ?? 112.6322,
       };
       const dist = calculateHaversineDistance({ latitude: lat, longitude: lng }, officeCoords);
       const isGeofenceActive = officeConfig.isGeofenceActive ?? true;
