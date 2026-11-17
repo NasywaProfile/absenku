@@ -149,10 +149,14 @@ export const ApiClient = {
     });
   },
 
-  async adminResetPassword(userId: string, newPassword: string) {
-    return this.request<{ message: string }>(`/users/${userId}/reset-password`, {
+  async adminResetPassword(userId: string, newPassword: string, email?: string) {
+    return this.request<{ message: string }>(`/users/${encodeURIComponent(userId)}/reset-password`, {
       method: 'POST',
-      body: JSON.stringify({ password: newPassword }),
+      body: JSON.stringify({
+        password: newPassword,
+        user_id: userId,
+        email: email,
+      }),
     });
   },
 

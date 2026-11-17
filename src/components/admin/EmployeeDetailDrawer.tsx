@@ -87,7 +87,7 @@ export function EmployeeDetailDrawer({
     try {
       const cleanNewPassword = adminNewPassword.trim();
       // 1. Eksekusi reset kata sandi ke backend server MySQL VPS
-      await ApiClient.adminResetPassword(employee.id, cleanNewPassword);
+      await ApiClient.adminResetPassword(employee.id, cleanNewPassword, employee.email);
 
       // 2. Jika backend sukses, perbarui juga state lokal agar konsisten
       AppStorage.adminResetUserPassword(employee.id, cleanNewPassword);
@@ -107,8 +107,10 @@ export function EmployeeDetailDrawer({
           setResetSuccess(null);
           setAdminNewPassword('');
         }, 1500);
+      } else if (err?.status === 401) {
+        setResetError('Sesi login admin telah kedaluwarsa. Silakan logout lalu login kembali sebagai Super Admin.');
       } else {
-        // Tampilkan error asli server (404, 401, 403, 422, 500) ke Super Admin agar tidak terjadi false-success
+        // Tampilkan error asli server (404, 403, 422, 500) ke Super Admin agar tidak terjadi false-success
         setResetError(err?.message || 'Gagal mengatur ulang kata sandi di server. Pastikan rute backend VPS aktif.');
       }
     } finally {

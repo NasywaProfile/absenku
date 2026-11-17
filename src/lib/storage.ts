@@ -507,11 +507,14 @@ export const AppStorage = {
     if (!matched) {
       return { success: false, message: 'Data yang dimasukkan tidak cocok dengan akun terdaftar.' };
     }
-    // Jika nama lengkap diberikan, pastikan sesuai dengan data akun (toleran spasi ganda)
+    // Jika nama lengkap diberikan, pastikan sesuai dengan data akun (toleran huruf kapital & spasi)
     if (cleanName && cleanName.length > 0) {
       const dbClean = (matched.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
       const inClean = cleanName.replace(/\s+/g, ' ');
-      if (dbClean !== inClean) {
+      const exactMatch = dbClean === inClean;
+      const noSpaceMatch = dbClean.replace(/ /g, '') === inClean.replace(/ /g, '');
+
+      if (!exactMatch && !noSpaceMatch) {
         return { success: false, message: 'Data yang dimasukkan tidak cocok dengan akun terdaftar.' };
       }
     }
