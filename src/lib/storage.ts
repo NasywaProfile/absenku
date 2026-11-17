@@ -1913,6 +1913,7 @@ export const AppStorage = {
       status,
       review_notes: details?.reviewNotes,
       submission_notes: details?.submissionNotes,
+      activities: (updatedTargetTask as TaskItem | null)?.activities || [],
       attachments: (updatedTargetTask as TaskItem | null)?.attachments || [],
       lampiran: (updatedTargetTask as TaskItem | null)?.attachments || [],
     })
@@ -1977,6 +1978,7 @@ export const AppStorage = {
 
   addTaskActivity(taskId: string, activityData: Omit<TaskActivity, 'id' | 'timestamp'>): void {
     const tasks = this.getTasks();
+    let targetTask: TaskItem | null = null;
     const updated = tasks.map((t) => {
       if (t.id === taskId) {
         const activities = t.activities || [];
@@ -1985,15 +1987,30 @@ export const AppStorage = {
           id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           timestamp: new Date().toLocaleString('id-ID'),
         };
-        return {
+        const resTask: TaskItem = {
           ...t,
           activities: [...activities, newAct],
           updatedAt: new Date().toISOString().substring(0, 10),
         };
+        targetTask = resTask;
+        return resTask;
       }
       return t;
     });
     this.saveTasks(updated);
+
+    if (targetTask) {
+      this.markTaskPendingSync(taskId);
+      ApiClient.updateKanbanTask(taskId, {
+        activities: (targetTask as TaskItem).activities || [],
+      })
+        .then(() => {
+          this.clearTaskPendingSync(taskId);
+        })
+        .catch((err) => {
+          console.warn('Gagal sinkronisasi obrolan tugas ke backend:', err);
+        });
+    }
   },
 
   getPendingTaskSyncIds(): string[] {
@@ -2144,6 +2161,23 @@ export const AppStorage = {
       return t;
     });
     this.saveTasks(updated);
+
+    const updatedTarget = updated.find((t) => t.id === taskId);
+    if (updatedTarget) {
+      this.markTaskPendingSync(taskId);
+      ApiClient.updateKanbanTask(taskId, {
+        status: updatedTarget.status,
+        activities: updatedTarget.activities || [],
+        review_notes: updatedTarget.reviewNotes,
+        submission_notes: updatedTarget.submissionNotes,
+      })
+        .then(() => {
+          this.clearTaskPendingSync(taskId);
+        })
+        .catch((err) => {
+          console.warn('Gagal sinkronisasi hapus obrolan tugas ke backend:', err);
+        });
+    }
   },
 
   // ==========================================

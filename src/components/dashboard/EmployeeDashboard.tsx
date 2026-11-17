@@ -8,6 +8,7 @@ import {
   AlertCircle,
   MapPin,
   CalendarDays,
+  RotateCcw,
 } from 'lucide-react';
 import { AttendanceRecord, OfficeConfig, TaskItem, User, getPriorityLabel } from '../../types/index.ts';
 import { getCurrentDateString, formatIndonesianDate } from '../../lib/time-utils.ts';
@@ -212,6 +213,23 @@ export function EmployeeDashboard({
                         </p>
                       )}
 
+                      {/* Banner Peringatan Revisi jika sedang IN_PROGRESS dan ada catatan perbaikan */}
+                      {topTask.status === 'IN_PROGRESS' && (() => {
+                        const revNote = topTask.reviewNotes || topTask.activities?.slice().reverse().find((a) => a.type === 'REVISION_REQUESTED')?.notes;
+                        if (!revNote) return null;
+                        return (
+                          <div className="p-2 bg-rose-50 border border-rose-200/90 rounded-xl text-[11px] text-rose-800 space-y-1 my-1">
+                            <div className="flex items-center gap-1.5 font-bold text-rose-900">
+                              <RotateCcw className="w-3 h-3 text-rose-600 shrink-0" />
+                              <span>Perlu Revisi dari PIC:</span>
+                            </div>
+                            <p className="line-clamp-2 text-rose-700 italic font-medium leading-relaxed">
+                              "{revNote}"
+                            </p>
+                          </div>
+                        );
+                      })()}
+
                       <div className="border-t border-slate-100 pt-2 flex items-center justify-between text-xs">
                         <div className="flex items-center -space-x-2">
                           <div className="w-6 h-6 rounded-full bg-amber-400 text-slate-900 border-2 border-white font-extrabold text-[9px] flex items-center justify-center shadow-2xs">
@@ -229,12 +247,26 @@ export function EmployeeDashboard({
                             <ArrowRight className="w-3.5 h-3.5" />
                           </div>
                         )}
-                        {topTask.status === 'IN_PROGRESS' && (
-                          <div className="w-full py-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white font-bold rounded-xl text-center text-xs transition-all flex items-center justify-center gap-1 shadow-2xs">
-                            <Send className="w-3.5 h-3.5 text-white" />
-                            <span>Kirim ke Preview Tugas</span>
-                          </div>
-                        )}
+                        {topTask.status === 'IN_PROGRESS' && (() => {
+                          const revNote = topTask.reviewNotes || topTask.activities?.slice().reverse().find((a) => a.type === 'REVISION_REQUESTED')?.notes;
+                          return (
+                            <div className={`w-full py-2 font-bold rounded-xl text-center text-xs transition-all flex items-center justify-center gap-1 shadow-2xs ${
+                              revNote ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-[#0EA5E9] hover:bg-[#0284C7] text-white'
+                            }`}>
+                              {revNote ? (
+                                <>
+                                  <RotateCcw className="w-3.5 h-3.5 text-white" />
+                                  <span>Kirim Perbaikan Revisi</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="w-3.5 h-3.5 text-white" />
+                                  <span>Kirim ke Preview Tugas</span>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()}
                         {topTask.status === 'DONE' && (
                           <div className="w-full py-1.5 bg-amber-50 text-amber-800 font-semibold rounded-xl text-center text-xs flex items-center justify-center gap-1 border border-amber-200/80">
                             <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />

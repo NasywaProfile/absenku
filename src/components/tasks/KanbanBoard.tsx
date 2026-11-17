@@ -1141,62 +1141,77 @@ export function KanbanBoard({
                             } space-y-3.5 group`}
                           >
                             {/* Baris Atas: Priority Badge & 3 Dots Menu / Button Hapus jika PIC */}
-                            <div className="flex items-center justify-between gap-2">
-                              <div>
-                                {getPriorityBadge(task.priority)}
-                              </div>
+                            {(() => {
+                              const latestRevisionNote = (task.reviewNotes || '') ||
+                                (task.activities?.slice().reverse().find((a) => a.type === 'REVISION_REQUESTED')?.notes || '');
 
-                              {canDelete ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteTask(task.id);
-                                  }}
-                                  className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
-                                  title={isPIC ? "Hapus Tugas" : "Hapus Tugas Selesai"}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              ) : task.status !== 'TODO' ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openTaskDetail(task);
-                                  }}
-                                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
-                                  title="Opsi"
-                                >
-                                  <span className="text-base font-bold leading-none tracking-widest">&#8942;</span>
-                                </button>
-                              ) : null}
-                            </div>
+                              return (
+                                <>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {getPriorityBadge(task.priority)}
+                                      {task.status === 'IN_PROGRESS' && latestRevisionNote && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs animate-in fade-in">
+                                          <RotateCcw className="w-2.5 h-2.5 stroke-[2.5]" />
+                                          Perlu Revisi
+                                        </span>
+                                      )}
+                                    </div>
 
-                            {/* Judul Tugas */}
-                            <h3 className="font-bold text-sm text-slate-900 leading-snug">
-                              {task.title}
-                            </h3>
+                                    {canDelete ? (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteTask(task.id);
+                                        }}
+                                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                                        title={isPIC ? "Hapus Tugas" : "Hapus Tugas Selesai"}
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    ) : task.status !== 'TODO' ? (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openTaskDetail(task);
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                                        title="Opsi"
+                                      >
+                                        <span className="text-base font-bold leading-none tracking-widest">&#8942;</span>
+                                      </button>
+                                    ) : null}
+                                  </div>
 
-                            {/* Deskripsi Singkat */}
-                            {task.description && (
-                              <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
-                                {task.description}
-                              </p>
-                            )}
+                                  {/* Judul Tugas */}
+                                  <h3 className="font-bold text-sm text-slate-900 leading-snug">
+                                    {task.title}
+                                  </h3>
 
-                            {/* Banner Peringatan Revisi jika sedang IN_PROGRESS dan ada catatan perbaikan */}
-                            {task.status === 'IN_PROGRESS' && task.reviewNotes && (
-                              <div className="p-2.5 bg-rose-50 border border-rose-200/80 rounded-xl text-[11px] text-rose-800 space-y-1">
-                                <div className="flex items-center gap-1.5 font-bold text-rose-900">
-                                  <RotateCcw className="w-3 h-3 text-rose-600 shrink-0" />
-                                  <span>Perlu Revisi dari PIC:</span>
-                                </div>
-                                <p className="line-clamp-2 text-rose-700 italic font-medium leading-relaxed">
-                                  "{task.reviewNotes}"
-                                </p>
-                              </div>
-                            )}
+                                  {/* Deskripsi Singkat */}
+                                  {task.description && (
+                                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                                      {task.description}
+                                    </p>
+                                  )}
+
+                                  {/* Banner Peringatan Revisi jika sedang IN_PROGRESS dan ada catatan perbaikan */}
+                                  {task.status === 'IN_PROGRESS' && latestRevisionNote && (
+                                    <div className="p-2.5 bg-rose-50 border border-rose-200/90 rounded-xl text-[11px] text-rose-800 space-y-1 shadow-2xs animate-in fade-in">
+                                      <div className="flex items-center gap-1.5 font-bold text-rose-900">
+                                        <RotateCcw className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                        <span>Perlu Revisi dari PIC:</span>
+                                      </div>
+                                      <p className="line-clamp-3 text-rose-700 italic font-medium leading-relaxed">
+                                        "{latestRevisionNote}"
+                                      </p>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
 
                             {/* Hairline Divider */}
                             <div className="border-t border-slate-100 pt-2" />
@@ -1255,20 +1270,40 @@ export function KanbanBoard({
                               )}
 
                               {/* 2. IN_PROGRESS: Kirim Hasil Tugas (Jika tugas ini ditugaskan ke saya, bisa kirim hasil tugas!) */}
-                              {task.status === 'IN_PROGRESS' && isMyTask && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openTaskDetail(task);
-                                  }}
-                                  className="w-full py-2 bg-[#1E3A8A] hover:bg-[#172554] text-white font-bold rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
-                                  title="Buka Chat untuk Upload Bukti & Kirim Preview"
-                                >
-                                  <Send className="w-3.5 h-3.5 text-white" />
-                                  <span>Kirim Hasil Tugas</span>
-                                </button>
-                              )}
+                              {task.status === 'IN_PROGRESS' && isMyTask && (() => {
+                                const isRevised = Boolean(
+                                  task.reviewNotes ||
+                                  task.activities?.slice().reverse().find((a) => a.type === 'REVISION_REQUESTED')?.notes
+                                );
+
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openTaskDetail(task);
+                                    }}
+                                    className={`w-full py-2 font-bold rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs ${
+                                      isRevised
+                                        ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                                        : 'bg-[#1E3A8A] hover:bg-[#172554] text-white'
+                                    }`}
+                                    title={isRevised ? "Buka Chat untuk Lihat Arahan Revisi & Kirim Perbaikan" : "Buka Chat untuk Upload Bukti & Kirim Preview"}
+                                  >
+                                    {isRevised ? (
+                                      <>
+                                        <RotateCcw className="w-3.5 h-3.5 text-white" />
+                                        <span>Kirim Perbaikan Revisi</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Send className="w-3.5 h-3.5 text-white" />
+                                        <span>Kirim Hasil Tugas</span>
+                                      </>
+                                    )}
+                                  </button>
+                                );
+                              })()}
 
                               {/* 3. PREVIEW (DONE): Otoritas PIC / Admin (ACC vs Revisi) */}
                               {task.status === 'DONE' && (

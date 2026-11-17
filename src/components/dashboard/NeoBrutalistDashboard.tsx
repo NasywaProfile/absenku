@@ -1048,17 +1048,21 @@ export function NeoBrutalistDashboard({
                             )}
 
                             {/* Banner Peringatan Revisi jika sedang IN_PROGRESS dan ada catatan perbaikan */}
-                            {task.status === 'IN_PROGRESS' && task.reviewNotes && (
-                              <div className="p-2.5 bg-rose-50 border border-rose-200/80 rounded-xl text-[11px] text-rose-800 space-y-1">
-                                <div className="flex items-center gap-1.5 font-bold text-rose-900">
-                                  <RotateCcw className="w-3 h-3 text-rose-600 shrink-0" />
-                                  <span>Perlu Revisi dari PIC:</span>
+                            {task.status === 'IN_PROGRESS' && (() => {
+                              const revNote = task.reviewNotes || task.activities?.slice().reverse().find((a) => a.type === 'REVISION_REQUESTED')?.notes;
+                              if (!revNote) return null;
+                              return (
+                                <div className="p-2.5 bg-rose-50 border border-rose-200/90 rounded-xl text-[11px] text-rose-800 space-y-1 my-1">
+                                  <div className="flex items-center gap-1.5 font-bold text-rose-900">
+                                    <RotateCcw className="w-3 h-3 text-rose-600 shrink-0" />
+                                    <span>Perlu Revisi dari PIC:</span>
+                                  </div>
+                                  <p className="line-clamp-2 text-rose-700 italic font-medium leading-relaxed">
+                                    "{revNote}"
+                                  </p>
                                 </div>
-                                <p className="line-clamp-2 text-rose-700 italic font-medium leading-relaxed">
-                                  "{task.reviewNotes}"
-                                </p>
-                              </div>
-                            )}
+                              );
+                            })()}
 
                             {/* Hairline Divider */}
                             <div className="border-t border-slate-100 pt-2" />

@@ -144,73 +144,66 @@ function extractActivityTime(ts?: string): string {
 }
 
 function getTaskActivities(task: TaskItem, users: UserType[]): TaskActivity[] {
-  let rawList: TaskActivity[] = [];
-  if (Array.isArray(task.activities)) {
-    rawList = task.activities;
-  } else {
-    const adminUser = users.find((u) => u.id === task.createdBy || u.role === 'ADMIN') || {
-      id: task.createdBy,
-      name: 'Administrator',
-      role: 'ADMIN' as const,
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=256&q=80',
-    };
-    const empUser = users.find((u) => u.id === task.assignedTo) || {
-      id: task.assignedTo,
-      name: task.assignedName,
-      role: 'EMPLOYEE' as const,
-      avatar: task.assignedAvatar,
-    };
+  let list: TaskActivity[] = Array.isArray(task.activities) ? [...task.activities] : [];
 
-    const synthesized: TaskActivity[] = [];
+  const adminUser = users.find((u) => u.id === task.createdBy || u.role === 'ADMIN') || {
+    id: task.createdBy || 'admin',
+    name: 'Administrator',
+    role: 'ADMIN' as const,
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=256&q=80',
+  };
+  const empUser = users.find((u) => u.id === task.assignedTo) || {
+    id: task.assignedTo || 'employee',
+    name: task.assignedName || 'Karyawan',
+    role: 'EMPLOYEE' as const,
+    avatar: task.assignedAvatar,
+  };
 
-    if (task.submissionNotes || task.status === 'DONE' || task.status === 'REVIEWED') {
+  // 1. Pastikan submission notes (bukti hasil kerja) selalu masuk ke riwayat obrolan jika belum tercatat di activities
+  if (task.submissionNotes) {
+    const hasSub = list.some((a) => a.type === 'SUBMITTED' || (a.notes && a.notes.trim() === task.submissionNotes?.trim()));
+    if (!hasSub) {
       const empAtts = (task.attachments || []).filter((a) => a.uploadedBy !== task.createdBy && a.stage !== 'TODO');
-      synthesized.push({
+      list.push({
         id: `act-sub-${task.id}`,
         type: 'SUBMITTED',
         userId: empUser.id,
         userName: empUser.name,
         userAvatar: empUser.avatar,
         userRole: 'EMPLOYEE',
-        timestamp: task.updatedAt + ' 16:30',
-        notes: task.submissionNotes || 'Bukti & hasil kerja diserahkan untuk ditinjau oleh PIC.',
+        timestamp: task.updatedAt ? `${task.updatedAt} 16:30` : `${task.createdAt || 'Hari ini'} 16:30`,
+        notes: task.submissionNotes,
         attachments: empAtts,
       });
     }
+  }
 
-    if (task.status === 'REVIEWED') {
-      synthesized.push({
-        id: `act-app-${task.id}`,
-        type: 'APPROVED',
+  // 2. Pastikan review / revision notes selalu masuk ke riwayat obrolan jika belum tercatat di activities
+  if (task.reviewNotes) {
+    const isApproved = task.status === 'REVIEWED';
+    const hasRev = list.some((a) =>
+      (a.type === 'REVISION_REQUESTED' || a.type === 'APPROVED') ||
+      (a.notes && a.notes.trim() === task.reviewNotes?.trim())
+    );
+    if (!hasRev) {
+      list.push({
+        id: isApproved ? `act-app-${task.id}` : `act-rev-${task.id}`,
+        type: isApproved ? 'APPROVED' : 'REVISION_REQUESTED',
         userId: adminUser.id,
         userName: adminUser.name,
         userAvatar: adminUser.avatar,
         userRole: 'ADMIN',
-        timestamp: task.updatedAt + ' 17:00',
-        notes: task.reviewNotes || 'Penugasan Selesai (ACC oleh PIC)',
-        attachments: [],
-      });
-    } else if (task.reviewNotes) {
-      synthesized.push({
-        id: `act-rev-${task.id}`,
-        type: 'REVISION_REQUESTED',
-        userId: adminUser.id,
-        userName: adminUser.name,
-        userAvatar: adminUser.avatar,
-        userRole: 'ADMIN',
-        timestamp: task.updatedAt + ' 17:15',
+        timestamp: task.updatedAt ? `${task.updatedAt} 17:15` : `${task.createdAt || 'Hari ini'} 17:15`,
         notes: task.reviewNotes,
         attachments: [],
       });
     }
-    rawList = synthesized;
   }
 
-  const cleaned = rawList.filter((act) => {
+  const cleaned = list.filter((act) => {
     if (act.type === 'CREATED') return false;
     if (act.id?.startsWith('act-init-')) return false;
     if (act.id?.startsWith('act-ack-')) return false;
-    if (act.notes && task.description && act.notes.trim() === task.description.trim()) return false;
     return true;
   });
 

@@ -324,6 +324,10 @@ export default function App() {
             ? st.attachments
             : (Array.isArray(st.lampiran) && st.lampiran.length > 0 ? st.lampiran : []);
 
+          const serverActivities = Array.isArray(st.activities) && st.activities.length > 0
+            ? st.activities
+            : (Array.isArray(st.aktivitas) && st.aktivitas.length > 0 ? st.aktivitas : []);
+
           const mappedTask: TaskItem = {
             id: String(st.id),
             title: st.title || st.judul_tugas || '',
@@ -339,10 +343,10 @@ export default function App() {
             createdBy: st.created_by || st.dibuat_oleh || 'usr_super_admin',
             createdAt: st.created_at || (existingTask?.createdAt || ''),
             updatedAt: st.updated_at || (existingTask?.updatedAt || ''),
-            activities: Array.isArray(st.activities) && st.activities.length > 0 ? st.activities : (existingTask?.activities || []),
+            activities: serverActivities.length > 0 ? serverActivities : (existingTask?.activities || []),
             attachments: serverAttachments.length > 0 ? serverAttachments : (existingTask?.attachments || []),
-            reviewNotes: st.review_notes || existingTask?.reviewNotes,
-            submissionNotes: st.submission_notes || existingTask?.submissionNotes,
+            reviewNotes: st.review_notes ?? st.catatan_revisi ?? existingTask?.reviewNotes,
+            submissionNotes: st.submission_notes ?? st.catatan_penyerahan ?? existingTask?.submissionNotes,
           };
           if (idx >= 0) {
             mergedTasks[idx] = { ...mergedTasks[idx], ...mappedTask };
