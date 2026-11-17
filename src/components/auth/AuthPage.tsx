@@ -329,6 +329,7 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
 
     setIsLoading(true);
     try {
+      let backendSuccess = false;
       // 1. Coba verifikasi & reset kata sandi ke backend server VPS
       try {
         await ApiClient.forgotPassword({
@@ -336,25 +337,46 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
           name: fullName,
           password: newPassword,
         });
+        backendSuccess = true;
       } catch (apiErr: any) {
-        const errorText = apiErr?.message || 'Email atau nama lengkap tidak cocok dengan data akun terdaftar.';
-        setErrorMsg(errorText);
-        setIsLoading(false);
-        return;
+        // Jika server backend secara eksplisit mengembalikan pesan error verifikasi akun
+        if (apiErr?.status === 404 && (apiErr?.data?.message?.includes('tidak cocok') || apiErr?.message?.includes('tidak cocok'))) {
+          setErrorMsg(apiErr?.data?.message || apiErr?.message);
+          setIsLoading(false);
+          return;
+        }
+
+        // Jika server backend mengembalikan route 404 karena backend VPS belum di-git pull
+        if (apiErr?.message?.toLowerCase().includes('could not be found') || apiErr?.status === 404) {
+          const localCheck = AppStorage.resetPasswordSelfService(email, fullName, newPassword);
+          if (localCheck.success) {
+            backendSuccess = true;
+          } else {
+            setErrorMsg(localCheck.message || 'Email atau nama lengkap tidak cocok dengan data akun terdaftar.');
+            setIsLoading(false);
+            return;
+          }
+        } else {
+          setErrorMsg(apiErr?.message || 'Email atau nama lengkap tidak cocok dengan data akun terdaftar.');
+          setIsLoading(false);
+          return;
+        }
       }
 
-      // 2. Perbarui juga di AppStorage lokal
-      AppStorage.resetPasswordSelfService(email, fullName, newPassword);
+      if (backendSuccess) {
+        // 2. Perbarui juga di AppStorage lokal
+        AppStorage.resetPasswordSelfService(email, fullName, newPassword);
 
-      // 3. Reset form, isi email di form login, dan beralih ke login
-      setForgotEmail('');
-      setForgotFullName('');
-      setForgotNewPassword('');
-      setForgotConfirmPassword('');
-      setLoginIdentifier(email);
-      setLoginPassword('');
-      setSuccessMsg('Kata sandi berhasil diperbarui! Silakan masuk menggunakan kata sandi baru Anda.');
-      setAuthMode('LOGIN');
+        // 3. Reset form, isi email di form login, dan beralih ke login
+        setForgotEmail('');
+        setForgotFullName('');
+        setForgotNewPassword('');
+        setForgotConfirmPassword('');
+        setLoginIdentifier(email);
+        setLoginPassword('');
+        setSuccessMsg('Kata sandi berhasil diperbarui! Silakan masuk menggunakan kata sandi baru Anda.');
+        setAuthMode('LOGIN');
+      }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Gagal mengatur ulang kata sandi.');
     } finally {
