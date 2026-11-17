@@ -378,6 +378,12 @@ export function AuthPage({ onLoginSuccess }: AuthPageProps) {
         }
       }
 
+      // Tangani rate limit (HTTP 429 Too Many Attempts)
+      if (apiErr?.status === 429) {
+        setErrorMsg('Terlalu banyak permintaan reset kata sandi dalam 1 menit terakhir. Harap tunggu sekitar 1 menit sebelum mencoba kembali.');
+        return;
+      }
+
       // Tampilkan error asli server (404, 422, atau route belum di pull)
       if (apiErr?.message?.toLowerCase().includes('could not be found') || (apiErr?.status === 404 && !apiErr?.message?.includes('tidak cocok') && !apiErr?.data?.message?.includes('tidak cocok'))) {
         setErrorMsg('Rute /api/forgot-password belum aktif di server VPS. Harap jalankan "git pull" & "php artisan route:clear" pada backend VPS.');
