@@ -1071,38 +1071,44 @@ export function ChatRoom({ currentUser, users, userRole, onRefresh }: ChatRoomPr
           </table>
         </div>
 
-        {/* Pagination Navigasi Riwayat Jika > 10 Topik */}
-        {filteredTopics.length > ITEMS_PER_PAGE && (
-          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50/60 text-xs">
-            <span className="text-slate-500 font-medium">
-              Menampilkan {Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, filteredTopics.length)}-
-              {Math.min(currentPage * ITEMS_PER_PAGE, filteredTopics.length)} dari {filteredTopics.length} topik
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                disabled={currentPage === 1}
-                className="p-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-white hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-2xs"
-                title="Halaman Sebelumnya"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="px-2 font-bold text-slate-700">
-                {currentPage} / {totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className="p-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-white hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-2xs"
-                title="Halaman Berikutnya"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
+        {/* Pagination Footer Ruang Obrolan (Desain Sesuai Riwayat Presensi) */}
+        <div className="px-5 py-3 border-t border-slate-100 bg-white flex items-center justify-end gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+              disabled={currentPage <= 1}
+              aria-label="Halaman Sebelumnya"
+              title="Halaman Sebelumnya"
+              className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
+                currentPage <= 1
+                  ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-2xs hover:shadow-xs cursor-pointer active:scale-95'
+              }`}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div className="px-3 py-1 bg-slate-100 rounded-lg font-bold text-slate-700 text-xs">
+              {currentPage} / {totalPages}
             </div>
+
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+              disabled={currentPage >= totalPages}
+              aria-label="Halaman Selanjutnya"
+              title="Halaman Selanjutnya"
+              className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
+                currentPage >= totalPages
+                  ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'
+                  : 'bg-[#1E3A8A] hover:bg-[#172554] text-white border-[#1E3A8A] shadow-2xs hover:shadow-xs cursor-pointer active:scale-95'
+              }`}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* 3. DETAIL TOPIK & CHAT DRAWER / MODAL */}
