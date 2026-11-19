@@ -762,42 +762,41 @@ export function AttendanceHistory({
 
       const avatars = clockedInRecords.map((r) => r.userAvatar).filter(Boolean) as string[];
 
-      const hasOffice = clockedInRecords.some((r) => {
-        return (
-          r.clockInLocationStatus === 'IN_OFFICE' ||
-          (r.clockInLocationStatus !== 'OUT_OF_RANGE' &&
-            r.clockInLocationStatus !== 'WFH_APPROVED' &&
-            r.clockInLocationStatus !== 'DINAS_APPROVED' &&
-            (r.clockInDistanceMeter === undefined || r.clockInDistanceMeter <= 100))
-        );
-      });
-
-      const hasOutOfOffice = clockedInRecords.some((r) => {
-        const isFreelance = r.employmentType === 'FREELANCE';
-        if (isFreelance) return false;
-        return (
-          r.clockInLocationStatus === 'OUT_OF_RANGE' ||
-          (r.clockInDistanceMeter !== undefined &&
-            r.clockInDistanceMeter > 100 &&
-            r.clockInLocationStatus !== 'WFH_APPROVED' &&
-            r.clockInLocationStatus !== 'DINAS_APPROVED')
-        );
-      });
-
-      // Kumpulkan status lokasi unik
+      // Kumpulkan status lokasi unik (Sinkron 100% dengan detail presensi)
       const locationTagSet = new Set<LocationBadgeType>();
 
-      clockedInRecords.forEach((r) => {
-        const isFreelance = r.employmentType === 'FREELANCE';
-        if (r.clockInLocationStatus === 'DINAS_APPROVED' || r.workMode === 'DINAS') {
-          locationTagSet.add('BUSINESS_TRIP');
-        } else if (r.clockInLocationStatus === 'WFH_APPROVED' || r.workMode === 'WFH' || (isFreelance && r.clockInLocationStatus !== 'IN_OFFICE')) {
-          locationTagSet.add('WFH');
-        } else if (
+      clockedInRecords.forEach((rec) => {
+        const u = users.find((usr) => usr.id === rec.userId || safeLower(usr.name) === safeLower(rec.userName));
+        const ds = getDailyStatus({
+          user: { id: u?.id || rec.userId, name: u?.name || rec.userName },
+          date: rawDate,
+          records: dayRecords,
+          leaves: leaves || [],
+          today: todayDateStr,
+        });
+
+        const empCol = employeeColumns.find(
+          (col) =>
+            safeLower(col) === safeLower(rec.userName) ||
+            (u && safeLower(col) === safeLower(u.name))
+        );
+        const tableStatus = empCol ? statuses[empCol] : null;
+
+        const isFreelance = rec.employmentType === 'FREELANCE';
+        const isWfh = ds.location === 'WFH' || tableStatus === 'WFH' || rec.clockInLocationStatus === 'WFH_APPROVED' || (isFreelance && rec.clockInLocationStatus !== 'IN_OFFICE');
+        const isBusinessTrip = ds.location === 'BUSINESS_TRIP' || tableStatus === 'Dinas Luar' || rec.clockInLocationStatus === 'DINAS_APPROVED';
+        const isOutOfRange =
+          !isWfh &&
+          !isBusinessTrip &&
           !isFreelance &&
-          (r.clockInLocationStatus === 'OUT_OF_RANGE' ||
-            (r.clockInDistanceMeter !== undefined && r.clockInDistanceMeter > 100))
-        ) {
+          (rec.clockInLocationStatus === 'OUT_OF_RANGE' ||
+            (rec.clockInDistanceMeter !== undefined && rec.clockInDistanceMeter > 100));
+
+        if (isBusinessTrip) {
+          locationTagSet.add('BUSINESS_TRIP');
+        } else if (isWfh) {
+          locationTagSet.add('WFH');
+        } else if (isOutOfRange) {
           locationTagSet.add('OUT_OF_RANGE');
         } else {
           locationTagSet.add('OFFICE');
@@ -810,6 +809,9 @@ export function AttendanceHistory({
         if (st === 'WFH') locationTagSet.add('WFH');
         else if (st === 'Dinas Luar') locationTagSet.add('BUSINESS_TRIP');
       });
+
+      const hasOffice = locationTagSet.has('OFFICE');
+      const hasOutOfOffice = locationTagSet.has('OUT_OF_RANGE');
 
       const tagOrder: LocationBadgeType[] = ['OFFICE', 'WFH', 'BUSINESS_TRIP', 'OUT_OF_RANGE'];
       const locationTags = tagOrder.filter((tag) => locationTagSet.has(tag));
