@@ -41,7 +41,7 @@ import {
   countInclusiveDays,
   shiftDate,
 } from '../lib/attendance-status.ts';
-import { AppStorage } from '../lib/storage.ts';
+import { AppStorage, isEmployeeSubmittedLeave } from '../lib/storage.ts';
 import {
   isSafeDataUrl,
   isSafeMediaUrl,
@@ -392,6 +392,19 @@ assert(
 assert(
   splitLeaves.some((l) => l.startDate === '2026-11-05' && l.endDate === '2026-11-05'),
   'Bagian kedua (05 Nov) tetap Sakit'
+);
+
+// Verifikasi pemisahan pengajuan murni vs penetapan status oleh admin
+assert(isEmployeeSubmittedLeave(leaveReq), 'Pengajuan asli dari karyawan teridentifikasi sebagai pengajuan murni');
+
+AppStorage.setLeaveCategoryForDate(updatedUser!, '2026-11-06', 'WFH');
+const adminSetLeave = AppStorage.getLeaveRequests().find((l) => l.startDate === '2026-11-06' && l.userId === updatedUser!.id);
+assert(adminSetLeave !== undefined, 'Perizinan yang ditetapkan admin berhasil tersimpan di getLeaveRequests()');
+assert(adminSetLeave?.createdByAdmin === true, 'Perizinan yang dibuat admin memiliki penanda createdByAdmin: true');
+assert(!isEmployeeSubmittedLeave(adminSetLeave!), 'Perizinan yang diubah/ditetapkan admin TIDAK masuk sebagai pengajuan izin tim');
+assert(
+  !AppStorage.getEmployeeLeaveRequests().some((l) => l.id === adminSetLeave!.id),
+  'getEmployeeLeaveRequests() hanya memuat pengajuan murni dan mengecualikan penetapan admin'
 );
 
 // 4.5. Pencatatan Presensi Masuk

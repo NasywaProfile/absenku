@@ -50,7 +50,7 @@ import {
 } from '../../lib/whatsapp-recap.ts';
 import { EmployeeDetailDrawer } from './EmployeeDetailDrawer.tsx';
 import { EditAttendanceModal } from './EditAttendanceModal.tsx';
-import { AppStorage } from '../../lib/storage.ts';
+import { AppStorage, isEmployeeSubmittedLeave } from '../../lib/storage.ts';
 import { getDailyStatus, getCalendarCell, isOffCategory, getApprovedLeaveForDate } from '../../lib/attendance-status.ts';
 import { EmptyStateTaskIllustration } from '../common/Illustrations.tsx';
 import { Tooltip } from '../ui/tooltip.tsx';
@@ -378,7 +378,7 @@ export function AdminDashboard({
   const todayAttendance = attendanceRecords
     .filter((r) => r.date === todayStr)
     .sort((a, b) => (b.clockInTime || '').localeCompare(a.clockInTime || ''));
-  const pendingLeaves = leaves.filter((l) => l.status === 'PENDING');
+  const pendingLeaves = leaves.filter((l) => l.status === 'PENDING' && isEmployeeSubmittedLeave(l));
   const pendingRegistrations = users.filter((u) => u.status === 'PENDING_APPROVAL');
 
   const todayRecord =

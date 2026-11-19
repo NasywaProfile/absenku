@@ -2247,6 +2247,14 @@ export const AppStorage = {
     return this.getLeaves();
   },
 
+  /**
+   * Mengambil hanya pengajuan izin yang diajukan oleh pengguna / karyawan
+   * (mengecualikan perizinan yang dibuat langsung oleh Admin/Super Admin saat edit status presensi).
+   */
+  getEmployeeLeaveRequests(): LeaveRequest[] {
+    return this.getLeaves().filter(isEmployeeSubmittedLeave);
+  },
+
   saveLeaves(leaves: LeaveRequest[], silent: boolean = false): void {
     const sanitized = leaves.map((l) => {
       if (l.attachmentData && l.attachmentData.startsWith('data:') && l.attachmentData.length > 500) {
@@ -2656,6 +2664,7 @@ export const AppStorage = {
         appliedAt: stamp,
         reviewedBy: reviewerName,
         reviewedAt: stamp,
+        createdByAdmin: true,
       };
       result.push(newLeave);
 
@@ -3519,3 +3528,17 @@ export const AppStorage = {
     localStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(INITIAL_OFFICE_CONFIG));
   },
 };
+
+/**
+ * Memeriksa apakah sebuah data perizinan adalah murni pengajuan dari karyawan/pengguna,
+ * BUKAN perizinan sintetis yang dibuat/diubah secara sepihak oleh Admin/Super Admin
+ * saat mengedit riwayat presensi di EditAttendanceModal / setLeaveCategoryForDate.
+ */
+export function isEmployeeSubmittedLeave(l: LeaveRequest): boolean {
+  if (!l) return false;
+  if (l.createdByAdmin) return false;
+  if (l.id && (l.id.startsWith('leave_adm_') || l.id.includes('_adm_'))) return false;
+  if (l.reason && /ditetapkan oleh/i.test(l.reason)) return false;
+  return true;
+}
+

@@ -22,7 +22,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { LeaveRequest, LeaveCategory, User } from '../../types/index.ts';
-import { AppStorage } from '../../lib/storage.ts';
+import { AppStorage, isEmployeeSubmittedLeave } from '../../lib/storage.ts';
 import { downloadLeaveSpreadsheet } from '../../lib/csv-export.ts';
 import {
   generateWhatsAppLeaveRecap,
@@ -49,7 +49,12 @@ export function TeamLeaveApprovals({
   onRefresh,
   onDelete,
 }: TeamLeaveApprovalsProps) {
-  const leaves = propLeaves || propLeaveRequests || AppStorage.getLeaveRequests();
+  const rawLeaves = propLeaves || propLeaveRequests;
+  // Hanya tampilkan izin yang benar-benar diajukan oleh pengguna/karyawan (mengecualikan perubahan status yang ditetapkan sepihak oleh admin di edit presensi)
+  const leaves = useMemo(() => {
+    const list = rawLeaves || AppStorage.getLeaveRequests();
+    return list.filter(isEmployeeSubmittedLeave);
+  }, [rawLeaves]);
 
   const notifyUpdated = () => {
     if (onRefresh) onRefresh();

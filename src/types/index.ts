@@ -118,6 +118,7 @@ export interface LeaveRequest {
   reviewedBy?: string;
   reviewedAt?: string;
   rejectionReason?: string;
+  createdByAdmin?: boolean;
 }
 
 // Task Submission Harian Fleksibel (Bisa diisi/diupdate kapan saja: pagi, siang, sore)

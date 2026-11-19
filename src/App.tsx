@@ -20,7 +20,7 @@ import { ClockInOutModal } from './components/attendance/ClockInOutModal.tsx';
 import { CompleteProfileModal } from './components/employee/CompleteProfileModal.tsx';
 import { PendingApprovalScreen } from './components/auth/PendingApprovalScreen.tsx';
 import { ModernConfirmDialog } from './components/common/ModernConfirmDialog.tsx';
-import { AppStorage } from './lib/storage.ts';
+import { AppStorage, isEmployeeSubmittedLeave } from './lib/storage.ts';
 import { ApiClient } from './lib/api-client.ts';
 import { getApprovedLeaveForDate, isOffCategory } from './lib/attendance-status.ts';
 import { getCurrentDateString, getCurrentTimeString, calculateClockInPunctuality, calculateWorkDurationMinutes } from './lib/time-utils.ts';
@@ -1012,7 +1012,7 @@ export default function App() {
     (r) => r.userId === currentUser.id && r.date === todayStr
   );
 
-  const pendingLeavesCount = leaves.filter((l) => l.status === 'PENDING').length;
+  const pendingLeavesCount = leaves.filter((l) => l.status === 'PENDING' && isEmployeeSubmittedLeave(l)).length;
   const pendingTasksCount = tasks.filter((t) => t.status === 'DONE').length;
 
   return (

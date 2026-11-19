@@ -25,7 +25,7 @@ import {
   Minimize2,
 } from 'lucide-react';
 import { LeaveRequest, LeaveCategory, User, UserRole } from '../../types/index.ts';
-import { AppStorage } from '../../lib/storage.ts';
+import { AppStorage, isEmployeeSubmittedLeave } from '../../lib/storage.ts';
 import { formatIndonesianDate } from '../../lib/time-utils.ts';
 import { downloadLeaveSpreadsheet } from '../../lib/csv-export.ts';
 import {
@@ -57,7 +57,12 @@ export function LeaveManagement({
   onLeaveUpdated,
   onRefresh,
 }: LeaveManagementProps) {
-  const leaves = propLeaves || propLeaveRequests || AppStorage.getLeaveRequests();
+  const rawLeaves = propLeaves || propLeaveRequests;
+  // Hanya tampilkan izin yang diajukan oleh pengguna / karyawan
+  const leaves = useMemo(() => {
+    const list = rawLeaves || AppStorage.getLeaveRequests();
+    return list.filter(isEmployeeSubmittedLeave);
+  }, [rawLeaves]);
 
   const notifyUpdated = () => {
     if (onLeaveUpdated) onLeaveUpdated();
