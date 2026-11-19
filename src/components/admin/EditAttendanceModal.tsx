@@ -387,7 +387,7 @@ export function EditAttendanceModal({
                 </label>
                 <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold text-xs flex items-center gap-2">
                   <Laptop className="w-4 h-4 text-indigo-600 shrink-0" />
-                  <span>Rumah / WFH</span>
+                  <span>Dari Rumah</span>
                 </div>
               </div>
             )}

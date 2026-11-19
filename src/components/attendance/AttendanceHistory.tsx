@@ -343,8 +343,6 @@ export function AttendanceHistory({
           const isOffDay = ds.key === 'LEAVE' || ds.key === 'SICK';
           const locationText = isOffDay
             ? undefined
-            : isFreelance
-            ? 'Otomatis (Kantor/Rumah)'
             : isWfh
             ? 'Dari Rumah'
             : isBusinessTrip
@@ -456,6 +454,9 @@ export function AttendanceHistory({
           statusColor = 'amber';
         }
 
+        const isOutOfRangeCol = !isWfh && !isBusinessTrip && (userRec?.clockInLocationStatus === 'OUT_OF_RANGE' || (userRec?.clockInDistanceMeter !== undefined && userRec.clockInDistanceMeter > 100));
+        const locBadgeText = isWfh ? 'Dari Rumah' : isBusinessTrip ? 'Dinas Luar' : isOutOfRangeCol ? 'Di Luar Kantor' : 'Area Kantor';
+
         list.push({
           id: userObj?.id || userRec?.userId,
           name: fullName,
@@ -465,8 +466,8 @@ export function AttendanceHistory({
           clockInTime: clockTime,
           statusBadge: statusText,
           statusColor: statusColor as any,
-          locationBadge: isWfh ? 'Rumah / WFH' : isBusinessTrip ? 'Dinas Luar' : 'Di Kantor',
-          locationColor: isWfh ? 'indigo' : isBusinessTrip ? 'purple' : 'emerald',
+          locationBadge: locBadgeText,
+          locationColor: isWfh ? 'indigo' : isBusinessTrip ? 'purple' : isOutOfRangeCol ? 'rose' : 'emerald',
           logbookTasks: tasks,
           notes: notes,
         });
@@ -1012,18 +1013,27 @@ export function AttendanceHistory({
         ? '-'
         : '—';
 
+      const isFreelance = currentUser.employmentType === 'FREELANCE';
+      const isWfh = ds.location === 'WFH' || myRecord?.clockInLocationStatus === 'WFH_APPROVED' || myRecord?.workMode === 'WFH' || (isFreelance && myRecord?.clockInLocationStatus !== 'IN_OFFICE');
+      const isBusinessTrip = ds.location === 'BUSINESS_TRIP' || myRecord?.clockInLocationStatus === 'DINAS_APPROVED' || myRecord?.workMode === 'DINAS';
+      const isOutOfRange =
+        !isWfh &&
+        !isBusinessTrip &&
+        !isFreelance &&
+        (myRecord?.clockInLocationStatus === 'OUT_OF_RANGE' ||
+          (myRecord?.clockInDistanceMeter !== undefined && myRecord.clockInDistanceMeter > 100));
+
       let locationMode = '—';
       if (ds.isOff) {
-        locationMode = `OFF (${ds.shortLabel})`;
-      } else if (ds.location === 'WFH') {
-        locationMode = 'Rumah / WFH';
-      } else if (ds.location === 'BUSINESS_TRIP') {
+        locationMode = 'Bebas Absen';
+      } else if (isWfh) {
+        locationMode = 'Dari Rumah';
+      } else if (isBusinessTrip) {
         locationMode = 'Dinas Luar';
-      } else if (ds.location === 'OUT_OF_RANGE') {
-        const dist = myRecord?.clockInDistanceMeter !== undefined ? Math.round(myRecord.clockInDistanceMeter) : null;
-        locationMode = dist ? `Di Luar Kantor (${dist}m)` : 'Di Luar Kantor';
-      } else if (ds.location === 'OFFICE') {
-        locationMode = 'Di Kantor';
+      } else if (isOutOfRange) {
+        locationMode = 'Di Luar Kantor';
+      } else if (ds.isPresent || myRecord?.clockInTime) {
+        locationMode = 'Area Kantor';
       } else if (row.isHoliday) {
         locationMode = 'Libur Akhir Pekan';
       }
@@ -2194,13 +2204,11 @@ export function AttendanceHistory({
                             {row.hasCheckmark || (row.locationMode && row.locationMode !== '—' && !isWeekendHoliday) ? (
                               (() => {
                                 const mode = row.locationMode;
-                                const isLate = row.statusText.includes('Terlambat');
-                                const isWfh = mode.includes('WFH') || mode.includes('Rumah');
-                                const isDinas = mode.includes('Dinas');
-                                const isLuar = mode.includes('Luar') || mode.includes('Radius');
-                                const isOff = mode.includes('Bebas Absen');
-                                const isSick = row.statusText.includes('Sakit');
-                                const isFreelance = mode.includes('Otomatis') || mode.includes('Freelance');
+                                const isWfh = mode === 'Dari Rumah' || mode.includes('WFH') || mode.includes('Rumah');
+                                const isDinas = mode === 'Dinas Luar' || mode.includes('Dinas');
+                                const isLuar = mode === 'Di Luar Kantor' || mode.includes('Luar') || mode.includes('Radius');
+                                const isOff = ds.isOff || mode === 'Bebas Absen' || mode.includes('Bebas Absen') || mode.includes('OFF');
+                                const isSick = row.statusText.includes('Sakit') || row.category === 'SICK';
 
                                 if (isOff) {
                                   return (
@@ -2215,23 +2223,10 @@ export function AttendanceHistory({
                                   );
                                 }
 
-                                if (isFreelance) {
-                                  return (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
-                                      <Globe className="w-3 h-3 text-indigo-600 shrink-0" />
-                                      <span>Otomatis (Kantor/Rumah)</span>
-                                    </span>
-                                  );
-                                }
-
                                 if (isWfh) {
                                   return (
-                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold ${
-                                      isLate
-                                        ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                                        : 'bg-indigo-50 text-indigo-800 border border-indigo-200'
-                                    }`}>
-                                      <Laptop className="w-3 h-3 shrink-0" />
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 shadow-2xs">
+                                      <Laptop className="w-3 h-3 text-indigo-600 shrink-0" />
                                       <span>Dari Rumah</span>
                                     </span>
                                   );
@@ -2239,12 +2234,8 @@ export function AttendanceHistory({
 
                                 if (isDinas) {
                                   return (
-                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold ${
-                                      isLate
-                                        ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                                        : 'bg-purple-50 text-purple-800 border border-purple-200'
-                                    }`}>
-                                      <MapPin className="w-3 h-3 shrink-0" />
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-purple-50 text-purple-800 border border-purple-200 shadow-2xs">
+                                      <MapPin className="w-3 h-3 text-purple-600 shrink-0" />
                                       <span>Dinas Luar</span>
                                     </span>
                                   );
@@ -2252,7 +2243,7 @@ export function AttendanceHistory({
 
                                 if (isLuar) {
                                   return (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200 shadow-2xs">
                                       <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
                                       <span>Di Luar Kantor</span>
                                     </span>
@@ -2260,12 +2251,8 @@ export function AttendanceHistory({
                                 }
 
                                 return (
-                                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold ${
-                                    isLate
-                                      ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                                      : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                                  }`}>
-                                    <Building2 className="w-3 h-3 shrink-0" />
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                    <Building2 className="w-3 h-3 text-emerald-600 shrink-0" />
                                     <span>Area Kantor</span>
                                   </span>
                                 );
@@ -2693,7 +2680,7 @@ export function AttendanceHistory({
                           leaveCategory === 'SICK' || leaveCategory === 'LEAVE'
                             ? undefined
                             : leaveCategory === 'WFH' || updated.clockInLocationStatus === 'WFH_APPROVED'
-                            ? 'WFH'
+                            ? 'Dari Rumah'
                             : leaveCategory === 'BUSINESS_TRIP' || updated.clockInLocationStatus === 'DINAS_APPROVED'
                             ? 'Dinas Luar'
                             : updated.clockInLocationStatus === 'IN_OFFICE'

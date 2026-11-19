@@ -115,10 +115,10 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
   const getLocationBadgeStyle = (badge?: string, color?: string) => {
     const text = (badge || '').toLowerCase();
     if (text.includes('wfh') || text.includes('rumah')) {
-      return 'bg-sky-50 text-sky-800 border-sky-200';
+      return 'bg-indigo-50 text-indigo-800 border-indigo-200';
     }
     if (text.includes('dinas')) {
-      return 'bg-amber-50 text-amber-800 border-amber-200';
+      return 'bg-purple-50 text-purple-800 border-purple-200';
     }
     if (text.includes('luar') || text.includes('radius')) {
       return 'bg-rose-50 text-rose-800 border-rose-200';
@@ -129,8 +129,8 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
     if (text.includes('izin') || text.includes('resmi') || text.includes('cuti')) {
       return 'bg-sky-50 text-sky-800 border-sky-200';
     }
-    // Default / Di Kantor
-    return 'bg-teal-50 text-teal-800 border-teal-200';
+    // Default / Area Kantor
+    return 'bg-emerald-50 text-emerald-800 border-emerald-200';
   };
 
   return (
@@ -313,15 +313,15 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                               {(() => {
                                 const text = (member.locationBadge || '').toLowerCase();
                                 if (text.includes('wfh') || text.includes('rumah')) {
-                                  return <Laptop className="w-2.5 h-2.5 text-sky-600 shrink-0" />;
+                                  return <Laptop className="w-2.5 h-2.5 text-indigo-600 shrink-0" />;
                                 }
                                 if (text.includes('dinas')) {
-                                  return <MapPin className="w-2.5 h-2.5 text-amber-600 shrink-0" />;
+                                  return <MapPin className="w-2.5 h-2.5 text-purple-600 shrink-0" />;
                                 }
                                 if (text.includes('luar') || text.includes('radius')) {
                                   return <AlertTriangle className="w-2.5 h-2.5 text-rose-600 shrink-0" />;
                                 }
-                                return <Building2 className="w-2.5 h-2.5 text-teal-600 shrink-0" />;
+                                return <Building2 className="w-2.5 h-2.5 text-emerald-600 shrink-0" />;
                               })()}
                               <span>{member.locationBadge}</span>
                             </span>
