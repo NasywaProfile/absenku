@@ -41,7 +41,7 @@ import {
   isDateInRange,
   LEAVE_CATEGORY_LABEL,
 } from './attendance-status.ts';
-import { storeAttachmentInIDB } from './attachment-storage.ts';
+import { storeAttachmentInIDB, getAttachmentFromIDB } from './attachment-storage.ts';
 import { hashPassword, verifyPassword, isPasswordEncrypted } from './crypto-utils.ts';
 import { ApiClient } from './api-client.ts';
 import { sendRealEmail, generateEmailHtmlTemplate } from './real-email.ts';
@@ -2345,17 +2345,32 @@ export const AppStorage = {
     this.markLeavePendingSync(newLeave.id);
 
     // Kirim pengajuan ke Laravel Backend & MySQL
-    ApiClient.createLeave({
-      id: newLeave.id,
-      category: newLeave.category,
-      start_date: newLeave.startDate,
-      end_date: newLeave.endDate,
-      total_days: newLeave.totalDays,
-      reason: newLeave.reason,
-      attachment_name: newLeave.attachmentName,
-      attachment_data: newLeave.attachmentData,
-      attachment_type: newLeave.attachmentType,
-    })
+    // Resolve idb: reference ke data URL asli sebelum dikirim ke server,
+    // agar attachment_data tersimpan sebagai URL yang bisa diakses lintas-device.
+    const resolveAndSendLeave = async () => {
+      let attachmentDataForApi = data.attachmentData || newLeave.attachmentData;
+      if (attachmentDataForApi && attachmentDataForApi.startsWith('idb:')) {
+        const idbId = attachmentDataForApi.replace(/^idb:/, '');
+        try {
+          const resolved = await getAttachmentFromIDB(idbId);
+          if (resolved) attachmentDataForApi = resolved;
+        } catch {
+          // Tetap kirim idb: jika gagal resolve, backend akan menyimpannya apa adanya
+        }
+      }
+      return ApiClient.createLeave({
+        id: newLeave.id,
+        category: newLeave.category,
+        start_date: newLeave.startDate,
+        end_date: newLeave.endDate,
+        total_days: newLeave.totalDays,
+        reason: newLeave.reason,
+        attachment_name: newLeave.attachmentName,
+        attachment_data: attachmentDataForApi,
+        attachment_type: newLeave.attachmentType,
+      });
+    };
+    resolveAndSendLeave()
       .then(() => {
         this.clearLeavePendingSync(newLeave.id);
       })

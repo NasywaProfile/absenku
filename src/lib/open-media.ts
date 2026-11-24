@@ -4,9 +4,6 @@ import { getAttachmentFromIDB } from './attachment-storage.ts';
  * Utility for opening files, links, and images safely and reliably in a new tab across in-Time.
  */
 
-export const SAMPLE_FALLBACK_PDF =
-  'data:application/pdf;base64,JVBERi0xLjMKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCAzMDAgMTQ0XS9QYXJlbnQgMiAwIFIvUmVzb3VyY2VzPDwvRm9udDw8L0YxIDQgMCBSPj4+Pi9Db250ZW50cyA1IDAgUj4+ZW5kb2JqCjQgMCBvYmo8PC9UeXBlL0ZvbnQvU3VidHlwZS9UeXBlMS9CYXNlRm9udC9IZWx2ZXRpY2E+PmVuZG9iago1IDAgb2JqPDwvTGVuZ3RoIDU1Pj5zdHJlYW0KQlQKL0YxIDE4IFRmCjUwIDEwMCBUZAooTG1waXJhbiBQREZJemluIC0gQWJzZW5rdSkgVGoKRVQKZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyMjEgMDAwMDAgbiAKMDAwMDAwMDI4NyAwMDAwMCBuIAp0cmFpbGVyPDwvU2l6ZSA2L1Jvb3QgMSAwIFI+PgpzdGFydHhyZWYKNDAyCiUlRU9G';
-
 const SAFE_DATA_MIME_RE =
   /^data:(image\/(?:png|jpe?g|webp|gif|bmp|avif)|application\/pdf|video\/(?:mp4|webm|quicktime|x-matroska)|application\/(?:msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.ms-excel|vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|vnd\.ms-powerpoint|vnd\.openxmlformats-officedocument\.presentationml\.presentation|zip|x-zip-compressed|octet-stream)|text\/(?:plain|csv))(?:;[a-zA-Z0-9=._+-]+)*;base64,/i;
 
@@ -50,11 +47,20 @@ export function normalizeMediaUrl(url: string): string {
 
   const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
 
+  // 1. Ekstrak path /storage/ atau /api/storage/ jika tersimpan dengan localhost/IP/domain lain
+  const storageMatch = clean.match(/(?:\/(?:api\/)?storage\/[^\s"'>#]+)/i);
+  if (storageMatch) {
+    const storagePath = storageMatch[0];
+    return origin ? `${origin}${storagePath.startsWith('/') ? '' : '/'}${storagePath}` : storagePath;
+  }
+
+  // 2. Rewrite domain lama in-time.duckdns.org jika sedang diakses dari origin lain (misal IP VPS atau domain baru)
   if (/^https?:\/\/in-time\.duckdns\.org/i.test(clean)) {
     const pathPart = clean.replace(/^https?:\/\/in-time\.duckdns\.org/i, '');
     return origin ? `${origin}${pathPart.startsWith('/') ? '' : '/'}${pathPart}` : pathPart;
   }
 
+  // 3. Path relatif murni (/uploads/..., /assets/...)
   if (/^\/(?!\/)/.test(clean)) {
     return origin ? `${origin}${clean}` : clean;
   }
@@ -127,13 +133,15 @@ export function isPdfFile(nameOrUrl?: string, fileType?: string): boolean {
   return clean.endsWith('.pdf');
 }
 
-export async function resolveMediaUrl(url?: string, fallback = SAMPLE_FALLBACK_PDF): Promise<string> {
+export async function resolveMediaUrl(url?: string, fallback = ''): Promise<string> {
   if (!url || url === '#' || url.trim() === '') return fallback;
   if (url.startsWith('idb:')) {
     const id = url.replace(/^idb:/, '');
     try {
       const data = await getAttachmentFromIDB(id);
-      return data ? normalizeMediaUrl(data) : fallback;
+      if (data) return normalizeMediaUrl(data) || fallback;
+      console.warn('[resolveMediaUrl] Lampiran IndexedDB tidak ditemukan di device ini:', id);
+      return fallback;
     } catch (e) {
       console.warn('Gagal membaca attachment dari IndexedDB:', e);
       return fallback;
@@ -170,7 +178,8 @@ export async function downloadMediaFile(url: string, fileName = 'berkas_lampiran
   if (targetUrl && targetUrl.startsWith('idb:')) {
     targetUrl = await resolveMediaUrl(targetUrl);
   }
-  targetUrl = normalizeMediaUrl(targetUrl) || SAMPLE_FALLBACK_PDF;
+  targetUrl = normalizeMediaUrl(targetUrl);
+  if (!targetUrl) return;
 
   if (!isSafeMediaUrl(targetUrl)) {
     console.warn('[downloadMediaFile] URL berkas tidak aman ditolak:', targetUrl);
@@ -203,7 +212,8 @@ export async function downloadMediaFile(url: string, fileName = 'berkas_lampiran
 }
 
 function buildOpenableUrl(rawUrl: string, fileName = 'berkas_lampiran'): string {
-  const normalized = normalizeMediaUrl(rawUrl) || SAMPLE_FALLBACK_PDF;
+  const normalized = normalizeMediaUrl(rawUrl);
+  if (!normalized) return '';
 
   if (/^data:/i.test(normalized)) {
     if (!isSafeDataUrl(normalized)) {
@@ -234,13 +244,16 @@ export function openDataUrlInNewTab(
     if (preOpenedTab && !preOpenedTab.closed) preOpenedTab.close();
   };
 
-  if (!dataUrl) {
+  if (!dataUrl || dataUrl === '#') {
     closePreOpened();
     return;
   }
 
-  const raw = dataUrl === '#' ? SAMPLE_FALLBACK_PDF : dataUrl;
-  const normalized = normalizeMediaUrl(raw) || SAMPLE_FALLBACK_PDF;
+  const normalized = normalizeMediaUrl(dataUrl);
+  if (!normalized) {
+    closePreOpened();
+    return;
+  }
 
   // Link HTTP / HTTPS / Path Relatif tunggal langsung dibuka di tab baru
   if (/^https?:\/\//i.test(normalized) || /^\/(?!\/)/.test(normalized)) {
@@ -300,10 +313,15 @@ export async function openAttachmentDirectly(item: {
   // Jika link web eksternal atau tidak punya url berkas
   if (!rawUrl || rawUrl === '#') {
     if (item.type === 'LINK') {
-      openExternalLink(item.name || 'https://google.com');
+      const linkTarget = item.name && /^https?:\/\//i.test(item.name) ? item.name : '';
+      if (linkTarget) {
+        openExternalLink(linkTarget);
+      } else {
+        alert('Tautan web tidak tersedia atau belum ditentukan.');
+      }
       return;
     }
-    openDataUrlInNewTab(SAMPLE_FALLBACK_PDF, item.name || 'berkas_lampiran');
+    alert('Lampiran berkas tidak ditemukan atau belum diunggah.');
     return;
   }
 
@@ -326,12 +344,21 @@ export async function openAttachmentDirectly(item: {
     }
 
     const id = rawUrl.replace(/^idb:/, '');
-    let resolvedData = SAMPLE_FALLBACK_PDF;
+    let resolvedData: string | null = null;
     try {
-      const idbData = await getAttachmentFromIDB(id);
-      if (idbData) resolvedData = idbData;
+      resolvedData = await getAttachmentFromIDB(id);
     } catch (err) {
       console.warn('Gagal mengambil lampiran dari IndexedDB:', err);
+    }
+
+    if (!resolvedData) {
+      // File hanya tersimpan di perangkat yang mengunggah — tidak bisa dibuka di perangkat lain
+      if (preOpenedTab && !preOpenedTab.closed) preOpenedTab.close();
+      alert(
+        'Lampiran tidak dapat dibuka.\n\nBerkas ini hanya tersimpan secara lokal di perangkat yang mengunggahnya (penyimpanan offline). ' +
+        'Silakan unggah ulang saat koneksi internet aktif agar dapat diakses dari perangkat lain.'
+      );
+      return;
     }
 
     openDataUrlInNewTab(resolvedData, item.name || 'berkas_lampiran', preOpenedTab);

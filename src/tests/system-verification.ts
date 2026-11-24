@@ -47,6 +47,7 @@ import {
   isSafeMediaUrl,
   sanitizeExternalLinkUrl,
   dataUrlToBlob,
+  normalizeMediaUrl,
 } from '../lib/open-media.ts';
 import { generateEmailHtmlTemplate } from '../lib/real-email.ts';
 import { generateStyledSpreadsheetHTML } from '../lib/csv-export.ts';
@@ -792,6 +793,15 @@ assert(
     sanitizeExternalLinkUrl('indiekraf.co.id/docs') === 'https://indiekraf.co.id/docs' &&
     sanitizeExternalLinkUrl('https://example.com') === 'https://example.com',
   'sanitizeExternalLinkUrl menolak javascript:/data: dan menormalkan domain eksternal'
+);
+
+assert(
+  normalizeMediaUrl('http://localhost/storage/uploads/surat.pdf').endsWith('/storage/uploads/surat.pdf') &&
+    normalizeMediaUrl('http://localhost:8000/storage/uploads/surat.pdf').endsWith('/storage/uploads/surat.pdf') &&
+    normalizeMediaUrl('/storage/uploads/surat.pdf').endsWith('/storage/uploads/surat.pdf') &&
+    !normalizeMediaUrl('http://localhost/storage/uploads/surat.pdf').includes('localhost') &&
+    normalizeMediaUrl('#') === '',
+  'normalizeMediaUrl mengekstrak path /storage/ dan menormalkannya ke origin aktif tanpa localhost'
 );
 
 const unsafeBlob = dataUrlToBlob('data:text/html;base64,PHNjcmlwdD4=', 'text/html');

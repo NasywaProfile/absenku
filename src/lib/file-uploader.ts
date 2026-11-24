@@ -2,6 +2,7 @@ import { uploadToCloudinary } from './cloudinary';
 import { compressImageFile } from './image-compression';
 import { storeAttachmentInIDB } from './attachment-storage';
 import { ApiClient } from './api-client';
+import { normalizeMediaUrl } from './open-media';
 
 export const FILE_SIZE_LIMITS = {
   IMAGE: 5 * 1024 * 1024,      // Maksimal 5 MB untuk foto/gambar
@@ -131,10 +132,63 @@ export function validateFile(file: File): FileValidationResult {
 }
 
 /**
+ * Helper internal untuk mengunggah berkas ke VPS backend storage (/api/upload)
+ */
+async function uploadFileToVPS(
+  file: File,
+  category: FileCategory
+): Promise<{ url: string; size: number; type: string } | null> {
+  const uploadEndpoints = [
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL
+      ? `${(import.meta as any).env.VITE_API_URL}/upload`
+      : null),
+    '/api/upload',
+  ].filter(Boolean) as string[];
+
+  for (const endpoint of uploadEndpoints) {
+    try {
+      const formData = new FormData();
+      formData.append('document', file);
+      formData.append('file', file);
+      formData.append('category', category);
+
+      const token = ApiClient.getToken();
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawUrl = data?.relative_url || data?.url;
+        if (rawUrl) {
+          return {
+            url: normalizeMediaUrl(rawUrl),
+            size: data.size || file.size,
+            type: data.type || file.type || 'application/octet-stream',
+          };
+        }
+      }
+    } catch (vpsErr) {
+      console.warn(`Upload berkas ke ${endpoint} gagal:`, vpsErr);
+    }
+  }
+  return null;
+}
+
+/**
  * Unggah berkas secara hybrid:
- * - Foto/Gambar: Dikompresi otomatis di browser -> diunggah ke Cloudinary
- * - Video: Diunggah ke Cloudinary
- * - Dokumen (PDF, Word, ZIP): Diunggah ke VPS (Endpoint /api/upload/document)
+ * - Foto/Gambar: Dikompresi otomatis di browser -> diunggah ke Cloudinary atau VPS
+ * - Video: Diunggah ke Cloudinary atau VPS
+ * - Dokumen (PDF, Word, ZIP): Diunggah ke VPS (Endpoint /api/upload)
  */
 export async function uploadHybridFile(
   file: File,
@@ -153,7 +207,7 @@ export async function uploadHybridFile(
   const folder = options.folder || (category === 'document' ? 'absenku/documents' : 'absenku/media');
 
   // -------------------------------------------------------------
-  // KASUS 1: FOTO / GAMBAR -> Kompres dulu -> Kirim ke Cloudinary
+  // KASUS 1: FOTO / GAMBAR -> Kompres dulu -> Kirim ke Cloudinary / VPS
   // -------------------------------------------------------------
   if (category === 'image') {
     try {
@@ -176,7 +230,20 @@ export async function uploadHybridFile(
         publicId: cloudRes.publicId,
       };
     } catch (err) {
-      console.warn('Gagal upload gambar ke Cloudinary, fallback ke penyimpanan lokal:', err);
+      console.warn('Gagal upload gambar ke Cloudinary, mencoba upload ke backend VPS:', err);
+      // Coba upload file asli ke backend VPS
+      const vpsRes = await uploadFileToVPS(file, 'image');
+      if (vpsRes) {
+        return {
+          url: vpsRes.url,
+          name: file.name,
+          size: vpsRes.size,
+          type: vpsRes.type || file.type || 'image/jpeg',
+          category: 'image',
+          storage: 'vps',
+        };
+      }
+
       // Fallback: gunakan data URL terkompresi
       const compressedDataUrl = await compressImageFile(file, 800, 800, 0.7);
       let returnUrl = compressedDataUrl;
@@ -197,7 +264,7 @@ export async function uploadHybridFile(
   }
 
   // -------------------------------------------------------------
-  // KASUS 2: VIDEO -> Kirim ke Cloudinary
+  // KASUS 2: VIDEO -> Kirim ke Cloudinary atau VPS
   // -------------------------------------------------------------
   if (category === 'video') {
     try {
@@ -216,7 +283,18 @@ export async function uploadHybridFile(
         publicId: cloudRes.publicId,
       };
     } catch (err) {
-      console.warn('Gagal upload video ke Cloudinary:', err);
+      console.warn('Gagal upload video ke Cloudinary, mencoba upload ke backend VPS:', err);
+      const vpsRes = await uploadFileToVPS(file, 'video');
+      if (vpsRes) {
+        return {
+          url: vpsRes.url,
+          name: file.name,
+          size: vpsRes.size,
+          type: vpsRes.type || file.type || 'video/mp4',
+          category: 'video',
+          storage: 'vps',
+        };
+      }
       throw new Error('Gagal mengunggah video. Pastikan koneksi stabil atau coba kompres video terlebih dahulu.');
     }
   }
@@ -226,51 +304,17 @@ export async function uploadHybridFile(
   // (Cloudinary default memblokir delivery PDF raw dengan 401 ACL failure)
   // -------------------------------------------------------------
   if (category === 'document') {
-    // 1. Upload ke server backend VPS /api/upload (tersimpan permanen di disk publik tanpa limit ACL)
-    const uploadEndpoints = [
-      (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL
-        ? `${(import.meta as any).env.VITE_API_URL}/upload`
-        : null),
-      '/api/upload',
-    ].filter(Boolean) as string[];
-
-    for (const endpoint of uploadEndpoints) {
-      try {
-        const formData = new FormData();
-        formData.append('document', file);
-        formData.append('file', file);
-        formData.append('category', 'document');
-
-        const token = ApiClient.getToken();
-        const headers: Record<string, string> = {
-          Accept: 'application/json',
-        };
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-        }
-
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers,
-          body: formData,
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.url) {
-            return {
-              url: data.url,
-              name: file.name,
-              size: file.size,
-              type: file.type || 'application/octet-stream',
-              category: 'document',
-              storage: 'vps',
-            };
-          }
-        }
-      } catch (vpsErr) {
-        console.warn(`Upload dokumen ke ${endpoint} gagal:`, vpsErr);
-      }
+    // 1. Upload ke server backend VPS /api/upload (tersimpan permanen di disk publik)
+    const vpsRes = await uploadFileToVPS(file, 'document');
+    if (vpsRes) {
+      return {
+        url: vpsRes.url,
+        name: file.name,
+        size: vpsRes.size,
+        type: vpsRes.type || file.type || 'application/octet-stream',
+        category: 'document',
+        storage: 'vps',
+      };
     }
 
     // 2. Fallback jika offline (Data URL)

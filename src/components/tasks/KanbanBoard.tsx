@@ -505,27 +505,24 @@ export function KanbanBoard({
     if (!files || files.length === 0) return;
 
     for (const file of Array.from(files)) {
-      let fileUrl = '';
       try {
-        const cloudRes = await uploadToCloudinary(file, { folder: 'absenku/tasks' });
-        fileUrl = cloudRes.url;
-      } catch (err) {
-        console.warn('Cloudinary upload fallback to base64:', err);
-        fileUrl = await compressImageFile(file);
+        const uploadRes = await uploadHybridFile(file, { folder: 'absenku/tasks' });
+        const newAtt: TaskAttachment = {
+          id: `att-prev-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: uploadRes.name,
+          type: 'FILE',
+          url: uploadRes.url,
+          fileType: uploadRes.type,
+          fileSize: formatBytes(uploadRes.size),
+          uploadedBy: currentUser.id,
+          uploadedByName: currentUser.name,
+          uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+          stage: 'DONE',
+        };
+        setPreviewAttachments((prev) => [...prev, newAtt]);
+      } catch (err: any) {
+        console.warn('Gagal upload preview file:', err);
       }
-      const newAtt: TaskAttachment = {
-        id: `att-prev-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        name: file.name,
-        type: 'FILE',
-        url: fileUrl,
-        fileType: file.type || 'application/octet-stream',
-        fileSize: formatBytes(file.size),
-        uploadedBy: currentUser.id,
-        uploadedByName: currentUser.name,
-        uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-        stage: 'DONE',
-      };
-      setPreviewAttachments((prev) => [...prev, newAtt]);
     }
     e.target.value = '';
   };

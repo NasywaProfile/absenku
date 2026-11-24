@@ -23,7 +23,6 @@ import {
   dataUrlToBlob,
   isSafeMediaUrl,
   isSafeDataUrl,
-  SAMPLE_FALLBACK_PDF,
 } from '../../lib/open-media.ts';
 
 export interface MediaPreviewData {
@@ -79,7 +78,7 @@ export function MediaPreviewModal({ media, onClose }: MediaPreviewModalProps) {
         let finalUrl = media.url;
         // 1. Jika URL berupa ID IndexedDB (idb:doc_...)
         if (finalUrl.startsWith('idb:')) {
-          const resolved = await resolveMediaUrl(finalUrl, isPdf ? SAMPLE_FALLBACK_PDF : finalUrl);
+          const resolved = await resolveMediaUrl(finalUrl, '');
           finalUrl = resolved;
         }
 
