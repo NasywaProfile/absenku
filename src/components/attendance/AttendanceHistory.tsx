@@ -1068,6 +1068,7 @@ export function AttendanceHistory({
         taskSummary,
         hasCheckmark,
         category,
+        isOff: ds.isOff,
       };
     });
   }, [displayedRows, attendanceRecords, leaves, dailyTasks, currentUser.id, currentUser.name]);
@@ -2209,7 +2210,7 @@ export function AttendanceHistory({
                                 const isWfh = mode === 'Dari Rumah' || mode.includes('WFH') || mode.includes('Rumah');
                                 const isDinas = mode === 'Dinas Luar' || mode.includes('Dinas');
                                 const isLuar = mode === 'Di Luar Kantor' || mode.includes('Luar') || mode.includes('Radius');
-                                const isOff = ds.isOff || mode === 'Bebas Absen' || mode.includes('Bebas Absen') || mode.includes('OFF');
+                                const isOff = Boolean(row.isOff) || mode === 'Bebas Absen' || mode.includes('Bebas Absen') || mode.includes('OFF') || row.clockIn === 'OFF';
                                 const isSick = row.statusText.includes('Sakit') || row.category === 'SICK';
 
                                 if (isOff) {
