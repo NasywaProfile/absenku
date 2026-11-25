@@ -2560,12 +2560,11 @@ export function AttendanceHistory({
                           : 'bg-slate-50 border-slate-200'
                       }`}>
                         <div className="flex items-center justify-between">
-                          <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+                          <span className={`text-[10px] font-bold uppercase tracking-wider block ${
                             existingRec.clockInStatus === 'LATE' || selectedCellInfo.status.includes('Terlambat')
                               ? 'text-amber-800'
                               : 'text-slate-500'
                           }`}>
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                             <span>
                               {existingRec.clockInStatus === 'LATE' || selectedCellInfo.status.includes('Terlambat')
                                 ? 'Alasan Keterlambatan'
@@ -2578,15 +2577,14 @@ export function AttendanceHistory({
                             </span>
                           )}
                         </div>
-                        <p className="text-slate-800 italic text-xs mt-0.5 font-medium leading-relaxed">
-                          "{existingRec.notes}"
+                        <p className="text-slate-800 text-xs mt-0.5 font-medium leading-relaxed">
+                          {existingRec.notes}
                         </p>
                       </div>
                     ) : (existingRec?.clockInStatus === 'LATE' || selectedCellInfo.status.includes('Terlambat')) ? (
                       <div className="p-3 rounded-xl border border-amber-200/60 bg-amber-50/50 text-left flex items-center justify-between gap-2">
-                        <span className="text-xs text-amber-800 italic flex items-center gap-1.5">
-                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                          <span>Belum ada alasan keterlambatan</span>
+                        <span className="text-xs text-amber-800 font-medium">
+                          Belum ada alasan keterlambatan
                         </span>
                         {isAdmin && (
                           <button

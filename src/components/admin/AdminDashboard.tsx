@@ -2165,8 +2165,8 @@ export function AdminDashboard({
                       </span>
                     )}
                   </div>
-                  <p className="text-slate-800 font-medium italic text-xs leading-relaxed">
-                    "{selectedAttendanceDetail.notes}"
+                  <p className="text-slate-800 font-medium text-xs leading-relaxed">
+                    {selectedAttendanceDetail.notes}
                   </p>
                 </div>
               )}

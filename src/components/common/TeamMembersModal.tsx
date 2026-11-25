@@ -374,12 +374,11 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
 
                       return (
                         <div className="pt-2 border-t border-slate-100 flex flex-col gap-1 w-full bg-amber-50/80 p-2.5 rounded-xl border border-amber-200/90 text-left">
-                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-900">
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <div className="text-[11px] font-bold text-amber-900">
                             <span>Alasan Keterlambatan:</span>
                           </div>
-                          <p className="text-amber-950 italic text-[11px] font-medium leading-relaxed pl-5">
-                            "{reasonText}"
+                          <p className="text-amber-950 text-[11px] font-medium leading-relaxed">
+                            {reasonText}
                           </p>
                         </div>
                       );

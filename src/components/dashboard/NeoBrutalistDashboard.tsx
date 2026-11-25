@@ -722,7 +722,7 @@ export function NeoBrutalistDashboard({
                             <span className="font-semibold text-slate-700 shrink-0">
                               {isLate ? 'Alasan Terlambat:' : 'Catatan Presensi:'}
                             </span>
-                            <span className="italic text-slate-800 break-words">"{todayRecord.notes}"</span>
+                            <span className="text-slate-800 break-words font-medium">{todayRecord.notes}</span>
                           </div>
                           {isLate && (
                             <button
