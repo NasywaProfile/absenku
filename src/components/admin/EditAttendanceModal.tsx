@@ -45,8 +45,10 @@ export function EditAttendanceModal({
   if (!isOpen || !record) return null;
 
   const isSelf = Boolean(
-    (currentUserId && record.userId === currentUserId) ||
-    (currentUserName && record.userName.toLowerCase() === currentUserName.toLowerCase())
+    currentUserId !== 'usr_super_admin' && (
+      (currentUserId && record.userId === currentUserId) ||
+      (currentUserName && record.userName.toLowerCase() === currentUserName.toLowerCase())
+    )
   );
 
   // Cek perizinan aktif yang disetujui pada tanggal ini (prioritas: Sakit > Cuti/Izin > Dinas Luar > WFH)
@@ -142,11 +144,15 @@ export function EditAttendanceModal({
         ? 'DINAS_APPROVED'
         : locationStatus;
 
+    const cleanClockInTime = isOffSelected
+      ? '08:00'
+      : (clockInTime ? clockInTime.replace(/\s*wib/i, '').trim() : '08:00');
+
     const updated: AttendanceRecord = {
       ...record,
       clockInLocationStatus: effectiveLocationStatus,
       clockInStatus: isOffSelected ? 'ON_TIME' : attendanceStatus,
-      clockInTime: isOffSelected ? '' : `${clockInTime} WIB`,
+      clockInTime: cleanClockInTime,
       clockInLateMinutes: !isOffSelected && attendanceStatus === 'LATE' ? Math.max(1, lateMinutes) : 0,
       clockInDistanceMeter:
         isOffSelected

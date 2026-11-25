@@ -2598,14 +2598,29 @@ export function AttendanceHistory({
                           <button
                             type="button"
                             onClick={() => {
+                              const cleanName = safeLower(selectedCellInfo.name).trim();
+                              const matchedUser = users.find(
+                                (u) =>
+                                  safeLower(u.name).trim() === cleanName ||
+                                  safeLower(u.name).includes(cleanName) ||
+                                  cleanName.includes(safeLower(u.name))
+                              );
+                              const targetId = existingRec?.userId || matchedUser?.id || '';
                               const targetRec = existingRec || ({
                                 id: `att_${Date.now()}`,
-                                userId: matchedUser?.id || '',
+                                userId: targetId,
                                 userName: matchedUser?.name || selectedCellInfo.name,
+                                userAvatar: matchedUser?.avatar || '',
+                                department: matchedUser?.department || 'Divisi Operasional',
+                                employmentType: matchedUser?.employmentType || 'CONTRACT',
                                 date: rawDate,
                                 clockInTime: '08:00',
                                 clockInStatus: 'LATE',
+                                clockInLocationStatus: 'IN_OFFICE',
                                 clockInLateMinutes: 15,
+                                clockInDistanceMeter: 15,
+                                workMode: 'WFO',
+                                syncStatus: 'SYNCED',
                               } as AttendanceRecord);
                               setEditingRecord(targetRec);
                             }}
@@ -2670,24 +2685,27 @@ export function AttendanceHistory({
                   <button
                     type="button"
                     onClick={() => {
+                      const cleanName = safeLower(selectedCellInfo.name).trim();
                       const matchedUser = users.find(
                         (u) =>
-                          safeLower(u.name).includes(safeLower(selectedCellInfo.name)) ||
-                          safeLower(selectedCellInfo.name).includes(safeLower(u.name))
+                          safeLower(u.name).trim() === cleanName ||
+                          safeLower(u.name).includes(cleanName) ||
+                          cleanName.includes(safeLower(u.name))
                       );
                       const rawDate =
                         allMatrixRows.find((r) => r.dateStr === selectedCellInfo.date)?.rawDate ||
                         getCurrentDateString();
                       const existingRec = attendanceRecords.find(
                         (r) =>
-                          (r.userId === matchedUser?.id || r.userName === selectedCellInfo.name) &&
+                          (r.userId === matchedUser?.id || safeLower(r.userName).trim() === cleanName) &&
                           r.date === rawDate
                       );
 
+                      const targetUserId = existingRec?.userId || matchedUser?.id || 'usr_unknown';
                       const recordToEdit: AttendanceRecord = existingRec || {
                         id: `att_edit_${Date.now()}`,
-                        userId: matchedUser?.id || 'usr_unknown',
-                        userName: selectedCellInfo.name,
+                        userId: targetUserId,
+                        userName: matchedUser?.name || selectedCellInfo.name,
                         userAvatar:
                           matchedUser?.avatar ||
                           'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&q=80',
@@ -2697,9 +2715,9 @@ export function AttendanceHistory({
                         clockInTime: '08:00',
                         clockInLat: -6.2088,
                         clockInLng: 106.8456,
-                        clockInStatus: selectedCellInfo.status === 'Terlambat' ? 'LATE' : 'ON_TIME',
+                        clockInStatus: selectedCellInfo.status.includes('Terlambat') ? 'LATE' : 'ON_TIME',
                         clockInLocationStatus: 'IN_OFFICE',
-                        clockInLateMinutes: selectedCellInfo.status === 'Terlambat' ? 15 : 0,
+                        clockInLateMinutes: selectedCellInfo.status.includes('Terlambat') ? 15 : 0,
                         clockInDistanceMeter: 15,
                         workMode: 'WFO',
                         syncStatus: 'SYNCED',
@@ -2737,21 +2755,27 @@ export function AttendanceHistory({
             safeLower(member.name) === safeLower(currentUser.name);
           if (isSelf) return;
 
+          const cleanName = safeLower(member.name).trim();
           const matchedUser = users.find(
             (u) =>
-              safeLower(u.name).includes(safeLower(member.name)) ||
-              safeLower(member.name).includes(safeLower(u.name))
+              (member.id && u.id === member.id) ||
+              safeLower(u.name).trim() === cleanName ||
+              safeLower(u.name).includes(cleanName) ||
+              cleanName.includes(safeLower(u.name))
           );
 
           const rawDate = teamMembersModalData.date || getCurrentDateString();
           const existingRec = attendanceRecords.find(
-            (r) => (r.userId === matchedUser?.id || r.userName === member.name) && r.date === rawDate
+            (r) =>
+              (r.userId === member.id || r.userId === matchedUser?.id || safeLower(r.userName).trim() === cleanName) &&
+              r.date === rawDate
           );
 
+          const targetUserId = existingRec?.userId || member.id || matchedUser?.id || 'usr_unknown';
           const recordToEdit: AttendanceRecord = existingRec || {
             id: `att_edit_${Date.now()}`,
-            userId: matchedUser?.id || 'usr_unknown',
-            userName: member.name,
+            userId: targetUserId,
+            userName: matchedUser?.name || member.name,
             userAvatar:
               member.avatar ||
               matchedUser?.avatar ||

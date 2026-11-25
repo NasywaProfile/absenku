@@ -926,6 +926,8 @@ export const AppStorage = {
       id: newRecord.id,
       user_id: newRecord.userId,
       pengguna_id: newRecord.userId,
+      user_name: newRecord.userName,
+      nama_karyawan: newRecord.userName,
       date: newRecord.date,
       clock_in_time: newRecord.clockInTime,
       clock_in_lat: newRecord.clockInLat,
@@ -942,10 +944,12 @@ export const AppStorage = {
         if (!srv) return;
         const currentRecords = this.getAttendanceRecords();
         const synced = currentRecords.map((r) => {
-          if (r.userId === newRecord.userId && r.date === newRecord.date) {
+          if ((r.userId === newRecord.userId || (r.userName && r.userName === newRecord.userName)) && r.date === newRecord.date) {
             return {
               ...r,
               id: srv.id || r.id,
+              userId: srv.pengguna_id || r.userId,
+              userName: srv.nama_karyawan || r.userName,
               clockInTime: srv.jam_masuk || srv.clock_in_time || r.clockInTime,
               clockInDistanceMeter: srv.jarak_meter ?? srv.clock_in_distance_meter ?? r.clockInDistanceMeter,
               clockInLocationStatus: (srv.status_lokasi || srv.clock_in_location_status || r.clockInLocationStatus) as any,

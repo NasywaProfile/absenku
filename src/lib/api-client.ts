@@ -244,6 +244,8 @@ export const ApiClient = {
     id?: string;
     user_id?: string;
     pengguna_id?: string;
+    user_name?: string;
+    nama_karyawan?: string;
     date?: string;
     clock_in_time: string;
     clock_in_lat?: number | null;
