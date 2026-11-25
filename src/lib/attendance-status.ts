@@ -167,10 +167,11 @@ function sameUser(
   item: { userId?: string; userName?: string },
   user: UserRef
 ): boolean {
-  if (item.userId && item.userId === user.id) return true;
-  return (
-    !!item.userName && !!user.name && item.userName.toLowerCase() === user.name.toLowerCase()
-  );
+  if (item.userId && user.id && String(item.userId).trim() === String(user.id).trim()) return true;
+  const itemTrim = (item.userName || '').trim().toLowerCase();
+  const userTrim = (user.name || '').trim().toLowerCase();
+  if (itemTrim && userTrim && itemTrim === userTrim) return true;
+  return false;
 }
 
 export function isDateInRange(date: string, start: string, end: string): boolean {

@@ -56,14 +56,14 @@ export function saveAttendanceWithOfflineSupport(
 
   const finalRecord: AttendanceRecord = {
     ...record,
-    syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC',
+    syncStatus: record.syncStatus || (isOnline ? 'SYNCED' : 'PENDING_SYNC'),
     offlineLoggedAt: !isOnline ? new Date().toISOString() : undefined,
   };
 
   // Always persist immediately into localStorage
   AppStorage.saveAttendanceRecord(finalRecord);
 
-  if (!isOnline) {
+  if (!isOnline || finalRecord.syncStatus === 'PENDING_SYNC') {
     const queueItem: OfflineSyncItem = {
       id: `queue-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       recordId: finalRecord.id,

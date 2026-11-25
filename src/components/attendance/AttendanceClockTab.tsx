@@ -26,6 +26,7 @@ import {
   formatIndonesianDate,
 } from '../../lib/time-utils.ts';
 import { AppStorage } from '../../lib/storage.ts';
+import { ApiClient } from '../../lib/api-client.ts';
 import {
   getApprovedLeaveForDate,
   isOffCategory,
@@ -116,6 +117,7 @@ export function AttendanceClockTab({
   const [clockInNotes, setClockInNotes] = useState('');
   const [isEditingLateReason, setIsEditingLateReason] = useState(false);
   const [editReasonText, setEditReasonText] = useState('');
+  const [isSubmittingClockIn, setIsSubmittingClockIn] = useState(false);
 
   // Calendar State (Exact same as Beranda Kalender Presensi)
   const todayDateStr = getCurrentDateString();
@@ -239,8 +241,8 @@ export function AttendanceClockTab({
   );
   const isCurrentlyLate = currentPunctuality.status === 'LATE';
 
-  const handleClockIn = () => {
-    if (isOffToday) {
+  const handleClockIn = async () => {
+    if (isSubmittingClockIn || isOffToday) {
       return;
     }
     if (!currentCoords) {
@@ -255,6 +257,8 @@ export function AttendanceClockTab({
       });
       return;
     }
+
+    setIsSubmittingClockIn(true);
     const today = getCurrentDateString();
     const time = getCurrentTimeString();
     const punctuality = calculateClockInPunctuality(
@@ -281,7 +285,7 @@ export function AttendanceClockTab({
       ? 'WFH_APPROVED'
       : 'OUT_OF_RANGE';
 
-    const newRecord: AttendanceRecord = {
+    let newRecord: AttendanceRecord = {
       id: `att_${Date.now()}`,
       userId: currentUser.id,
       userName: currentUser.name,
@@ -301,7 +305,103 @@ export function AttendanceClockTab({
       syncStatus: 'SYNCED',
     };
 
+    // Sinkronisasi otoritatif langsung ke Laravel Backend & MySQL
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    if (isOnline) {
+      try {
+        const res = await ApiClient.clockIn({
+          id: newRecord.id,
+          user_id: newRecord.userId,
+          pengguna_id: newRecord.userId,
+          date: newRecord.date,
+          clock_in_time: newRecord.clockInTime,
+          clock_in_lat: newRecord.clockInLat,
+          clock_in_lng: newRecord.clockInLng,
+          clock_in_distance_meter: newRecord.clockInDistanceMeter,
+          clock_in_location_status: newRecord.clockInLocationStatus,
+          clock_in_status: newRecord.clockInStatus,
+          clock_in_late_minutes: newRecord.clockInLateMinutes,
+          work_mode: newRecord.workMode,
+          notes: newRecord.notes,
+        });
+
+        const srv = res?.record;
+        if (srv) {
+          newRecord = {
+            ...newRecord,
+            id: srv.id || newRecord.id,
+            clockInTime: srv.jam_masuk || srv.clock_in_time || newRecord.clockInTime,
+            clockInDistanceMeter: srv.jarak_meter ?? srv.clock_in_distance_meter ?? newRecord.clockInDistanceMeter,
+            clockInLocationStatus: (srv.status_lokasi || srv.clock_in_location_status || newRecord.clockInLocationStatus) as any,
+            clockInStatus: (srv.status_kehadiran || srv.clock_in_status || newRecord.clockInStatus) as any,
+            clockInLateMinutes: srv.menit_keterlambatan ?? srv.clock_in_late_minutes ?? newRecord.clockInLateMinutes,
+            workMode: (srv.mode_kerja || srv.work_mode || newRecord.workMode) as any,
+            syncStatus: 'SYNCED',
+          };
+        }
+      } catch (apiErr: any) {
+        setIsSubmittingClockIn(false);
+        if (apiErr?.status === 401) {
+          setConfirmModal({
+            isOpen: true,
+            title: 'Sesi Login Berakhir',
+            message: 'Sesi login Anda telah berakhir. Silakan login kembali agar presensi masuk tersimpan ke server.',
+            variant: 'warning',
+            confirmText: 'Mengerti',
+            hideCancel: true,
+            onConfirm: () => setConfirmModal((prev) => ({ ...prev, isOpen: false })),
+          });
+          return;
+        }
+        if (apiErr?.status === 403 || apiErr?.status === 422) {
+          setConfirmModal({
+            isOpen: true,
+            title: 'Validasi Presensi Server',
+            message: apiErr.message || 'Presensi ditolak oleh server.',
+            variant: 'warning',
+            confirmText: 'Mengerti',
+            hideCancel: true,
+            onConfirm: () => setConfirmModal((prev) => ({ ...prev, isOpen: false })),
+          });
+          return;
+        }
+        if (apiErr?.status === 409) {
+          const srv = apiErr.data?.record;
+          if (srv) {
+            newRecord = {
+              ...newRecord,
+              id: srv.id || newRecord.id,
+              clockInTime: srv.jam_masuk || srv.clock_in_time || newRecord.clockInTime,
+              clockInDistanceMeter: srv.jarak_meter ?? srv.clock_in_distance_meter ?? newRecord.clockInDistanceMeter,
+              clockInLocationStatus: (srv.status_lokasi || srv.clock_in_location_status || newRecord.clockInLocationStatus) as any,
+              clockInStatus: (srv.status_kehadiran || srv.clock_in_status || newRecord.clockInStatus) as any,
+              clockInLateMinutes: srv.menit_keterlambatan ?? srv.clock_in_late_minutes ?? newRecord.clockInLateMinutes,
+              workMode: (srv.mode_kerja || srv.work_mode || newRecord.workMode) as any,
+              syncStatus: 'SYNCED',
+            };
+          } else {
+            setConfirmModal({
+              isOpen: true,
+              title: 'Presensi Hari Ini',
+              message: apiErr.message || 'Presensi masuk hari ini sudah pernah tercatat.',
+              variant: 'warning',
+              confirmText: 'Mengerti',
+              hideCancel: true,
+              onConfirm: () => setConfirmModal((prev) => ({ ...prev, isOpen: false })),
+            });
+            return;
+          }
+        } else {
+          // Kendala jaringan: simpan lokal dengan status PENDING_SYNC
+          newRecord.syncStatus = 'PENDING_SYNC';
+        }
+      }
+    } else {
+      newRecord.syncStatus = 'PENDING_SYNC';
+    }
+
     AppStorage.recordClockIn(newRecord);
+    setIsSubmittingClockIn(false);
     setDataVersion((v) => v + 1);
     onRefreshData();
   };
@@ -787,10 +887,20 @@ export function AttendanceClockTab({
                     <button
                       type="button"
                       onClick={handleClockIn}
-                      className="w-full py-3 px-4 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white text-xs font-bold rounded-2xl shadow-sm border border-[#1E3A8A] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      disabled={isSubmittingClockIn}
+                      className="w-full py-3 px-4 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white text-xs font-bold rounded-2xl shadow-sm border border-[#1E3A8A] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                      <Clock className="w-4 h-4 text-white" />
-                      <span>Presensi Masuk Sekarang</span>
+                      {isSubmittingClockIn ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <span>Menyimpan Presensi ke Server...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="w-4 h-4 text-white" />
+                          <span>Presensi Masuk Sekarang</span>
+                        </>
+                      )}
                     </button>
                   </Tooltip>
                 </div>

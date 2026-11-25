@@ -963,6 +963,37 @@ export const AppStorage = {
         }
       })
       .catch((err: any) => {
+        // Jika status 401 (Unauthorized): sesi login kadaluarsa
+        if (err && err.status === 401) {
+          const currentRecords = this.getAttendanceRecords();
+          const reconciled = currentRecords.map((r) =>
+            r.userId === newRecord.userId && r.date === newRecord.date
+              ? { ...r, syncStatus: 'PENDING_SYNC' as const }
+              : r
+          );
+          this.saveAttendanceRecords(reconciled);
+          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+            window.dispatchEvent(
+              new CustomEvent('absenku:attendance_error', {
+                detail: { message: 'Sesi login Anda telah berakhir. Silakan login kembali agar presensi masuk tersimpan ke server.' },
+              })
+            );
+          }
+          return;
+        }
+
+        // Jika kendala koneksi atau offline: tandai PENDING_SYNC agar dicoba kembali saat online
+        if (err && (!err.status || err.isNetworkError)) {
+          const currentRecords = this.getAttendanceRecords();
+          const reconciled = currentRecords.map((r) =>
+            r.userId === newRecord.userId && r.date === newRecord.date
+              ? { ...r, syncStatus: 'PENDING_SYNC' as const }
+              : r
+          );
+          this.saveAttendanceRecords(reconciled);
+          return;
+        }
+
         // Jika server menolak presensi (403/409/422), batalkan record lokal palsu & pakai record otoritatif server jika ada
         if (err && [403, 409, 422].includes(err.status)) {
           const currentRecords = this.getAttendanceRecords();

@@ -178,7 +178,25 @@ export function AttendanceHistory({
 
   const attendanceRecords = useMemo(() => {
     const storageRecs = AppStorage.getAttendanceRecords();
-    const source = storageRecs.length > 0 ? storageRecs : (propAttendanceRecords || propRecords || []);
+    const propRecs = propAttendanceRecords || propRecords || [];
+
+    // Gabungkan rekaman dari server (props) dan localStorage secara pintar
+    const map = new Map<string, AttendanceRecord>();
+    for (const r of storageRecs) {
+      if (r && (r.userId || r.userName) && r.date) {
+        const key = `${r.userId || safeLower(r.userName).trim()}_${r.date}`;
+        map.set(key, r);
+      }
+    }
+    for (const r of propRecs) {
+      if (r && (r.userId || r.userName) && r.date) {
+        const key = `${r.userId || safeLower(r.userName).trim()}_${r.date}`;
+        const existing = map.get(key);
+        map.set(key, { ...(existing || {}), ...r });
+      }
+    }
+    const combined = Array.from(map.values());
+    const source = combined.length > 0 ? combined : storageRecs.length > 0 ? storageRecs : propRecs;
     return source.filter(
       (r) => r.userId !== 'usr_super_admin' && safeLower(r.userName) !== 'super admin'
     );
@@ -186,7 +204,21 @@ export function AttendanceHistory({
 
   const leaves = useMemo(() => {
     const storageLeaves = AppStorage.getLeaveRequests();
-    const source = storageLeaves.length > 0 ? storageLeaves : (propLeaves || []);
+    const propLeavesList = propLeaves || [];
+    const map = new Map<string, LeaveRequest>();
+    for (const l of storageLeaves) {
+      if (l && l.id) {
+        map.set(String(l.id), l);
+      }
+    }
+    for (const l of propLeavesList) {
+      if (l && l.id) {
+        const existing = map.get(String(l.id));
+        map.set(String(l.id), { ...(existing || {}), ...l });
+      }
+    }
+    const combined = Array.from(map.values());
+    const source = combined.length > 0 ? combined : storageLeaves.length > 0 ? storageLeaves : propLeavesList;
     return source.filter(
       (l) => l.userId !== 'usr_super_admin' && safeLower(l.userName) !== 'super admin'
     );
@@ -599,12 +631,46 @@ export function AttendanceHistory({
     });
   };
 
-  // Kolom nama karyawan di tabel presensi: Hanya menampilkan karyawan yang sudah terdaftar (Super Admin dikecualikan dari presensi)
+  // Kolom nama karyawan di tabel presensi: Menampilkan seluruh karyawan aktif atau yang memiliki rekaman presensi / izin
   const employeeColumns = useMemo(() => {
-    return users
-      .filter((u) => u.status === 'ACTIVE' && u.role !== 'SUPER_ADMIN')
-      .map((u) => u.name);
-  }, [users]);
+    const list: string[] = [];
+    const seen = new Set<string>();
+
+    // 1. Karyawan aktif dari daftar pengguna (Super Admin dikecualikan dari presensi)
+    users
+      .filter((u) => {
+        if (u.role === 'SUPER_ADMIN' || u.id === 'usr_super_admin') return false;
+        const s = (u.status || '').toUpperCase();
+        return s === 'ACTIVE' || s === 'APPROVED' || !s;
+      })
+      .forEach((u) => {
+        const name = (u.name || '').trim();
+        if (name && !seen.has(safeLower(name))) {
+          seen.add(safeLower(name));
+          list.push(name);
+        }
+      });
+
+    // 2. Karyawan yang tercatat dalam riwayat presensi (agar tidak pernah hilang dari matriks)
+    (attendanceRecords || []).forEach((r) => {
+      const name = (r.userName || '').trim();
+      if (name && safeLower(name) !== 'super admin' && !seen.has(safeLower(name))) {
+        seen.add(safeLower(name));
+        list.push(name);
+      }
+    });
+
+    // 3. Karyawan yang memiliki pengajuan cuti/izin
+    (leaves || []).forEach((l) => {
+      const name = (l.userName || '').trim();
+      if (name && safeLower(name) !== 'super admin' && !seen.has(safeLower(name))) {
+        seen.add(safeLower(name));
+        list.push(name);
+      }
+    });
+
+    return list;
+  }, [users, attendanceRecords, leaves]);
 
   // Mapping nama & foto profil karyawan untuk kolom matriks
   const employeeNamesMap = useMemo(() => {
@@ -612,22 +678,30 @@ export function AttendanceHistory({
     users
       .filter((u) => u.role !== 'SUPER_ADMIN')
       .forEach((u) => {
-        map[u.name] = u.name;
+        if (u.name) map[u.name] = u.name;
       });
+    (attendanceRecords || []).forEach((r) => {
+      if (r.userName) map[r.userName] = r.userName;
+    });
     return map;
-  }, [users]);
+  }, [users, attendanceRecords]);
 
   const employeeAvatarMap = useMemo(() => {
     const map: Record<string, string> = {};
     users
       .filter((u) => u.role !== 'SUPER_ADMIN')
       .forEach((u) => {
-        if (u.avatar) {
+        if (u.name && u.avatar) {
           map[u.name] = u.avatar;
         }
       });
+    (attendanceRecords || []).forEach((r) => {
+      if (r.userName && r.userAvatar && !map[r.userName]) {
+        map[r.userName] = r.userAvatar;
+      }
+    });
     return map;
-  }, [users]);
+  }, [users, attendanceRecords]);
 
   // Avatar foto profil untuk check-in avatar stack
   const sampleAvatars = useMemo(() => {
@@ -697,7 +771,7 @@ export function AttendanceHistory({
       const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6) && rawDate !== todayDateStr;
 
       const dayRecords = (attendanceRecords || []).filter((r) => {
-        const u = users.find((usr) => usr.id === r.userId || safeLower(usr.name) === safeLower(r.userName));
+        const u = users.find((usr) => usr.id === r.userId || safeLower(usr.name).trim() === safeLower(r.userName).trim());
         return r.date === rawDate && u?.role !== 'SUPER_ADMIN';
       });
 
@@ -708,8 +782,8 @@ export function AttendanceHistory({
       employeeColumns.forEach((emp) => {
         const matchedUser = users.find(
           (u) =>
-            safeLower(u.name) === safeLower(emp) ||
-            safeLower(u.name).includes(safeLower(emp))
+            safeLower(u.name).trim() === safeLower(emp).trim() ||
+            safeLower(u.name).trim().includes(safeLower(emp).trim())
         );
 
         const ds = getDailyStatus({

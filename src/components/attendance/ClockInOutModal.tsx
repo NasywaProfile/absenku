@@ -20,6 +20,7 @@ import {
   getCurrentDateString,
 } from '../../lib/time-utils.ts';
 import { AppStorage } from '../../lib/storage.ts';
+import { ApiClient } from '../../lib/api-client.ts';
 import { getApprovedLeaveForDate, isOffCategory } from '../../lib/attendance-status.ts';
 import { saveAttendanceWithOfflineSupport } from '../../lib/offline-sync.ts';
 import { GeofenceIllustration } from '../common/Illustrations.tsx';
@@ -109,9 +110,10 @@ export function ClockInOutModal({
     executeModalSubmit();
   };
 
-  const executeModalSubmit = () => {
+  const executeModalSubmit = async () => {
     if (!coords) return;
     setIsSubmitting(true);
+    setSubmitError(null);
 
     try {
       const isFreelance = currentUser.employmentType === 'FREELANCE';
@@ -139,7 +141,7 @@ export function ClockInOutModal({
       const clockInStatusResult = isLateClockIn ? 'LATE' : 'ON_TIME';
       const lateMinutesResult = isLateClockIn ? punctuality.lateMinutes : 0;
 
-      const newRecord: AttendanceRecord = {
+      let newRecord: AttendanceRecord = {
         id: `att-${Date.now()}`,
         userId: currentUser.id,
         userName: currentUser.name,
@@ -156,7 +158,81 @@ export function ClockInOutModal({
         clockInStatus: clockInStatusResult,
         clockInLateMinutes: lateMinutesResult,
         notes: notes.trim() || undefined,
+        syncStatus: 'SYNCED',
       };
+
+      // Sinkronisasi otoritatif langsung ke Laravel Backend & MySQL
+      const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      if (isOnline) {
+        try {
+          const res = await ApiClient.clockIn({
+            id: newRecord.id,
+            user_id: newRecord.userId,
+            pengguna_id: newRecord.userId,
+            date: newRecord.date,
+            clock_in_time: newRecord.clockInTime,
+            clock_in_lat: newRecord.clockInLat,
+            clock_in_lng: newRecord.clockInLng,
+            clock_in_distance_meter: newRecord.clockInDistanceMeter,
+            clock_in_location_status: newRecord.clockInLocationStatus,
+            clock_in_status: newRecord.clockInStatus,
+            clock_in_late_minutes: newRecord.clockInLateMinutes,
+            work_mode: newRecord.workMode,
+            notes: newRecord.notes,
+          });
+
+          const srv = res?.record;
+          if (srv) {
+            newRecord = {
+              ...newRecord,
+              id: srv.id || newRecord.id,
+              clockInTime: srv.jam_masuk || srv.clock_in_time || newRecord.clockInTime,
+              clockInDistanceMeter: srv.jarak_meter ?? srv.clock_in_distance_meter ?? newRecord.clockInDistanceMeter,
+              clockInLocationStatus: (srv.status_lokasi || srv.clock_in_location_status || newRecord.clockInLocationStatus) as any,
+              clockInStatus: (srv.status_kehadiran || srv.clock_in_status || newRecord.clockInStatus) as any,
+              clockInLateMinutes: srv.menit_keterlambatan ?? srv.clock_in_late_minutes ?? newRecord.clockInLateMinutes,
+              workMode: (srv.mode_kerja || srv.work_mode || newRecord.workMode) as any,
+              syncStatus: 'SYNCED',
+            };
+          }
+        } catch (apiErr: any) {
+          if (apiErr?.status === 401) {
+            setSubmitError('Sesi login Anda telah berakhir. Silakan login kembali agar presensi masuk tersimpan ke server.');
+            setIsSubmitting(false);
+            return;
+          }
+          if (apiErr?.status === 403 || apiErr?.status === 422) {
+            setSubmitError(apiErr.message || 'Presensi ditolak oleh server.');
+            setIsSubmitting(false);
+            return;
+          }
+          if (apiErr?.status === 409) {
+            const srv = apiErr.data?.record;
+            if (srv) {
+              newRecord = {
+                ...newRecord,
+                id: srv.id || newRecord.id,
+                clockInTime: srv.jam_masuk || srv.clock_in_time || newRecord.clockInTime,
+                clockInDistanceMeter: srv.jarak_meter ?? srv.clock_in_distance_meter ?? newRecord.clockInDistanceMeter,
+                clockInLocationStatus: (srv.status_lokasi || srv.clock_in_location_status || newRecord.clockInLocationStatus) as any,
+                clockInStatus: (srv.status_kehadiran || srv.clock_in_status || newRecord.clockInStatus) as any,
+                clockInLateMinutes: srv.menit_keterlambatan ?? srv.clock_in_late_minutes ?? newRecord.clockInLateMinutes,
+                workMode: (srv.mode_kerja || srv.work_mode || newRecord.workMode) as any,
+                syncStatus: 'SYNCED',
+              };
+            } else {
+              setSubmitError(apiErr.message || 'Presensi masuk hari ini sudah pernah tercatat.');
+              setIsSubmitting(false);
+              return;
+            }
+          } else {
+            // Kendala jaringan: simpan lokal dengan status PENDING_SYNC untuk diunggah otomatis saat koneksi pulih
+            newRecord.syncStatus = 'PENDING_SYNC';
+          }
+        }
+      } else {
+        newRecord.syncStatus = 'PENDING_SYNC';
+      }
 
       const { record } = saveAttendanceWithOfflineSupport(newRecord, 'CLOCK_IN');
       onSuccess(record);

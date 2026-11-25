@@ -281,11 +281,17 @@ export default function App() {
       }
 
       // 3. Ambil data presensi dari server
-      const serverAtt = await ApiClient.getAttendance().catch(() => null);
-      if (Array.isArray(serverAtt) && serverAtt.length > 0) {
+      const serverAttRaw = await ApiClient.getAttendance().catch(() => null);
+      const serverAttList = Array.isArray(serverAttRaw)
+        ? serverAttRaw
+        : Array.isArray((serverAttRaw as any)?.data)
+        ? (serverAttRaw as any).data
+        : null;
+
+      if (Array.isArray(serverAttList) && serverAttList.length > 0) {
         const localAtt = AppStorage.getAttendanceRecords();
         const mergedAtt = [...localAtt];
-        for (const sa of serverAtt) {
+        for (const sa of serverAttList) {
           const mappedAtt: AttendanceRecord = {
             id: sa.id,
             userId: sa.user_id || sa.pengguna_id || sa.userId,
@@ -316,6 +322,71 @@ export default function App() {
         }
         AppStorage.saveAttendanceRecords(mergedAtt, true);
         setRecords(mergedAtt);
+      }
+
+      // Auto-Sync: Unggah otomatis presensi lokal milik karyawan yang belum tersimpan di server
+      const currentAuthUser = AppStorage.getSessionUser() || AppStorage.getCurrentUser();
+      if (
+        currentAuthUser &&
+        currentAuthUser.role !== 'SUPER_ADMIN' &&
+        currentAuthUser.id !== 'usr_super_admin'
+      ) {
+        const localRecords = AppStorage.getAttendanceRecords();
+        const unpushedRecords = localRecords.filter((r) => {
+          if (!r || !r.userId || !r.date || !r.clockInTime) return false;
+          const isMyRecord =
+            r.userId === currentAuthUser.id ||
+            (currentAuthUser.name &&
+              r.userName &&
+              r.userName.trim().toLowerCase() === currentAuthUser.name.trim().toLowerCase());
+          if (!isMyRecord) return false;
+          if (r.syncStatus === 'PENDING_SYNC') return true;
+          if (Array.isArray(serverAttList)) {
+            const existsOnServer = serverAttList.some(
+              (sa: any) =>
+                sa.id === r.id ||
+                ((sa.user_id === r.userId || sa.pengguna_id === r.userId) &&
+                  (sa.date === r.date || sa.tanggal === r.date))
+            );
+            return !existsOnServer;
+          }
+          return false;
+        });
+
+        if (unpushedRecords.length > 0) {
+          for (const rec of unpushedRecords) {
+            try {
+              const res = await ApiClient.clockIn({
+                id: rec.id,
+                user_id: rec.userId,
+                pengguna_id: rec.userId,
+                date: rec.date,
+                clock_in_time: rec.clockInTime,
+                clock_in_lat: rec.clockInLat,
+                clock_in_lng: rec.clockInLng,
+                clock_in_distance_meter: rec.clockInDistanceMeter,
+                clock_in_location_status: rec.clockInLocationStatus,
+                clock_in_status: rec.clockInStatus,
+                clock_in_late_minutes: rec.clockInLateMinutes,
+                work_mode: rec.workMode,
+                notes: rec.notes,
+              });
+              const srv = res?.record;
+              rec.syncStatus = 'SYNCED';
+              if (srv && srv.id) {
+                rec.id = srv.id;
+              }
+              AppStorage.saveAttendanceRecord(rec);
+            } catch (syncErr: any) {
+              if (syncErr?.status === 409 && syncErr.data?.record) {
+                rec.syncStatus = 'SYNCED';
+                rec.id = syncErr.data.record.id || rec.id;
+                AppStorage.saveAttendanceRecord(rec);
+              }
+            }
+          }
+          setRecords(AppStorage.getAttendanceRecords());
+        }
       }
 
       // 4. Ambil data tugas Kanban dari server
