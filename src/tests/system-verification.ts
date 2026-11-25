@@ -480,6 +480,48 @@ assert(waRecap.includes('Alissa Anastasia (Karyawan Kontrak)'), 'WA Rekap memuat
 assert(waRecap.includes('08:12:30 WIB'), 'WA Rekap memuat jam masuk akurat');
 assert(waRecap.includes('Menyelesaikan integrasi styling badge'), 'WA Rekap memuat daftar task dari logbook');
 
+// 6.3. Alasan Keterlambatan Opsional
+AppStorage.recordClockIn({
+  id: 'att_test_late_1',
+  userId: updatedUser!.id,
+  userName: updatedUser!.name,
+  userAvatar: updatedUser!.avatar,
+  department: updatedUser!.department,
+  employmentType: updatedUser!.employmentType,
+  date: '2026-11-03',
+  clockInTime: '08:45:00',
+  clockInLat: -7.98,
+  clockInLng: 112.63,
+  clockInDistanceMeter: 10,
+  clockInLocationStatus: 'IN_OFFICE',
+  clockInStatus: 'LATE',
+  clockInLateMinutes: 45,
+  workMode: 'WFO',
+  notes: 'Terjebak macet di jalan poros',
+});
+const savedLate1 = AppStorage.getAttendanceRecords().find((r) => r.id === 'att_test_late_1');
+assert(savedLate1?.notes === 'Terjebak macet di jalan poros', 'Alasan keterlambatan tersimpan saat diisi');
+
+AppStorage.recordClockIn({
+  id: 'att_test_late_2',
+  userId: updatedUser!.id,
+  userName: updatedUser!.name,
+  userAvatar: updatedUser!.avatar,
+  department: updatedUser!.department,
+  employmentType: updatedUser!.employmentType,
+  date: '2026-11-04',
+  clockInTime: '08:35:00',
+  clockInLat: -7.98,
+  clockInLng: 112.63,
+  clockInDistanceMeter: 10,
+  clockInLocationStatus: 'IN_OFFICE',
+  clockInStatus: 'LATE',
+  clockInLateMinutes: 35,
+  workMode: 'WFO',
+});
+const savedLate2 = AppStorage.getAttendanceRecords().find((r) => r.id === 'att_test_late_2');
+assert(savedLate2?.notes === undefined, 'Alasan keterlambatan bersifat opsional (dapat kosong tanpa error)');
+
 // -----------------------------------------------------------------------------
 // SUITE 7: INTEGRITAS DATA & ATURAN KEAMANAN ADMIN (SELF-EDIT PROTECTION)
 // -----------------------------------------------------------------------------

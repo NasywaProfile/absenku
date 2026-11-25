@@ -229,6 +229,13 @@ export function AttendanceClockTab({
     ? (isWithinRadius ? 'WFO' : 'WFH')
     : workMode;
 
+  const currentPunctuality = calculateClockInPunctuality(
+    getCurrentTimeString(),
+    officeConfig.workStartHour || '08:00',
+    officeConfig.gracePeriodMinutes || 0
+  );
+  const isCurrentlyLate = currentPunctuality.status === 'LATE';
+
   const handleClockIn = () => {
     if (isOffToday) {
       return;
@@ -658,21 +665,55 @@ export function AttendanceClockTab({
                         </div>
                       </div>
 
+                      {/* Tampilkan Alasan / Catatan Presensi jika ada */}
+                      {todayRecord.notes && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-200/60 text-[11px] text-slate-600 flex items-start gap-1.5 text-left">
+                          <span className="font-semibold text-slate-700 shrink-0">
+                            {todayRecord.clockInStatus === 'LATE' ? 'Alasan Terlambat:' : 'Catatan Presensi:'}
+                          </span>
+                          <span className="italic text-slate-800">"{todayRecord.notes}"</span>
+                        </div>
+                      )}
 
                     </div>
                   );
                 })()
               ) : (
-                <Tooltip content="Catat presensi kehadiran masuk kerja hari ini dengan verifikasi GPS" position="top" className="w-full">
-                  <button
-                    type="button"
-                    onClick={handleClockIn}
-                    className="w-full py-3 px-4 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white text-xs font-bold rounded-2xl shadow-sm border border-[#1E3A8A] transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <Clock className="w-4 h-4 text-white" />
-                    <span>Presensi Masuk Sekarang</span>
-                  </button>
-                </Tooltip>
+                <div className="w-full space-y-2.5">
+                  {/* Input Alasan Keterlambatan (Opsional saat terdeteksi terlambat) */}
+                  {isCurrentlyLate && (
+                    <div className="w-full p-3 bg-amber-50/80 border border-amber-200/90 rounded-2xl space-y-1.5 text-left animate-in fade-in duration-200 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-semibold text-amber-950 flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>Alasan Keterlambatan ({currentPunctuality.remarks})</span>
+                        </label>
+                        <span className="text-[10px] text-amber-700 font-medium bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200/80">
+                          Opsional
+                        </span>
+                      </div>
+                      <textarea
+                        value={clockInNotes}
+                        onChange={(e) => setClockInNotes(e.target.value)}
+                        placeholder="Tulis alasan terlambat jika ada (misal: terjebak macet, kendala kendaraan, dll)..."
+                        rows={2}
+                        maxLength={300}
+                        className="w-full text-xs p-2.5 bg-white border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 placeholder:text-slate-400 text-slate-800 transition-all resize-none leading-relaxed"
+                      />
+                    </div>
+                  )}
+
+                  <Tooltip content="Catat presensi kehadiran masuk kerja hari ini dengan verifikasi GPS" position="top" className="w-full">
+                    <button
+                      type="button"
+                      onClick={handleClockIn}
+                      className="w-full py-3 px-4 bg-[#1E3A8A] hover:bg-[#172554] active:scale-[0.98] text-white text-xs font-bold rounded-2xl shadow-sm border border-[#1E3A8A] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Clock className="w-4 h-4 text-white" />
+                      <span>Presensi Masuk Sekarang</span>
+                    </button>
+                  </Tooltip>
+                </div>
               )}
             </div>
           </div>

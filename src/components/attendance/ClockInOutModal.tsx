@@ -270,6 +270,29 @@ export function ClockInOutModal({
             </div>
           </div>
 
+          {/* Input Alasan Keterlambatan (Hanya tampil jika terdeteksi terlambat & sifatnya opsional) */}
+          {punctuality.status === 'LATE' && (
+            <div className="p-3.5 bg-amber-50/80 border border-amber-200/90 rounded-2xl space-y-2 animate-in fade-in duration-200 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-amber-950 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>Alasan Keterlambatan</span>
+                </label>
+                <span className="text-[10px] text-amber-700 font-medium bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200/80">
+                  Opsional
+                </span>
+              </div>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Tulis alasan terlambat jika ada (misal: terjebak macet, ban bocor, kendala di perjalanan, dll)..."
+                rows={2}
+                maxLength={300}
+                className="w-full text-xs p-2.5 bg-white border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 placeholder:text-slate-400 text-slate-800 transition-all resize-none leading-relaxed"
+              />
+            </div>
+          )}
+
           {/* Snapshot Geofence Radar Widget (Mengisi card secara proporsional dan penuh) */}
           <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs h-[420px] sm:h-[450px] flex flex-col">
             <GeolocationWidget

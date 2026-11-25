@@ -2146,11 +2146,28 @@ export function AdminDashboard({
                 </div>
               )}
 
-              {/* Catatan Presensi Masuk (Jika Ada) */}
+              {/* Catatan Presensi Masuk / Alasan Keterlambatan (Jika Ada) */}
               {selectedAttendanceDetail.notes && (
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Catatan Tambahan</span>
-                  <p className="text-slate-800 font-medium">"{selectedAttendanceDetail.notes}"</p>
+                <div className={`p-3.5 rounded-xl border space-y-1 ${
+                  selectedAttendanceDetail.clockInStatus === 'LATE'
+                    ? 'bg-amber-50/80 border-amber-200/90 text-amber-950'
+                    : 'bg-slate-50 border-slate-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider block ${
+                      selectedAttendanceDetail.clockInStatus === 'LATE' ? 'text-amber-800' : 'text-slate-400'
+                    }`}>
+                      {selectedAttendanceDetail.clockInStatus === 'LATE' ? 'Alasan Keterlambatan' : 'Catatan Tambahan'}
+                    </span>
+                    {selectedAttendanceDetail.clockInStatus === 'LATE' && (
+                      <span className="text-[10px] bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded-full border border-amber-200/80">
+                        Terlambat {selectedAttendanceDetail.clockInLateMinutes ? `(${selectedAttendanceDetail.clockInLateMinutes}m)` : ''}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-slate-800 font-medium italic text-xs leading-relaxed">
+                    "{selectedAttendanceDetail.notes}"
+                  </p>
                 </div>
               )}
 

@@ -1045,8 +1045,14 @@ export function AttendanceHistory({
         taskSummary = ds.leave?.reason || 'Pengajuan Perizinan Disetujui';
       } else if (myTaskLog?.tasks && myTaskLog.tasks.length > 0) {
         taskSummary = myTaskLog.tasks.join(', ');
+        if (myRecord?.notes && myRecord.notes.trim()) {
+          taskSummary += ` (Alasan: ${myRecord.notes.trim()})`;
+        }
       } else if (myRecord?.tasksDoneSummary && myRecord.tasksDoneSummary.length > 0) {
         taskSummary = myRecord.tasksDoneSummary.join(', ');
+        if (myRecord?.notes && myRecord.notes.trim()) {
+          taskSummary += ` (Alasan: ${myRecord.notes.trim()})`;
+        }
       } else if (myRecord?.notes && myRecord.notes.trim()) {
         taskSummary = myRecord.notes.trim();
       } else {
@@ -2448,10 +2454,40 @@ export function AttendanceHistory({
                     ? existingRec.tasksDoneSummary
                     : [];
 
-                const notes = userDailyTask?.notes || existingRec?.notes;
-
                 return (
                   <div className="space-y-2.5 pt-1">
+                    {/* Alasan Keterlambatan / Catatan Presensi Masuk (Jika Ada) */}
+                    {existingRec?.notes && (
+                      <div className={`p-3.5 rounded-xl border flex flex-col gap-1 text-left ${
+                        existingRec.clockInStatus === 'LATE' || selectedCellInfo.status.includes('Terlambat')
+                          ? 'bg-amber-50/80 border-amber-200/90 text-amber-950'
+                          : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+                            existingRec.clockInStatus === 'LATE' || selectedCellInfo.status.includes('Terlambat')
+                              ? 'text-amber-800'
+                              : 'text-slate-500'
+                          }`}>
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>
+                              {existingRec.clockInStatus === 'LATE' || selectedCellInfo.status.includes('Terlambat')
+                                ? 'Alasan Keterlambatan'
+                                : 'Catatan Presensi'}
+                            </span>
+                          </span>
+                          {(existingRec.clockInStatus === 'LATE' || selectedCellInfo.status.includes('Terlambat')) && (
+                            <span className="text-[10px] bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded-full border border-amber-200/80">
+                              Terlambat {existingRec.clockInLateMinutes ? `(${existingRec.clockInLateMinutes}m)` : ''}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-slate-800 italic text-xs mt-0.5 font-medium leading-relaxed">
+                          "{existingRec.notes}"
+                        </p>
+                      </div>
+                    )}
+
                     <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2">
                       <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
                         <ClipboardList className="w-4 h-4 text-[#1E3A8A]" />
@@ -2472,10 +2508,10 @@ export function AttendanceHistory({
                         </p>
                       )}
 
-                      {notes && notes.trim() && (
+                      {userDailyTask?.notes && userDailyTask.notes.trim() && userDailyTask.notes !== existingRec?.notes && (
                         <div className="pt-2 border-t border-slate-200/60 text-[11px] text-slate-600">
-                          <span className="font-semibold text-slate-700">Catatan: </span>
-                          <span>{notes}</span>
+                          <span className="font-semibold text-slate-700">Catatan Logbook: </span>
+                          <span>{userDailyTask.notes}</span>
                         </div>
                       )}
                     </div>
