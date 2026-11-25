@@ -34,6 +34,7 @@ export interface TeamMemberItem {
   attachmentType?: string;
   logbookTasks?: string[];
   notes?: string;
+  lateReason?: string;
 }
 
 export interface TeamMembersModalProps {
@@ -362,6 +363,28 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                       </div>
                     )}
 
+                    {/* Alasan Keterlambatan (Muncul Sebelum Logbook) */}
+                    {(() => {
+                      const isLate =
+                        member.statusColor === 'amber' ||
+                        Boolean(member.statusBadge && member.statusBadge.toLowerCase().includes('terlambat'));
+                      const reasonText = member.lateReason?.trim() || (isLate && member.notes?.trim() ? member.notes.trim() : undefined);
+
+                      if (!isLate || !reasonText) return null;
+
+                      return (
+                        <div className="pt-2 border-t border-slate-100 flex flex-col gap-1 w-full bg-amber-50/80 p-2.5 rounded-xl border border-amber-200/90 text-left">
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-900">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>Alasan Keterlambatan:</span>
+                          </div>
+                          <p className="text-amber-950 italic text-[11px] font-medium leading-relaxed pl-5">
+                            "{reasonText}"
+                          </p>
+                        </div>
+                      );
+                    })()}
+
                     {/* Logbook / Daftar Tugas Harian (Hanya Muncul Jika Sudah Diisi oleh Staf) */}
                     {member.logbookTasks && member.logbookTasks.length > 0 && (
                       <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5 w-full bg-slate-50/70 p-2.5 rounded-xl border border-slate-200/60">
@@ -377,7 +400,7 @@ export const TeamMembersModal: React.FC<TeamMembersModalProps> = ({
                             </div>
                           ))}
                         </div>
-                        {member.notes && member.notes.trim() && (
+                        {member.notes && member.notes.trim() && !member.statusBadge?.toLowerCase().includes('terlambat') && member.notes !== member.lateReason && (
                           <div className="text-[10px] text-slate-500 italic mt-0.5 pt-1 border-t border-slate-200/60">
                             Catatan: {member.notes}
                           </div>

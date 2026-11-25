@@ -402,6 +402,9 @@ export function AttendanceHistory({
               : `${rec.clockInTime} WIB`
             : undefined;
 
+          const isLateRecord = rec.clockInStatus === 'LATE' || statusText.includes('Terlambat');
+          const lateReason = isLateRecord ? (rec.notes?.trim() || undefined) : undefined;
+
           list.push({
             id: rec.userId || matchedUser?.id,
             name: rec.userName,
@@ -415,6 +418,7 @@ export function AttendanceHistory({
             locationColor: (isWfh || isBusinessTrip) ? 'indigo' : isOutOfRange ? 'amber' : 'emerald',
             logbookTasks: tasks,
             notes: notes,
+            lateReason: lateReason,
           });
           addedNames.add(rec.userName);
         }
@@ -489,6 +493,9 @@ export function AttendanceHistory({
         const isOutOfRangeCol = !isWfh && !isBusinessTrip && (userRec?.clockInLocationStatus === 'OUT_OF_RANGE' || (userRec?.clockInDistanceMeter !== undefined && userRec.clockInDistanceMeter > 100));
         const locBadgeText = isWfh ? 'Dari Rumah' : isBusinessTrip ? 'Dinas Luar' : isOutOfRangeCol ? 'Di Luar Kantor' : 'Area Kantor';
 
+        const isLateRecord = isLate || userRec?.clockInStatus === 'LATE' || statusText.includes('Terlambat');
+        const lateReason = isLateRecord ? (userRec?.notes?.trim() || undefined) : undefined;
+
         list.push({
           id: userObj?.id || userRec?.userId,
           name: fullName,
@@ -502,6 +509,7 @@ export function AttendanceHistory({
           locationColor: isWfh ? 'indigo' : isBusinessTrip ? 'purple' : isOutOfRangeCol ? 'rose' : 'emerald',
           logbookTasks: tasks,
           notes: notes,
+          lateReason: lateReason,
         });
         addedNames.add(fullName);
       }
@@ -1130,18 +1138,10 @@ export function AttendanceHistory({
         taskSummary = ds.leave?.reason || 'Pengajuan Perizinan Disetujui';
       } else if (myTaskLog?.tasks && myTaskLog.tasks.length > 0) {
         taskSummary = myTaskLog.tasks.join(', ');
-        if (myRecord?.notes && myRecord.notes.trim()) {
-          taskSummary += ` (Alasan: ${myRecord.notes.trim()})`;
-        }
       } else if (myRecord?.tasksDoneSummary && myRecord.tasksDoneSummary.length > 0) {
         taskSummary = myRecord.tasksDoneSummary.join(', ');
-        if (myRecord?.notes && myRecord.notes.trim()) {
-          taskSummary += ` (Alasan: ${myRecord.notes.trim()})`;
-        }
-      } else if (myRecord?.notes && myRecord.notes.trim()) {
-        taskSummary = myRecord.clockInStatus === 'LATE'
-          ? `Alasan: "${myRecord.notes.trim()}"`
-          : myRecord.notes.trim();
+      } else if (myRecord?.notes && myRecord.notes.trim() && myRecord.clockInStatus !== 'LATE') {
+        taskSummary = myRecord.notes.trim();
       } else {
         taskSummary = '-';
       }
@@ -1973,12 +1973,6 @@ export function AttendanceHistory({
                                         }
                                       >
                                         <span>Terlambat</span>
-                                        {lateNote && (
-                                          <span
-                                            className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse shrink-0"
-                                            title={`Alasan: ${lateNote}`}
-                                          />
-                                        )}
                                       </button>
                                     );
                                   })()
