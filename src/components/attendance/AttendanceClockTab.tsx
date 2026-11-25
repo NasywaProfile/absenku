@@ -118,6 +118,7 @@ export function AttendanceClockTab({
   const [isEditingLateReason, setIsEditingLateReason] = useState(false);
   const [editReasonText, setEditReasonText] = useState('');
   const [isSubmittingClockIn, setIsSubmittingClockIn] = useState(false);
+  const [isSavingLateReason, setIsSavingLateReason] = useState(false);
 
   // Calendar State (Exact same as Beranda Kalender Presensi)
   const todayDateStr = getCurrentDateString();
@@ -798,20 +799,43 @@ export function AttendanceClockTab({
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
+                              disabled={isSavingLateReason}
+                              onClick={async () => {
+                                setIsSavingLateReason(true);
                                 const trimmed = editReasonText.trim();
                                 const updated: AttendanceRecord = {
                                   ...todayRecord,
                                   notes: trimmed || undefined,
                                 };
                                 AppStorage.saveAttendanceRecord(updated);
-                                setDataVersion((v) => v + 1);
-                                onRefreshData();
-                                setIsEditingLateReason(false);
+                                try {
+                                  await ApiClient.clockIn({
+                                    id: updated.id,
+                                    user_id: updated.userId,
+                                    pengguna_id: updated.userId,
+                                    date: updated.date,
+                                    clock_in_time: updated.clockInTime,
+                                    clock_in_lat: updated.clockInLat,
+                                    clock_in_lng: updated.clockInLng,
+                                    clock_in_distance_meter: updated.clockInDistanceMeter,
+                                    clock_in_location_status: updated.clockInLocationStatus,
+                                    clock_in_status: updated.clockInStatus,
+                                    clock_in_late_minutes: updated.clockInLateMinutes,
+                                    work_mode: updated.workMode,
+                                    notes: trimmed,
+                                  });
+                                } catch (e) {
+                                  // Fallback offline
+                                } finally {
+                                  setIsSavingLateReason(false);
+                                  setIsEditingLateReason(false);
+                                  setDataVersion((v) => v + 1);
+                                  onRefreshData();
+                                }
                               }}
-                              className="px-3 py-1 bg-[#1E3A8A] hover:bg-[#172554] text-white text-[11px] font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+                              className="px-3 py-1 bg-[#1E3A8A] hover:bg-[#172554] text-white text-[11px] font-bold rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-60"
                             >
-                              Simpan Alasan
+                              {isSavingLateReason ? 'Menyimpan...' : 'Simpan Alasan'}
                             </button>
                           </div>
                         </div>

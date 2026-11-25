@@ -777,6 +777,7 @@ export function AttendanceHistory({
 
       const statuses: Record<string, 'Hadir' | 'Terlambat' | 'WFH' | 'Sakit' | 'Dinas Luar' | 'Tidak Hadir' | 'Cuti/Izin' | 'Libur'> = {};
       const lateWfhMap: Record<string, number> = {};
+      const lateNotesMap: Record<string, string> = {};
       const cutiAvatars: string[] = [];
 
       employeeColumns.forEach((emp) => {
@@ -785,6 +786,15 @@ export function AttendanceHistory({
             safeLower(u.name).trim() === safeLower(emp).trim() ||
             safeLower(u.name).trim().includes(safeLower(emp).trim())
         );
+
+        const empRec = dayRecords.find(
+          (r) =>
+            (matchedUser?.id && r.userId === matchedUser.id) ||
+            safeLower(r.userName).trim() === safeLower(emp).trim()
+        );
+        if (empRec?.notes && empRec.notes.trim()) {
+          lateNotesMap[emp] = empRec.notes.trim();
+        }
 
         const ds = getDailyStatus({
           user: { id: matchedUser?.id || emp, name: matchedUser?.name || emp },
@@ -904,6 +914,7 @@ export function AttendanceHistory({
         cutiAvatars,
         statuses,
         lateWfhMap,
+        lateNotesMap,
         locations: {
           hasOffice,
           hasOutOfOffice,
@@ -1128,7 +1139,9 @@ export function AttendanceHistory({
           taskSummary += ` (Alasan: ${myRecord.notes.trim()})`;
         }
       } else if (myRecord?.notes && myRecord.notes.trim()) {
-        taskSummary = myRecord.notes.trim();
+        taskSummary = myRecord.clockInStatus === 'LATE'
+          ? `Alasan: "${myRecord.notes.trim()}"`
+          : myRecord.notes.trim();
       } else {
         taskSummary = '-';
       }
@@ -1939,22 +1952,36 @@ export function AttendanceHistory({
                                     Hadir
                                   </button>
                                 ) : status === 'Terlambat' ? (
-                                  // Pill Kuning/Oranye untuk 'Terlambat'
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const fullName = employeeNamesMap[colName] || colName;
-                                      setSelectedCellInfo({
-                                        name: fullName,
-                                        date: row.dateStr,
-                                        status: 'Terlambat',
-                                      });
-                                    }}
-                                    className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#FEF3C7] text-[#B45309] hover:bg-[#FDE68A] transition-colors cursor-pointer shadow-2xs inline-block active:scale-95"
-                                    title={`Klik untuk melihat detail & logbook presensi ${colName} (Terlambat)`}
-                                  >
-                                    Terlambat
-                                  </button>
+                                  (() => {
+                                    const lateNote = (row as any).lateNotesMap?.[colName];
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const fullName = employeeNamesMap[colName] || colName;
+                                          setSelectedCellInfo({
+                                            name: fullName,
+                                            date: row.dateStr,
+                                            status: 'Terlambat',
+                                          });
+                                        }}
+                                        className="px-3.5 py-1 rounded-full text-xs font-semibold bg-[#FEF3C7] text-[#B45309] hover:bg-[#FDE68A] transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1 active:scale-95 border border-amber-300/80"
+                                        title={
+                                          lateNote
+                                            ? `Terlambat • Alasan: "${lateNote}" (Klik untuk detail)`
+                                            : `Klik untuk melihat detail & logbook presensi ${colName} (Terlambat)`
+                                        }
+                                      >
+                                        <span>Terlambat</span>
+                                        {lateNote && (
+                                          <span
+                                            className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse shrink-0"
+                                            title={`Alasan: ${lateNote}`}
+                                          />
+                                        )}
+                                      </button>
+                                    );
+                                  })()
                                 ) : status === 'Cuti/Izin' ? (
                                   // Pill Hijau Muda untuk 'Cuti/Izin'
                                   <button
@@ -2517,8 +2544,9 @@ export function AttendanceHistory({
 
                 const existingRec = (attendanceRecords || []).find(
                   (r) =>
-                    (r.userId === matchedUser?.id || safeLower(r.userName) === safeLower(selectedCellInfo.name)) &&
-                    r.date === rawDate
+                    ((matchedUser?.id && r.userId === matchedUser.id) ||
+                      (r.userName && selectedCellInfo.name && safeLower(r.userName).trim() === safeLower(selectedCellInfo.name).trim())) &&
+                    (r.date === rawDate || r.date === selectedCellInfo.date)
                 );
 
                 const tasks =
@@ -2531,7 +2559,7 @@ export function AttendanceHistory({
                 return (
                   <div className="space-y-2.5 pt-1">
                     {/* Alasan Keterlambatan / Catatan Presensi Masuk (Jika Ada) */}
-                    {existingRec?.notes && (
+                    {existingRec?.notes ? (
                       <div className={`p-3.5 rounded-xl border flex flex-col gap-1 text-left ${
                         existingRec.clockInStatus === 'LATE' || selectedCellInfo.status.includes('Terlambat')
                           ? 'bg-amber-50/80 border-amber-200/90 text-amber-950'
@@ -2560,7 +2588,34 @@ export function AttendanceHistory({
                           "{existingRec.notes}"
                         </p>
                       </div>
-                    )}
+                    ) : (existingRec?.clockInStatus === 'LATE' || selectedCellInfo.status.includes('Terlambat')) ? (
+                      <div className="p-3 rounded-xl border border-amber-200/60 bg-amber-50/50 text-left flex items-center justify-between gap-2">
+                        <span className="text-xs text-amber-800 italic flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>Belum ada alasan keterlambatan</span>
+                        </span>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const targetRec = existingRec || ({
+                                id: `att_${Date.now()}`,
+                                userId: matchedUser?.id || '',
+                                userName: matchedUser?.name || selectedCellInfo.name,
+                                date: rawDate,
+                                clockInTime: '08:00',
+                                clockInStatus: 'LATE',
+                                clockInLateMinutes: 15,
+                              } as AttendanceRecord);
+                              setEditingRecord(targetRec);
+                            }}
+                            className="text-[11px] font-bold text-[#1E3A8A] hover:underline cursor-pointer"
+                          >
+                            + Tambah Alasan
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
 
                     <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2">
                       <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">

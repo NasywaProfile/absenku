@@ -315,7 +315,12 @@ export default function App() {
             (a) => a.id === sa.id || (a.userId === mappedAtt.userId && a.date === mappedAtt.date)
           );
           if (idx >= 0) {
-            mergedAtt[idx] = { ...mergedAtt[idx], ...mappedAtt };
+            const existingLocalNote = mergedAtt[idx]?.notes;
+            mergedAtt[idx] = {
+              ...mergedAtt[idx],
+              ...mappedAtt,
+              notes: mappedAtt.notes || existingLocalNote || undefined,
+            };
           } else {
             mergedAtt.push(mappedAtt);
           }

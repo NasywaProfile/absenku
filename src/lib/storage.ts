@@ -952,6 +952,7 @@ export const AppStorage = {
               clockInStatus: (srv.status_kehadiran || srv.clock_in_status || r.clockInStatus) as any,
               clockInLateMinutes: srv.menit_keterlambatan ?? srv.clock_in_late_minutes ?? r.clockInLateMinutes,
               workMode: (srv.mode_kerja || srv.work_mode || r.workMode) as any,
+              notes: srv.catatan ?? srv.notes ?? newRecord.notes ?? r.notes,
               syncStatus: 'SYNCED' as const,
             };
           }
@@ -1011,6 +1012,7 @@ export const AppStorage = {
                     clockInStatus: (srv.status_kehadiran || srv.clock_in_status || r.clockInStatus) as any,
                     clockInLateMinutes: srv.menit_keterlambatan ?? srv.clock_in_late_minutes ?? r.clockInLateMinutes,
                     workMode: (srv.mode_kerja || srv.work_mode || r.workMode) as any,
+                    notes: srv.catatan ?? srv.notes ?? newRecord.notes ?? r.notes,
                     syncStatus: 'SYNCED' as const,
                   }
                 : r
