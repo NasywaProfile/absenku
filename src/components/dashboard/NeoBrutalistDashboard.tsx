@@ -26,6 +26,7 @@ import {
   MessageSquare,
   ArrowLeftRight,
   MapPin,
+  PenLine,
 } from 'lucide-react';
 import { User, OfficeConfig, AttendanceRecord, LeaveRequest, TaskItem, TaskStatus, TaskPriority, getPriorityLabel, ChatTopic } from '../../types/index.ts';
 import { AppStorage } from '../../lib/storage.ts';
@@ -74,6 +75,8 @@ export function NeoBrutalistDashboard({
   const [selectedChatTopic, setSelectedChatTopic] = useState<ChatTopic | null>(null);
 
   const [chatTopicsList, setChatTopicsList] = useState<ChatTopic[]>(() => AppStorage.getChatTopics());
+  const [isEditingLateReason, setIsEditingLateReason] = useState(false);
+  const [editReasonText, setEditReasonText] = useState('');
 
   useEffect(() => {
     const syncChat = () => {
@@ -641,6 +644,93 @@ export function NeoBrutalistDashboard({
                           </div>
                         </div>
                       </div>
+
+                      {/* Tampilkan Alasan / Catatan Presensi jika ada, atau tombol tulis alasan jika terlambat */}
+                      {isEditingLateReason ? (
+                        <div className="mt-2.5 pt-2 border-t border-amber-200/60 space-y-2 text-left animate-in fade-in duration-200">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-semibold text-amber-950 flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>Tulis Alasan Keterlambatan</span>
+                            </span>
+                            <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium border border-amber-200/80">
+                              Opsional
+                            </span>
+                          </div>
+                          <textarea
+                            value={editReasonText}
+                            onChange={(e) => setEditReasonText(e.target.value)}
+                            placeholder="Contoh: Terjebak macet di jalan, ban bocor, kendala teknis, dll..."
+                            rows={2}
+                            maxLength={300}
+                            className="w-full text-xs p-2.5 bg-white border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 text-slate-800 resize-none leading-relaxed"
+                          />
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingLateReason(false)}
+                              className="px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            >
+                              Batal
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const trimmed = editReasonText.trim();
+                                const updated: AttendanceRecord = {
+                                  ...todayRecord,
+                                  notes: trimmed || undefined,
+                                };
+                                AppStorage.saveAttendanceRecord(updated);
+                                if (onRefreshData) onRefreshData();
+                                setIsEditingLateReason(false);
+                              }}
+                              className="px-3 py-1 bg-[#1E3A8A] hover:bg-[#172554] text-white text-[11px] font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+                            >
+                              Simpan Alasan
+                            </button>
+                          </div>
+                        </div>
+                      ) : todayRecord.notes ? (
+                        <div className="mt-2.5 pt-2 border-t border-slate-200/60 text-[11px] text-slate-600 flex items-start justify-between gap-2 text-left">
+                          <div className="flex items-start gap-1.5 flex-1 min-w-0">
+                            <span className="font-semibold text-slate-700 shrink-0">
+                              {isLate ? 'Alasan Terlambat:' : 'Catatan Presensi:'}
+                            </span>
+                            <span className="italic text-slate-800 break-words">"{todayRecord.notes}"</span>
+                          </div>
+                          {isLate && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditReasonText(todayRecord.notes || '');
+                                setIsEditingLateReason(true);
+                              }}
+                              className="text-[#1E3A8A] hover:text-[#172554] shrink-0 text-[10px] font-bold hover:underline inline-flex items-center gap-0.5 cursor-pointer ml-1"
+                              title="Ubah alasan keterlambatan"
+                            >
+                              <PenLine className="w-3 h-3" />
+                              <span>Ubah</span>
+                            </button>
+                          )}
+                        </div>
+                      ) : isLate ? (
+                        <div className="mt-2.5 pt-2 border-t border-amber-200/60 flex items-center justify-between text-[11px] text-left">
+                          <span className="text-amber-800/90 italic text-[11px]">Belum ada alasan keterlambatan</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditReasonText('');
+                              setIsEditingLateReason(true);
+                            }}
+                            className="text-[#1E3A8A] hover:text-[#172554] font-bold inline-flex items-center gap-1 hover:underline cursor-pointer"
+                          >
+                            <PenLine className="w-3 h-3" />
+                            <span>+ Tulis Alasan</span>
+                          </button>
+                        </div>
+                      ) : null}
+
                     </div>
                   );
                 })()
